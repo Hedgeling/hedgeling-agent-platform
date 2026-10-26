@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-bundle/
+.env
+.env.*
+!.env.example
+*.log
+*.tgz
+*.pem
+*.key
+.DS_Store
+coverage/
+test-results/
+playwright-report/
+.hedgeling/

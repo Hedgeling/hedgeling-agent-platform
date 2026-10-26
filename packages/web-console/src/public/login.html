@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Sign in · Hedgeling</title>
+    <link rel="stylesheet" href="/login.css">
+    <script src="/theme.js"></script>
+  </head>
+  <body>
+    <main class="login-shell">
+      <section class="brand-pane" aria-labelledby="brand-title">
+        <div class="brand-lockup">
+          <img src="/hedgeling-logo.png" alt="" width="72" height="72">
+          <span data-brand-name>Hedgeling</span>
+        </div>
+        <div>
+          <p class="eyebrow">Localization operations</p>
+          <h1 id="brand-title">Language work,<br>under control.</h1>
+          <p class="brand-copy">Translate, review, and govern every locale from one secure workspace.</p>
+        </div>
+        <p class="theme-status"><span aria-hidden="true"></span><span id="themeLabel">Using system theme</span></p>
+      </section>
+
+      <section class="form-pane">
+        <div class="login-card">
+          <p class="step">Account access</p>
+          <h2>Sign in</h2>
+          <p class="intro">Use the account your organization or agency invited.</p>
+
+          <form id="loginForm">
+            <label>
+              <span>Email</span>
+              <input id="username" name="username" type="email" autocomplete="username" required autofocus>
+            </label>
+            <label id="passwordField" hidden>
+              <span>Password</span>
+              <input id="password" name="password" type="password" autocomplete="current-password">
+            </label>
+            <button id="loginSubmit" class="primary" type="submit">Continue <span aria-hidden="true">→</span></button>
+            <button id="changeAccount" class="text-button" type="button" hidden>Use another account</button>
+            <button id="forgotPassword" class="text-button" type="button" hidden>Forgot password?</button>
+          </form>
+
+          <form id="resetRequestForm" hidden>
+            <p class="form-explanation">Enter your email and we’ll send a password reset code if the account exists.</p>
+            <label>
+              <span>Email</span>
+              <input id="resetUsername" type="email" autocomplete="username" required>
+            </label>
+            <button class="primary" type="submit">Send code <span aria-hidden="true">→</span></button>
+            <button class="backToLogin quiet" type="button">Back</button>
+          </form>
+
+          <form id="resetConfirmForm" hidden>
+            <label>
+              <span>Reset code</span>
+              <input id="resetCode" inputmode="numeric" autocomplete="one-time-code" required>
+            </label>
+            <label>
+              <span>New password</span>
+              <input id="resetPassword" type="password" autocomplete="new-password" required>
+            </label>
+            <button class="primary" type="submit">Set new password <span aria-hidden="true">→</span></button>
+            <button class="backToLogin quiet" type="button">Back</button>
+          </form>
+
+          <form id="challengeForm" hidden>
+            <input id="challengeName" type="hidden">
+            <input id="challengeSession" type="hidden">
+            <input id="challengeUsername" type="hidden">
+            <label>
+              <span id="challengeLabel">Verification code</span>
+              <input id="challengeValue" autocomplete="one-time-code" required>
+            </label>
+            <button class="primary" type="submit">Verify <span aria-hidden="true">→</span></button>
+            <button id="backToLogin" class="quiet" type="button">Back</button>
+          </form>
+
+          <p id="message" class="message" role="alert" hidden></p>
+          <p id="signupHelp" class="help" hidden>
+            New to Hedgeling? <a href="/signup">Start a free trial</a>.
+          </p>
+          <p id="invitationHelp" class="help">Need invited access? Contact your organization administrator.</p>
+        </div>
+      </section>
+    </main>
+    <script src="/login.js"></script>
+  </body>
+</html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Set up your workspace · Hedgeling</title>
+    <link rel="stylesheet" href="/onboarding.css">
+    <link rel="stylesheet" href="/agent.css">
+    <script src="/theme.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand-lockup" href="/">
+        <img src="/hedgeling-logo.png" alt="" width="42" height="42">
+        <span data-brand-name>Hedgeling</span>
+      </a>
+      <span id="trialBadge" class="trial-badge">Free trial · no card</span>
+    </header>
+
+    <main>
+      <aside aria-label="Setup progress">
+        <p class="eyebrow">Workspace setup</p>
+        <ol>
+          <li class="active">Organization</li>
+          <li>Languages</li>
+          <li>Workflow</li>
+          <li>Connect</li>
+          <li>Plan</li>
+        </ol>
+        <p class="aside-note">The setup is saved atomically. You will never be left with half a workspace.</p>
+      </aside>
+
+      <section class="content">
+        <div id="loading" class="panel">
+          <p class="eyebrow">Preparing</p>
+          <h1>Loading your setup…</h1>
+        </div>
+
+        <div id="setupView" hidden>
+          <div class="heading">
+            <p class="eyebrow">Start with the essentials</p>
+            <h1>Create your workspace</h1>
+            <p>We’ll create one organization, a Main business unit, your first project, and a versioned workflow.</p>
+          </div>
+
+          <form id="workspaceForm" class="panel">
+            <div class="field-grid">
+              <label>
+                <span>Organization name</span>
+                <input id="organizationName" maxlength="200" autocomplete="organization" placeholder="Acme Games" required>
+              </label>
+              <label>
+                <span>First project</span>
+                <input id="projectName" maxlength="200" placeholder="Player experience" required>
+              </label>
+              <label>
+                <span>Source language</span>
+                <input id="sourceLocale" value="en-US" placeholder="en-US" required>
+              </label>
+              <label>
+                <span>Target languages</span>
+                <input id="targetLocales" value="fr-FR, de-DE" placeholder="fr-FR, de-DE" required>
+                <small>Up to 3 during the trial, separated by commas.</small>
+              </label>
+            </div>
+
+            <fieldset>
+              <legend>Choose your starting workflow</legend>
+              <div id="workflowChoices" class="workflow-grid"></div>
+            </fieldset>
+
+            <label class="check-row">
+              <input id="onboardingLegal" type="checkbox" required>
+              <span>I accept the current <a id="termsLink" target="_blank" rel="noreferrer">Terms of Service</a> and <a id="privacyLink" target="_blank" rel="noreferrer">Privacy Policy</a> for this workspace.</span>
+            </label>
+
+            <button class="primary" type="submit">Create workspace <span aria-hidden="true">→</span></button>
+          </form>
+        </div>
+
+        <div id="workspaceView" hidden>
+          <div class="heading">
+            <p class="eyebrow">Workspace ready</p>
+            <h1 id="workspaceTitle">You’re ready to connect</h1>
+            <p id="trialSummary"></p>
+          </div>
+          <section id="upgradeStatus" class="panel upgrade-status" hidden></section>
+          <section id="spendControls" class="panel" hidden>
+            <p class="eyebrow">Business spend protection</p>
+            <h2>Set a hard AI overage cap</h2>
+            <p class="muted">Business includes 100,000 AI credits each month. Additional usage costs $10 per started 10,000-credit block and is rejected before the model call when this cap is exhausted.</p>
+            <form id="spendControlForm" class="inline-control">
+              <label>
+                <span>Maximum AI overage per month (USD)</span>
+                <input id="aiOverageCap" inputmode="decimal" value="0.00" aria-describedby="aiOverageHelp">
+                <small id="aiOverageHelp">Use 0.00 to disable all AI overage.</small>
+              </label>
+              <button class="primary" type="submit">Save hard cap</button>
+            </form>
+          </section>
+
+          <section id="credentialPanel" class="panel credential-panel" hidden>
+            <div>
+              <p class="eyebrow">Shown once</p>
+              <h2>Copy your project credential</h2>
+              <p id="credentialHelp">Store this as a secret. Hedgeling saves only its hash.</p>
+            </div>
+            <div id="tokenRow" class="token-row">
+              <code id="credentialToken"></code>
+              <button id="copyToken" type="button">Copy</button>
+            </div>
+            <button id="replaceCredential" type="button" hidden>Generate a replacement credential</button>
+          </section>
+
+          <section id="npmSeatsPanel" class="panel" hidden>
+            <p class="eyebrow">Private package access</p>
+            <h2>Provision npm members</h2>
+            <p id="npmSeatPolicy" class="muted"></p>
+            <form id="npmSeatForm" class="inline-control">
+              <label>
+                <span>npm username</span>
+                <input id="npmUsername" autocomplete="off" placeholder="your-npm-username">
+                <small>Pending invitations count toward the monthly high-water seat total.</small>
+              </label>
+              <button class="primary" type="submit">Add npm member</button>
+            </form>
+            <div id="npmSeatList" class="seat-list"></div>
+          </section>
+
+          <section id="trialPackagePanel" class="panel trial-package-panel" hidden>
+            <div>
+              <p class="eyebrow">Package-enabled trial</p>
+              <h2>Download the private package</h2>
+              <p id="trialPackagePolicy" class="muted"></p>
+            </div>
+            <div class="package-actions">
+              <button id="requestTrialPackage" class="primary" type="button">
+                Create download link
+              </button>
+              <a
+                id="trialPackageLink"
+                class="button"
+                href="#"
+                rel="noreferrer"
+                hidden
+              >Download package</a>
+            </div>
+            <div id="trialPackageEvidence" class="package-evidence" hidden>
+              <span>SHA-256</span>
+              <code id="trialPackageSha"></code>
+              <small id="trialPackageExpiry"></small>
+            </div>
+          </section>
+
+          <section class="panel">
+            <p class="eyebrow">Connect the npm package</p>
+            <h2>Three environment values</h2>
+            <pre id="connectionExample"></pre>
+            <p class="muted">Install <code>@hedgeling/i18n</code>, then use the credential for authenticated console imports and verified-translation pulls.</p>
+          </section>
+
+          <section class="plan-section">
+            <div class="heading compact">
+              <p class="eyebrow">Upgrade when ready</p>
+              <h2>Choose a paid plan</h2>
+              <p>Your trial does not require a card. Checkout opens only when you choose a configured paid price.</p>
+            </div>
+            <div id="planGrid" class="plan-grid"></div>
+          </section>
+
+          <div class="actions">
+            <a class="button primary" href="/">Open console <span aria-hidden="true">→</span></a>
+          </div>
+        </div>
+
+        <p id="message" class="message" role="alert" hidden></p>
+      </section>
+    </main>
+    <script src="/onboarding.js"></script>
+    <script type="module" src="/agent.js"></script>
+  </body>
+</html>

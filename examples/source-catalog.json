@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    { "key": "demo.welcome", "source": "Welcome to your workspace", "contexts": [{ "purpose": "Page heading", "locations": [{ "file": "demo/home.html", "line": 1, "kind": "text" }] }] },
+    { "key": "demo.create", "source": "Create a project", "contexts": [{ "purpose": "Primary button" }] },
+    { "key": "demo.review", "source": "Ready for review", "contexts": [{ "purpose": "Job status label" }] }
+  ]
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent card playground · Hedgeling</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/agent.css">
+  <link rel="stylesheet" href="/agent-preview.css">
+  <script src="/theme.js"></script>
+</head>
+<body class="agent-preview-page">
+  <header class="preview-topbar"><a href="/">← Back to console</a><label>Theme <select data-theme-preference><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label></header>
+  <main class="agent-preview-main">
+    <div class="preview-intro"><span class="agent-eyebrow">HEDGELING · DESIGN PLAYGROUND</span><h1>A little ink.<br>A little magic.</h1><p>Try the cards, type on the paper, and make this feel like yours.</p><p class="preview-notice">Examples only. Nothing here creates or changes workspace data.</p></div>
+    <div class="preview-layout">
+      <section class="preview-desk" aria-label="Card examples">
+        <nav class="preview-tabs" aria-label="Example type"><button type="button" data-example="approval" aria-pressed="true">01 Approval</button><button type="button" data-example="options" aria-pressed="false">02 Options</button><button type="button" data-example="details" aria-pressed="false">03 Free-form</button></nav>
+        <div class="agent-paper"><div id="previewCard"></div><div id="previewReply" role="status" aria-live="polite"></div><div class="agent-paper-end">— your next chapter —</div></div>
+        <div id="previewComposer"></div>
+      </section>
+      <aside class="preview-notes"><span class="agent-eyebrow">IN THE MARGINS</span><h2>You hold the pen.</h2><p><strong>Approval</strong> shows the exact proposed change. Confirm applies it; Discard lets you ask for a new preview.</p><p><strong>Options</strong> help choose a direction. <strong>Free-form fields</strong> collect names, languages, and instructions. An answer is separate from approval.</p><p class="preview-availability">Approval cards are connected to the live agent. Options and free-form cards here are interactive design examples; live follow-up questions currently use chat.</p><div class="preview-highlight-example"><button type="button" id="previewHighlight">Try an attention highlight</button><p id="previewHighlightTarget">A real section gets a highlighter mark while Hedgeling works here.</p></div><p class="preview-small">A small return key keeps the typewriter feel. Enter sends your sample note; Shift + Enter adds a line.</p></aside>
+    </div>
+  </main>
+  <script type="module" src="/agent-preview.js"></script>
+</body>
+</html>

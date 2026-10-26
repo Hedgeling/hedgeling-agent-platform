@@ -1,0 +1,34 @@
+{
+  "name": "hedgeling-agent-platform",
+  "version": "0.1.0",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/api-contract",
+    "packages/platform-client",
+    "packages/platform-mcp",
+    "packages/design-system",
+    "packages/web-console"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces",
+    "test": "npm test --workspaces",
+    "check:public": "node scripts/check-public-boundary.mjs",
+    "dev:agent": "npm -w @hedgeling/web-console run dev:agent",
+    "test:agent": "npm -w @hedgeling/web-console run test:agent",
+    "test:local": "npm -w @hedgeling/web-console run test:local",
+    "test:authorization": "npm -w @hedgeling/web-console run test:authorization",
+    "test:navigation:browser": "npm -w @hedgeling/web-console run test:navigation:browser",
+    "test:agent:browser": "npm -w @hedgeling/web-console run test:agent:browser",
+    "test:commercial:browser": "npm -w @hedgeling/web-console run test:commercial:browser"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/node": "20.19.33"
+  }
+}

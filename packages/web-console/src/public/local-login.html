@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Hedgeling local troubleshooting</title>
+    <link rel="stylesheet" href="/login.css">
+    <script src="/theme.js"></script>
+    <script src="/local-login.js" defer></script>
+  </head>
+  <body>
+    <main class="form-pane">
+      <section class="login-card" aria-labelledby="local-title">
+      <p class="step"><span data-brand-name>Hedgeling</span> development</p>
+      <h2 id="local-title">Local troubleshooting</h2>
+      <p class="intro">Sign in with the temporary token printed by dev:local. Your local user's roles apply.</p>
+      <form id="localLogin">
+        <label for="token">Local session token</label>
+        <input id="token" type="password" autocomplete="off" required>
+        <button class="primary" type="submit">Sign in</button>
+      </form>
+      <p id="message" role="status"></p>
+      </section>
+    </main>
+  </body>
+</html>

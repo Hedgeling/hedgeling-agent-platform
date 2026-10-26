@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Start a free trial · Hedgeling</title>
+    <link rel="stylesheet" href="/signup.css">
+    <script src="/theme.js"></script>
+  </head>
+  <body>
+    <main class="login-shell">
+      <section class="brand-pane" aria-labelledby="brand-title">
+        <div class="brand-lockup">
+          <img src="/hedgeling-logo.png" alt="" width="72" height="72">
+          <span data-brand-name>Hedgeling</span>
+        </div>
+        <div>
+          <p id="trialEyebrow" class="eyebrow">Free trial</p>
+          <h1 id="brand-title">Your first locale,<br>in one sitting.</h1>
+          <p class="brand-copy">Create a customer workspace, choose a workflow, and connect your project. No card required.</p>
+        </div>
+        <p class="theme-status"><span aria-hidden="true"></span><span id="themeLabel">Using system theme</span></p>
+      </section>
+
+      <section class="form-pane">
+        <div class="login-card">
+          <p class="step" id="stepLabel">Create account</p>
+          <h2 id="formTitle">Start free</h2>
+          <p class="intro" id="formIntro">Agencies and individual vendors still join by invitation.</p>
+
+          <form id="signupForm">
+            <label>
+              <span>Your name</span>
+              <input id="displayName" autocomplete="name" maxlength="200" required autofocus>
+            </label>
+            <label>
+              <span>Work email</span>
+              <input id="email" type="email" autocomplete="username" required>
+            </label>
+            <label>
+              <span>Password</span>
+              <input id="password" type="password" autocomplete="new-password" minlength="12" required>
+              <small>Use at least 12 characters. Cognito may require additional complexity.</small>
+            </label>
+            <label class="check-row">
+              <input id="legalAcceptance" type="checkbox" required>
+              <span>I agree to the <a id="termsLink" target="_blank" rel="noreferrer">Terms of Service</a> and <a id="privacyLink" target="_blank" rel="noreferrer">Privacy Policy</a>.</span>
+            </label>
+            <button class="primary" type="submit">Create account <span aria-hidden="true">→</span></button>
+          </form>
+
+          <form id="confirmForm" hidden>
+            <p class="form-explanation">We sent a confirmation code to <strong id="confirmationEmail"></strong>.</p>
+            <label>
+              <span>Confirmation code</span>
+              <input id="confirmationCode" inputmode="numeric" autocomplete="one-time-code" required>
+            </label>
+            <button class="primary" type="submit">Confirm and continue <span aria-hidden="true">→</span></button>
+            <button id="resendCode" class="text-button" type="button">Send another code</button>
+          </form>
+
+          <p id="message" class="message" role="alert" hidden></p>
+          <p class="help">Already have an account? <a href="/login">Sign in</a>.</p>
+        </div>
+      </section>
+    </main>
+    <script src="/signup.js"></script>
+  </body>
+</html>

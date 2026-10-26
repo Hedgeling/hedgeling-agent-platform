@@ -1,0 +1,30 @@
+@import url("/login.css");
+
+a {
+  color: var(--text-accent);
+  font-weight: 700;
+}
+
+small {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.check-row {
+  grid-template-columns: 22px 1fr;
+  align-items: start;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.check-row input {
+  width: 20px;
+  min-height: 20px;
+  margin: 1px 0 0;
+  accent-color: var(--accent-green);
+}
+
+.check-row span {
+  font-size: 13px;
+}

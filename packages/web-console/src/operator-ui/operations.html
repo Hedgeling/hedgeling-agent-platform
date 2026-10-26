@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Payment operations · Hedgeling</title>
+    <link rel="stylesheet" href="/operations.css">
+    <link rel="stylesheet" href="/agent.css">
+    <script src="/theme.js"></script>
+  </head>
+  <body>
+    <header class="operations-header">
+      <a class="brand" href="/">
+        <img src="/hedgeling-logo.png" alt="">
+        <span data-brand-name>Hedgeling</span>
+      </a>
+      <div>
+        <p class="eyebrow">Platform workspace</p>
+        <h1>Payment operations</h1>
+      </div>
+      <div class="header-actions">
+        <span id="accessMode" class="badge">Checking access</span>
+        <a class="button-link" href="/">Back to console</a>
+        <button id="signOut" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <main class="operations-shell">
+      <section aria-labelledby="readinessTitle">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Live posture</p>
+            <h2 id="readinessTitle">Queues and readiness</h2>
+          </div>
+          <button id="refreshAll" type="button">Refresh data</button>
+        </div>
+        <div id="operationsSummary" class="summary-grid" aria-live="polite"></div>
+      </section>
+
+      <section aria-labelledby="eventsTitle">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Provider intake</p>
+            <h2 id="eventsTitle">Provider-event queue</h2>
+            <p>Normalized metadata only. Raw Stripe payloads and customer PII are not rendered.</p>
+          </div>
+        </div>
+        <form id="eventFilters" class="filter-grid">
+          <label>
+            <span>Status</span>
+            <select name="status">
+              <option value="">All</option>
+              <option value="failed">Failed</option>
+              <option value="processing">Processing</option>
+              <option value="processed">Processed</option>
+              <option value="ignored">Ignored</option>
+            </select>
+          </label>
+          <label>
+            <span>Domain</span>
+            <select name="domain">
+              <option value="">All</option>
+              <option value="connected_account">Connected account</option>
+              <option value="payment">Payment</option>
+              <option value="refund">Refund</option>
+              <option value="dispute">Dispute or return</option>
+              <option value="payout">Payout</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>
+            <span>Mode</span>
+            <select name="providerMode">
+              <option value="">All</option>
+              <option value="test">Test</option>
+              <option value="live">Live</option>
+            </select>
+          </label>
+          <label>
+            <span>Event type</span>
+            <input name="eventType" placeholder="payout.failed">
+          </label>
+          <label>
+            <span>Event ID</span>
+            <input name="eventId" placeholder="evt_...">
+          </label>
+          <label>
+            <span>Resource type</span>
+            <input name="resourceType" placeholder="facilitated_payout">
+          </label>
+          <label>
+            <span>Resource ID</span>
+            <input name="resourceId" placeholder="UUID">
+          </label>
+          <label>
+            <span>Received from</span>
+            <input name="receivedFrom" type="datetime-local">
+          </label>
+          <label>
+            <span>Received to</span>
+            <input name="receivedTo" type="datetime-local">
+          </label>
+          <div class="filter-actions">
+            <button class="primary" type="submit">Apply filters</button>
+            <button id="clearEventFilters" type="button">Clear</button>
+          </div>
+        </form>
+        <div id="eventQueue" class="data-list" aria-live="polite"></div>
+      </section>
+
+      <section aria-labelledby="reconciliationTitle">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Provider reads</p>
+            <h2 id="reconciliationTitle">Reconciliation</h2>
+            <p>These actions read existing provider objects and apply signed-state rules. They do not create a business approval or release money.</p>
+          </div>
+          <div id="reconciliationActions" class="actions">
+            <button id="reconcilePayments" type="button">Reconcile open payments</button>
+            <button id="reconcilePayoutFleet" class="primary" type="button">Scan payout accounts</button>
+          </div>
+        </div>
+        <div id="reconciliationResult" class="result-panel" hidden></div>
+        <div id="payoutCheckpoints" class="data-list" aria-live="polite"></div>
+      </section>
+
+      <section aria-labelledby="exceptionsTitle">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Human attention</p>
+            <h2 id="exceptionsTitle">Exceptions and recovery</h2>
+          </div>
+        </div>
+        <div class="exception-columns">
+          <div>
+            <h3>Exceptions</h3>
+            <div id="exceptionQueue" class="data-list" aria-live="polite"></div>
+          </div>
+          <div>
+            <h3>Recovery cases</h3>
+            <div id="recoveryQueue" class="data-list" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="replayDialog">
+      <form id="replayForm" method="dialog">
+        <p class="eyebrow">Controlled replay</p>
+        <h2>Replay provider event</h2>
+        <p id="replayFailure" class="dialog-context"></p>
+        <input name="eventId" type="hidden">
+        <label>
+          <span>Reason</span>
+          <textarea name="reason" maxlength="2000" required></textarea>
+        </label>
+        <label>
+          <span>Type the exact event ID to confirm</span>
+          <input name="confirmEventId" required autocomplete="off">
+        </label>
+        <p>Replay re-runs current validation. It cannot force success or bypass ownership and lifecycle rules.</p>
+        <div class="actions">
+          <button value="cancel" type="button" data-dialog-close>Cancel</button>
+          <button class="primary" value="confirm" type="submit">Replay event</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="resolutionDialog">
+      <form id="resolutionForm" method="dialog">
+        <p class="eyebrow">Audited resolution</p>
+        <h2>Resolve exception</h2>
+        <input name="exceptionId" type="hidden">
+        <label>
+          <span>Resolution</span>
+          <textarea name="resolution" maxlength="5000" required></textarea>
+        </label>
+        <div class="actions">
+          <button value="cancel" type="button" data-dialog-close>Cancel</button>
+          <button class="primary" value="confirm" type="submit">Resolve</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="/operations.js"></script>
+    <script type="module" src="/agent.js"></script>
+  </body>
+</html>

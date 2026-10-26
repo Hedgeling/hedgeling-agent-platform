@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hedgeling Console</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/agent.css">
+    <link rel="stylesheet" href="/console-shell.css">
+    <script src="/theme.js"></script>
+  </head>
+  <body class="console-layout">
+    <a class="skip-link" href="#consoleMain">Skip to content</a>
+    <aside id="consoleSidebar" class="console-sidebar" aria-label="Main navigation">
+      <a class="sidebar-brand" href="#home" aria-label="Hedgeling home"><img src="/hedgeling-logo.png" alt=""><span data-brand-name>Hedgeling</span></a>
+      <div class="sidebar-heading">WORKSPACE</div>
+      <nav class="sidebar-nav" aria-label="Console views">
+        <button type="button" data-view="home" title="Home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/></svg><span>Home</span></button>
+        <button type="button" data-view="work" title="My work"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5V3h8v2M4 5h16v16H4ZM8 10h8M8 14h5"/></svg><span>My work</span><small id="workCount" hidden></small></button>
+        <button type="button" data-view="workspace" id="workspaceTab" title="Projects"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v11H3ZM3 7V4h7l2 3h9v2"/></svg><span>Projects</span></button>
+        <button type="button" data-view="library" id="libraryTab" title="Library" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h4v18H4ZM11 3h4v18h-4ZM18 4l3 16"/></svg><span>Library</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button type="button" data-view="access" id="adminTab" title="Admin" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg><span>Admin</span></button>
+        <button type="button" id="sidebarCollapse" aria-label="Collapse sidebar" aria-expanded="true" aria-controls="consoleSidebar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3ZM9 4v16"/></svg><span>Collapse sidebar</span></button>
+      </div>
+    </aside>
+    <button id="sidebarDismiss" class="sidebar-dismiss" type="button" aria-label="Close navigation" hidden></button>
+    <header class="topbar console-topbar">
+      <button id="sidebarToggle" class="shell-icon-button" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="consoleSidebar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3ZM9 4v16"/></svg></button>
+      <details id="workspacePicker" class="workspace-picker">
+        <summary><span class="context-label" id="workspaceContextLabel">Workspace</span><span class="context-path"><strong id="projectName">All workspaces</strong><span aria-hidden="true">⌄</span></span></summary>
+        <div class="workspace-menu">
+          <label class="sr-only" for="workspaceSearch">Find a workspace or project</label>
+          <input id="workspaceSearch" type="search" placeholder="Find a workspace or project…">
+          <div id="workspaceOptions"></div>
+          <button class="workspace-create" type="button" data-workspace-new>+ New organization</button>
+        </div>
+      </details>
+      <label hidden><span>Project</span><select id="project" aria-label="Project"></select></label>
+      <button id="askAgent" aria-label="Ask Hedgeling" class="shell-ask" type="button" data-ask-agent disabled><span aria-hidden="true">✧</span><span data-agent-label>Ask Hedgeling…</span><kbd>⌘ K</kbd></button>
+      <details id="accountMenu" class="account-menu">
+        <summary aria-label="Account menu"><span id="accountAvatar" class="account-avatar">U</span></summary>
+        <div class="account-popover">
+          <strong id="accountName">Your account</strong><small id="accountEmail"></small>
+          <label>Appearance<select data-theme-preference><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+          <button id="signOut" type="button">Sign out</button>
+        </div>
+      </details>
+    </header>
+
+    <main id="consoleMain" class="console-main" tabindex="-1">
+      <nav id="sectionNav" class="section-nav" aria-label="Section navigation" hidden></nav>
+      <section id="view-home" class="view shell-page active" aria-label="Home">
+        <div class="home-heading"><p class="shell-eyebrow">YOUR WORKSPACE, IN FOCUS</p><h1 id="homeGreeting">Your work.<br>Every language.</h1><p>Pick up where you left off, or let Hedgeling help with your next step.</p>
+          <button class="shell-primary" type="button" data-ask-agent disabled><span aria-hidden="true">✧</span><span data-agent-label>Ask Hedgeling</span></button><button class="shell-secondary" type="button" data-view="workspace">Browse projects <span aria-hidden="true">↗</span></button>
+        </div>
+        <div id="homeOverview" class="home-overview"></div>
+        <div class="home-columns"><section><div class="shell-section-heading"><h2>Your projects</h2><button type="button" data-view="workspace">View all →</button></div><div id="homeProjects" class="home-projects"></div></section>
+          <section><div class="shell-section-heading"><h2>On your list</h2><button type="button" data-view="work">My work →</button></div><div id="homeWork" class="home-work"></div></section></div>
+      </section>
+      <section id="view-library" class="view shell-page" aria-label="Library"><p class="shell-eyebrow">CONSISTENCY, IN EVERY LANGUAGE</p><h1>Library</h1><p class="shell-description">The words, voices, and instructions behind your project.</p><div id="libraryCards" class="library-cards"></div></section>
+      <section id="view-workspace" class="view workspace-view" aria-label="Workspace setup">
+        <div id="workspaceRoot"></div>
+      </section>
+      <section id="view-review" class="view" aria-label="Review">
+        <aside class="queue">
+          <div class="queue-tools">
+            <div class="review-heading"><h1>Review</h1><label class="compact-field"><span>Locale</span><select id="locale"></select></label></div>
+            <input id="search" type="search" placeholder="Search source or translation">
+            <select id="sourceFacet" aria-label="Source facet">
+              <option value="ui">UI strings</option>
+              <option value="all">All</option>
+            </select>
+            <select id="status">
+              <option value="all">All strings</option>
+              <option value="missing">Missing</option>
+              <option value="needs-review">Review queue</option>
+              <option value="rejected">Rejected</option>
+              <option value="human-pending">Pending (unreviewed)</option>
+              <option value="verified">Verified</option>
+              <option value="degraded">Degraded analysis</option>
+              <option value="no-context">No context</option>
+            </select>
+          </div>
+          <div id="stats" class="stats"></div>
+          <div id="stringList" class="string-list" aria-label="Source strings"></div>
+        </aside>
+
+        <section class="workbench">
+          <div id="enumGrids" class="enum-grids" hidden></div>
+
+          <div id="emptyState" class="empty-state">
+            <strong>No string selected</strong>
+            <span>Choose a source string from the queue.</span>
+          </div>
+
+          <div id="detail" class="detail" hidden>
+            <header class="detail-header">
+              <div>
+                <div class="meta-row" id="sourceMeta"></div>
+                <h1 id="sourceText"></h1>
+                <code id="sourceHash"></code>
+              </div>
+            </header>
+
+            <div class="detail-grid">
+              <section class="translation-panel">
+                <div class="section-heading">
+                  <h2>Translation</h2>
+                  <span id="translationStatus" class="status-pill">Missing</span>
+                </div>
+                <div class="meta-row" id="translationProvenance"></div>
+                <p id="reviewNote" class="inline-message warn" hidden></p>
+                <div class="translation-compare">
+                  <label>
+                    <span>Source</span>
+                    <textarea id="sourceReadonly" readonly></textarea>
+                    <div id="sourceChips" class="chip-preview" hidden></div>
+                  </label>
+                  <label>
+                    <span id="translationLabel">Translation</span>
+                    <textarea id="translationText"></textarea>
+                    <div id="translationChips" class="chip-preview" hidden></div>
+                  </label>
+                </div>
+                <div class="editor-footer">
+                  <span id="charBudget"></span>
+                  <div class="actions">
+                    <button id="approveTranslation" class="primary">Approve</button>
+                    <button id="saveTranslation" class="primary">Save edit</button>
+                    <button id="rejectTranslation">Reject…</button>
+                    <button id="reloadDetail">Reload</button>
+                  </div>
+                </div>
+                <div class="revision-box">
+                  <label>
+                    <span>Gemini revision request</span>
+                    <textarea id="revisionInstruction" placeholder="Make it shorter, punchier, less literal..."></textarea>
+                  </label>
+                  <div class="actions">
+                    <button id="reviseTranslation">Ask Gemini</button>
+                  </div>
+                  <p id="revisionResult" class="inline-message" hidden></p>
+                </div>
+              </section>
+
+              <section class="inspection-panel">
+                <div class="subtabs" aria-label="String detail panes">
+                  <button class="active" data-panel="context">Context</button>
+                  <button data-panel="pass1">Pass 1</button>
+                  <button data-panel="pass2">Pass 2</button>
+                  <button data-panel="history">History</button>
+                </div>
+                <div id="panel-context" class="inspect-pane active"></div>
+                <div id="panel-pass1" class="inspect-pane"></div>
+                <div id="panel-pass2" class="inspect-pane"></div>
+                <div id="panel-history" class="inspect-pane"></div>
+              </section>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section id="view-prompts" class="view admin-view">
+        <div class="admin-header">
+          <h1>Prompts</h1>
+          <form id="promptCreate" class="inline-form">
+            <input id="promptKey" placeholder="prompt-key" required>
+            <input id="promptLabel" placeholder="Label">
+            <button class="primary" type="submit">Add</button>
+          </form>
+        </div>
+        <div id="promptList" class="editor-list"></div>
+      </section>
+
+      <section id="view-glossary" class="view admin-view">
+        <div class="admin-header">
+          <h1>Glossary</h1>
+        </div>
+        <form id="glossaryCreate" class="glossary-form">
+          <input id="glossaryTerm" placeholder="Term" required>
+          <input id="glossaryTranslation" placeholder="Translation">
+          <input id="glossaryDescription" placeholder="Description">
+          <label class="check-field">
+            <input id="glossaryDnt" type="checkbox">
+            <span>DNT</span>
+          </label>
+          <button class="primary" type="submit">Add term</button>
+        </form>
+        <div id="glossaryList" class="table-list"></div>
+      </section>
+
+      <section id="view-personas" class="view admin-view">
+        <div class="admin-header">
+          <h1>Personas</h1>
+          <label class="compact-field">
+            <span>Locale</span>
+            <select id="personaLocale"></select>
+          </label>
+        </div>
+        <div class="persona-editor">
+          <label class="check-field">
+            <input id="personaActive" type="checkbox" checked>
+            <span>Active</span>
+          </label>
+          <textarea id="personaBody" spellcheck="false"></textarea>
+          <div class="actions">
+            <button id="savePersona" class="primary">Save persona</button>
+            <button id="formatPersona">Format JSON</button>
+          </div>
+          <p id="personaMessage" class="inline-message" hidden></p>
+        </div>
+      </section>
+
+      <section id="view-work" class="view work-view">
+        <aside class="work-assignment-sidebar">
+          <div class="admin-header">
+            <div>
+              <h1>My work</h1>
+              <p class="section-copy">Only content explicitly attached to your active or completed assignments appears here.</p>
+            </div>
+          </div>
+          <div id="personalWorkList" class="work-assignment-list"></div>
+        </aside>
+        <section class="personal-workbench">
+          <div id="personalWorkEmpty" class="empty-state">
+            <strong>No assignment selected</strong>
+            <span>Choose an assignment to open its authorized strings.</span>
+          </div>
+          <div id="personalWorkDetail" hidden></div>
+        </section>
+      </section>
+
+      <section id="view-access" class="view admin-view access-view">
+        <div class="admin-header">
+          <div>
+            <h1 id="adminHeading">People &amp; access</h1>
+            <p class="section-copy">Organization settings, organized around what you need to manage.</p>
+          </div>
+          <label class="compact-field" hidden>
+            <span>Organization</span>
+            <select id="accessOrganization"></select>
+          </label>
+        </div>
+
+        <div id="accessUnavailable" class="empty-state" hidden>
+          <strong>Access administration unavailable</strong>
+          <span>Your account does not have organization administration permissions.</span>
+        </div>
+
+        <div id="accessContent" class="access-content">
+          <section data-admin-section="structure" class="access-card">
+            <div class="section-heading"><h2>Business units</h2></div>
+            <form id="businessUnitCreate" class="inline-form" data-requires="business_units.create">
+              <input id="businessUnitName" placeholder="Business unit name" required>
+              <button class="primary" type="submit">Add business unit</button>
+            </form>
+            <div id="businessUnitList" class="management-list"></div>
+          </section>
+
+          <section data-admin-section="people" class="access-card">
+            <div class="section-heading"><h2>Members</h2></div>
+            <form id="memberInvite" class="management-form" data-requires="members.invite">
+              <input id="inviteEmail" type="email" placeholder="name@company.com" required>
+              <input id="inviteName" placeholder="Display name">
+              <select id="inviteType"><option value="internal">Internal</option><option value="external">External</option></select>
+              <button class="primary" type="submit">Invite member</button>
+            </form>
+            <p id="inviteResult" class="inline-message" hidden></p>
+            <div id="memberList" class="management-list"></div>
+          </section>
+
+          <section data-admin-section="people" class="access-card">
+            <div class="section-heading"><h2>Teams</h2></div>
+            <form id="teamCreate" class="inline-form" data-requires="teams.manage">
+              <input id="teamName" placeholder="Team name" required>
+              <button class="primary" type="submit">Add team</button>
+            </form>
+            <div id="teamList" class="management-list"></div>
+          </section>
+
+          <section data-admin-section="people" class="access-card access-card-wide">
+            <div class="section-heading"><h2>Role assignments</h2></div>
+            <form id="roleAssignmentCreate" class="role-form" data-requires="roles.assign">
+              <select id="assignmentPrincipalType"><option value="user">Member</option><option value="team">Team</option><option value="service_account">Service account</option></select>
+              <select id="assignmentPrincipal"></select>
+              <select id="assignmentRole"></select>
+              <select id="assignmentScopeType"><option value="organization">Organization</option><option value="business_unit">Business unit</option><option value="project">Project</option></select>
+              <select id="assignmentScope"></select>
+              <input id="assignmentLocales" placeholder="Locales (optional, comma-separated)" aria-label="Locale conditions">
+              <label class="check-field"><input id="assignmentInherit" type="checkbox" checked><span>Include child resources</span></label>
+              <button class="primary" type="submit">Assign role</button>
+            </form>
+            <div id="assignmentList" class="management-list"></div>
+          </section>
+
+          <section data-admin-section="identity" class="access-card access-card-wide" data-requires="identity.manage">
+            <div class="section-heading">
+              <div>
+                <h2>Enterprise identity</h2>
+                <p class="section-copy">Verified domains, Cognito SSO connections, login policy, and recovery access.</p>
+              </div>
+            </div>
+            <form id="identityPolicyForm" class="role-form">
+              <label class="check-field"><input id="identitySsoRequired" type="checkbox"><span>Require SSO</span></label>
+              <label class="check-field"><input id="identityJitEnabled" type="checkbox"><span>JIT membership</span></label>
+              <select id="identityJitType"><option value="internal">Internal JIT users</option><option value="external">External JIT users</option></select>
+              <button class="primary" type="submit">Save policy</button>
+            </form>
+            <form id="identityDomainForm" class="inline-form">
+              <input id="identityDomain" placeholder="company.com" required>
+              <button type="submit">Claim domain</button>
+            </form>
+            <p id="identityDnsResult" class="inline-message" hidden></p>
+            <div id="identityDomainList" class="management-list"></div>
+            <form id="identityConnectionForm" class="management-form">
+              <input id="identityConnectionName" placeholder="Company SSO" required>
+              <select id="identityConnectionType"><option value="saml">SAML</option><option value="oidc">OIDC</option></select>
+              <input id="identityProviderName" placeholder="Cognito provider name" required>
+              <button type="submit">Add connection</button>
+            </form>
+            <div id="identityConnectionList" class="management-list"></div>
+            <h3>Recovery login</h3>
+            <form id="identityRecoveryForm" class="management-form">
+              <select id="identityRecoveryUser"></select>
+              <input id="identityRecoveryReason" placeholder="Recovery reason" required>
+              <input id="identityRecoveryExpiry" type="datetime-local" aria-label="Recovery expires" required>
+              <button type="submit">Grant recovery login</button>
+            </form>
+            <div id="identityRecoveryList" class="management-list"></div>
+          </section>
+
+          <section data-admin-section="identity" class="access-card access-card-wide" data-requires="api_credentials.manage">
+            <div class="section-heading">
+              <div>
+                <h2>Machine identities</h2>
+                <p class="section-copy">Create scoped service accounts and rotate credentials without exposing stored secrets.</p>
+              </div>
+            </div>
+            <form id="serviceAccountForm" class="inline-form">
+              <input id="serviceAccountName" placeholder="Localization CI" required>
+              <button class="primary" type="submit">Create service account</button>
+            </form>
+            <p id="serviceCredentialResult" class="inline-message" hidden></p>
+            <div id="serviceAccountList" class="management-list"></div>
+          </section>
+
+          <section data-admin-section="identity" class="access-card access-card-wide" data-requires="provisioning.manage">
+            <div class="section-heading">
+              <div>
+                <h2>SCIM provisioning</h2>
+                <p class="section-copy">SCIM users become members and SCIM groups become teams; roles remain explicitly assigned.</p>
+              </div>
+            </div>
+            <form id="scimTokenForm" class="inline-form">
+              <input id="scimTokenName" placeholder="Okta production" required>
+              <button class="primary" type="submit">Create SCIM token</button>
+            </form>
+            <p id="scimTokenResult" class="inline-message" hidden></p>
+            <div id="scimTokenList" class="management-list"></div>
+          </section>
+
+          <section data-admin-section="people" class="access-card access-card-wide" data-requires="access_reviews.manage">
+            <div class="section-heading">
+              <div>
+                <h2>Access governance</h2>
+                <p class="section-copy">Certify current grants and inspect stale people, expiring access, and machine credentials.</p>
+              </div>
+            </div>
+            <form id="accessReviewForm" class="management-form">
+              <input id="accessReviewName" placeholder="Quarterly access review" required>
+              <select id="accessReviewReviewer"></select>
+              <input id="accessReviewDue" type="datetime-local" aria-label="Review due date">
+              <button class="primary" type="submit">Create review</button>
+            </form>
+            <h3>Pending requests</h3>
+            <div id="accessRequestList" class="management-list"></div>
+            <h3>Certification campaigns</h3>
+            <div id="accessReviewList" class="management-list"></div>
+            <div id="accessReviewItemList" class="management-list"></div>
+            <h3>Governance report</h3>
+            <div id="governanceReport" class="management-list"></div>
+          </section>
+
+          <section data-admin-section="agencies" class="access-card access-card-wide" data-requires="vendors.view">
+            <div class="section-heading">
+              <div>
+                <h2>Agency relationships</h2>
+                <p class="section-copy">Onboard agencies, define their eligible scope, and approve their linguists.</p>
+              </div>
+            </div>
+            <form id="vendorCreate" class="vendor-create-form" data-requires="vendors.invite">
+              <label>
+                <span>Agency name</span>
+                <input id="vendorAgencyName" placeholder="Polyglot Partners">
+              </label>
+              <label>
+                <span>Agency slug</span>
+                <input id="vendorAgencySlug" placeholder="polyglot-partners">
+              </label>
+              <label>
+                <span>Owner email</span>
+                <input id="vendorOwnerEmail" type="email" placeholder="owner@agency.com">
+              </label>
+              <label>
+                <span>Existing agency ID</span>
+                <input id="vendorExistingAgencyId" placeholder="Optional UUID">
+              </label>
+              <label>
+                <span>Payment terms</span>
+                <input id="vendorPaymentTerms" type="number" min="0" step="1" value="30">
+              </label>
+              <button class="primary" type="submit">Onboard agency</button>
+            </form>
+            <p id="vendorInviteResult" class="inline-message" hidden></p>
+            <div id="vendorRelationshipList" class="vendor-relationship-list"></div>
+          </section>
+
+          <section data-admin-section="payments" id="facilitatedPaymentsCard" class="access-card access-card-wide" hidden>
+            <div class="section-heading">
+              <div>
+                <h2>Facilitated payments</h2>
+                <p class="section-copy">Program enrollment, customer collection, agency payout readiness, and independently gated money operations.</p>
+              </div>
+              <div id="facilitatedPaymentBadges" class="vendor-status"></div>
+            </div>
+            <div id="facilitatedPaymentSummary" class="payment-readiness-grid"></div>
+            <form id="paymentProgramForm" class="payment-program-form" hidden>
+              <label>
+                <span>Enrollment</span>
+                <select name="status">
+                  <option value="approved">Approved</option>
+                  <option value="suspended">Suspended</option>
+                  <option value="terminated">Terminated</option>
+                </select>
+              </label>
+              <label>
+                <span>Per-payment cap (USD)</span>
+                <input name="perPaymentCap" inputmode="decimal" value="10000.00" required>
+              </label>
+              <label>
+                <span>Rolling cap (USD)</span>
+                <input name="rollingCap" inputmode="decimal" value="25000.00" required>
+              </label>
+              <label>
+                <span>Rolling days</span>
+                <input name="rollingPeriodDays" type="number" min="1" max="366" value="30" required>
+              </label>
+              <label>
+                <span>Terms version</span>
+                <input name="termsVersion" value="connect-us-v1" required>
+              </label>
+              <label>
+                <span>Policy version</span>
+                <input name="policyVersion" value="payments-us-v1" required>
+              </label>
+              <label>
+                <span>Acceptance reference</span>
+                <input name="acceptanceReference" placeholder="Contract or ticket reference" required>
+              </label>
+              <label class="check-field">
+                <input name="featureEnabled" type="checkbox">
+                <span>Enable organization rollout</span>
+              </label>
+              <label class="payment-program-reason">
+                <span>Decision reason</span>
+                <input name="reason" placeholder="Approval, suspension, or termination reason" required>
+              </label>
+              <button class="primary" type="submit">Save program decision</button>
+            </form>
+            <div id="payoutAccountPanel" class="payout-account-panel" hidden>
+              <div class="section-heading">
+                <div>
+                  <h3>Agency payout account</h3>
+                  <p id="payoutAccountMessage" class="section-copy"></p>
+                </div>
+              </div>
+              <div id="payoutAccountRequirements" class="management-list"></div>
+              <div id="payoutAccountActions" class="actions">
+                <button id="payoutOnboarding" class="primary" type="button">Start Stripe onboarding</button>
+                <button id="payoutRefresh" type="button">Refresh status</button>
+                <button id="payoutDashboard" type="button">Open Stripe dashboard</button>
+              </div>
+            </div>
+            <div id="platformPaymentOperations" class="payout-account-panel" hidden>
+              <div class="section-heading">
+                <div>
+                  <h3>Payment operations</h3>
+                  <p class="section-copy">Provider queues, recovery state, and controlled rollout readiness.</p>
+                </div>
+                <button id="reconcileFacilitatedPayments" type="button">Reconcile open payments</button>
+              </div>
+              <div id="platformPaymentOperationCounts" class="payment-readiness-grid"></div>
+            </div>
+          </section>
+
+          <section data-admin-section="billing" class="access-card access-card-wide" data-requires="billing.view"><div id="billingConsole"></div></section>
+          <section data-admin-section="providers" class="access-card access-card-wide" data-requires="ai_providers.view"><div id="aiProvidersConsole"></div></section>
+          <section data-admin-section="usage" class="access-card access-card-wide" data-requires="usage.view">
+            <div class="section-heading">
+              <div>
+                <h2>Usage & budgets</h2>
+                <p id="usageWindow" class="section-copy">Current billing period</p>
+              </div>
+            </div>
+            <div id="usageMetrics" class="usage-metrics"></div>
+            <form id="budgetCreate" class="budget-form" data-requires="budgets.manage">
+              <label><span>Scope</span><select id="budgetScopeType"><option value="organization">Organization</option><option value="business_unit">Business unit</option><option value="project">Project</option></select></label>
+              <label><span>Resource</span><select id="budgetScope"></select></label>
+              <label><span>Metric</span><select id="budgetMetric"></select></label>
+              <label><span>Limit</span><input id="budgetLimit" type="number" min="1" step="1" required></label>
+              <label><span>Warn at</span><input id="budgetWarning" type="number" min="1" max="100" value="80" required></label>
+              <label><span>Action</span><select id="budgetEnforcement"><option value="warn">Warn</option><option value="block">Block</option><option value="observe">Observe only</option></select></label>
+              <label><span>Period</span><select id="budgetPeriod"><option value="subscription">Subscription period</option><option value="calendar_month">Calendar month</option></select></label>
+              <label class="budget-reason"><span>Reason</span><input id="budgetReason" placeholder="Why this budget is being set" required></label>
+              <button class="primary" type="submit">Set budget</button>
+            </form>
+            <div class="budget-columns">
+              <div>
+                <h3>Active budgets</h3>
+                <div id="budgetList" class="management-list"></div>
+              </div>
+              <div>
+                <h3>Alerts</h3>
+                <div id="budgetAlertList" class="management-list"></div>
+              </div>
+            </div>
+          </section>
+
+          <section data-admin-section="audit" class="access-card access-card-wide" data-requires="audit.view">
+            <div class="section-heading"><h2>Audit history</h2></div>
+            <div id="auditList" class="management-list"></div>
+          </section>
+        </div>
+      </section>
+      <section id="view-operations" class="view shell-page" aria-label="Operations"><p class="shell-eyebrow">PLATFORM WORKSPACE</p><h1>Operations</h1><p class="shell-description">Payment queues, recovery, and rollout readiness for authorized operators.</p><a id="paymentOperationsLink" class="shell-secondary" href="/operations" hidden>Open payment operations ↗</a></section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="/console-shell.js"></script>
+    <link rel="stylesheet" href="/commercial.css">
+    <script src="/app.js"></script>
+    <script type="module" src="/agent.js"></script>
+  </body>
+</html>
