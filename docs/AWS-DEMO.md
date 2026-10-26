@@ -22,7 +22,7 @@ The adapter uses Meta's [Responses protocol](https://dev.meta.ai/docs/protocols/
 
 ## Infrastructure bootstrap
 
-Use `infra/aws/demo-stack.json`. Supply the existing network, ALB/listener, hosted-zone and GitHub OIDC identifiers in a private parameter file. Never commit actual resource IDs, hostnames, passwords, owner emails or stack outputs. The initial foundation can use `ServiceEnabled=false` and an unset image; do not launch that task until an image is published.
+Use `infra/aws/demo-stack.json`. Read `sub_claim_prefix` from `GET /repos/{owner}/{repo}/actions/oidc/customization/sub` and supply it as `GitHubOidcSubjectPrefix`; newer repositories can include immutable owner/repository IDs, so do not guess the subject from the repository name. See the [GitHub OIDC reference](https://docs.github.com/en/actions/reference/security/oidc). Supply the existing network, ALB/listener, hosted-zone and GitHub OIDC identifiers in a private parameter file. Never commit actual resource IDs, hostnames, passwords, owner emails or stack outputs. The initial foundation can use `ServiceEnabled=false` and an unset image; do not launch that task until an image is published.
 
 1. Create the stack with `CAPABILITY_IAM`, keeping `ServiceEnabled=false`. It provisions private encrypted PostgreSQL, backups, a Cognito pool with admin-created users only, ECR, logs, an ACM certificate and scoped roles.
 2. Preserve the generated `sessionSigningSecret` in the runtime secret. Add `metaApiKey` and `aiKeyring`; the latter is a JSON string mapping `demo-v1` to a base64-encoded random 32-byte key. DB credentials are generated and managed separately by RDS. Never put secret values in task overrides, workflow inputs or logs.
@@ -36,7 +36,7 @@ PostgreSQL TLS verifies the AWS RDS trust chain using [AWS's public certificate 
 
 ## Releases and rollback
 
-Run **Deploy demo** on `main`, with `ref=main` or a full commit SHA on main. The workflow requires a successful `ci.yml` push run for that exact SHA, builds or reuses an immutable image tag, then deploys by digest. Its AWS role can update only the demo service and pass only the demo task roles. Updates preserve the task's secret references and configuration. The workflow verifies service stability, health and HTTP 401 for anonymous agent access. Public logs and summaries omit deployment URLs and secret values.
+Run **Deploy demo** on `main`, with `ref=main` or a full commit SHA on main. The workflow requires a successful `ci.yml` push run for that exact SHA, builds or reuses an immutable image tag, then deploys by digest. Its AWS role can update only the demo service and pass only the demo task roles. Updates preserve the task's secret references and configuration. The workflow verifies service stability, health and HTTP 401 for anonymous agent access. Secret values are never passed to the workflow; operational endpoints are configured through environment variables rather than committed source.
 
 To roll back, dispatch the workflow with an earlier tested SHA on main. ECS also uses automatic rollback for failed deployments. Application rollback does not reverse database migrations; review migration compatibility before release. Deployment is manual to avoid an unreviewed push immediately changing the demo. The CI workflow remains automatic on pushes and pull requests.
 

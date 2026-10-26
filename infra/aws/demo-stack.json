@@ -42,10 +42,6 @@
       "MinValue": 1,
       "MaxValue": 50000
     },
-    "GitHubRepository": {
-      "Type": "String",
-      "Default": "Hedgeling/hedgeling-agent-platform"
-    },
     "OidcProviderArn": {
       "Type": "String"
     },
@@ -64,6 +60,11 @@
     "ImageUri": {
       "Type": "String",
       "Default": "unconfigured"
+    },
+    "GitHubOidcSubjectPrefix": {
+      "Type": "String",
+      "Description": "Exact sub_claim_prefix reported by the repository OIDC customization API; supports immutable owner/repository IDs.",
+      "AllowedPattern": "repo:[A-Za-z0-9_.@-]+/[A-Za-z0-9_.@-]+"
     }
   },
   "Conditions": {
@@ -538,7 +539,7 @@
                 "StringEquals": {
                   "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
                   "token.actions.githubusercontent.com:sub": {
-                    "Fn::Sub": "repo:${GitHubRepository}:environment:demo"
+                    "Fn::Sub": "${GitHubOidcSubjectPrefix}:environment:demo"
                   }
                 }
               }
