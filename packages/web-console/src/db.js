@@ -1,10 +1,14 @@
 import pg from "pg";
+import { readFileSync } from "node:fs";
 
 const { Pool } = pg;
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : undefined,
+  ssl: process.env.DATABASE_SSL === "true" ? {
+    rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false",
+    ...(process.env.DATABASE_SSL_CA_PATH ? { ca: readFileSync(process.env.DATABASE_SSL_CA_PATH, "utf8") } : {}),
+  } : undefined,
 });
 
 let databaseTestHooks = {};

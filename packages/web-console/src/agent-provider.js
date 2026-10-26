@@ -3,13 +3,21 @@ import { fail, fingerprint } from "./workspace-actions.js";
 import { agentInstructions } from "./agent-skills.js";
 import { reserveUsage, recordUsageEvent, geminiTokenMeasurements } from "./usage.js";
 import { requireChatAccess } from "./chat-access.js";
+import { metaRequest, generateMetaResponse } from "./agent-meta.js";
 
 export function providerConfiguration() {
-  const fixture = process.env.HEDGELING_AGENT_PROVIDER === "fixture";
+  const provider = process.env.HEDGELING_AGENT_PROVIDER || "gemini";
+  if (!["gemini", "meta", "fixture"].includes(provider)) throw fail(503, "The configured assistant provider is not supported.", "agent_provider_unconfigured");
+  const fixture = provider === "fixture";
   if (fixture && !(process.env.NODE_ENV !== "production" && process.env.HEDGELING_AUTH_MODE === "local")) throw fail(503, "The demo provider is restricted to local troubleshooting");
+  if (provider === "meta") {
+    const model = process.env.HEDGELING_AGENT_META_MODEL?.trim() || "";
+    const key = process.env.HEDGELING_META_API_KEY?.trim() || "";
+    return { provider, fixture: false, model, key, ready: Boolean(model && key) };
+  }
   const model = process.env.HEDGELING_AGENT_GEMINI_MODEL || process.env.HEDGELING_GEMINI_MODEL || "";
   const key = process.env.HEDGELING_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
-  return { fixture, model, key, ready: fixture || Boolean(model && key) };
+  return { provider, fixture, model, key, ready: fixture || Boolean(model && key) };
 }
 function fixtureTurn(history, organizationId) {
   const last = history.at(-1);
@@ -73,10 +81,10 @@ export async function nextAgentTurn({ run, auth, history, tools, signal }, { che
   const config = providerConfiguration();
   if (!config.ready) throw fail(503, "The assistant is unavailable. You can continue using the console manually.", "agent_provider_unconfigured");
   if (config.fixture) return fixtureTurn(history, run.organization_id);
-  const body = {
+  const body = config.provider === "meta" ? metaRequest({ model: config.model, history, tools, instructions: agentInstructions(run.organization_id) }) : {
     systemInstruction: { parts: [{ text: agentInstructions(run.organization_id) }] },
     // Strip the server-side confirmation marker; it is not part of the API.
-    contents: history.map(({ confirmation, ...content }) => content),
+    contents: history.map(({ role, parts }) => ({ role, parts })),
     tools: [{ functionDeclarations: tools.map((tool) => ({ name: tool.name, description: tool.description, parametersJsonSchema: tool.inputSchema })) }],
     generationConfig: { maxOutputTokens: 2048 },
   };
@@ -99,7 +107,7 @@ export async function nextAgentTurn({ run, auth, history, tools, signal }, { che
       planLimits: { usage: { agent_chat_tokens: { limit: Number(chat.limits?.periodOrganizationTokens) || 2000000, warningPercent: 80, enforcement: "block" } } } });
     signal.throwIfAborted();
     dispatched = true;
-    raw = await generateGeminiResponse({ config, body, signal });
+    raw = await (config.provider === "meta" ? generateMetaResponse : generateGeminiResponse)({ config, body, signal });
     const content = raw.candidates?.[0]?.content;
     if (!Array.isArray(content?.parts) || !content.parts.length) throw fail(502, "The assistant did not return a usable answer. Try rephrasing your request.");
     succeeded = true;
@@ -112,7 +120,7 @@ export async function nextAgentTurn({ run, auth, history, tools, signal }, { che
     try {
       await query("update agent_model_usage set actual_tokens=$2,outcome=$3 where id=$1", [usage.id, actual.llm_total_tokens, outcome]);
       if (reservation) await recordUsageEvent({ ...scope, reservationId: reservation.id, attemptNumber: reservation.attemptNumber,
-        outcome: succeeded ? "succeeded" : "failed", measurements: { ...actual, agent_chat_tokens: actual.llm_total_tokens }, metadata: { runId: run.id, model: config.model, outcome, billingCategory: "included_chat", customerCharge: 0, estimated: !raw?.usageMetadata } });
+        outcome: succeeded ? "succeeded" : "failed", measurements: { ...actual, agent_chat_tokens: actual.llm_total_tokens }, metadata: { runId: run.id, provider: config.provider, model: config.model, outcome, billingCategory: "included_chat", customerCharge: 0, estimated: !raw?.usageMetadata } });
     } catch (recordError) {
       // A successful turn must not be returned without its usage recorded, but
       // a bookkeeping failure must never mask the original provider error.

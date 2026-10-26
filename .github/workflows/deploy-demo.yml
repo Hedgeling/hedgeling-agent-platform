@@ -1,0 +1,62 @@
+name: Deploy demo
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Main or a tested full commit SHA on main (also used for rollback)
+        default: main
+        required: true
+        type: string
+      image_only:
+        description: Build the image without updating ECS (initial infrastructure bootstrap)
+        default: false
+        type: boolean
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+concurrency:
+  group: hedgeling-demo-deployment
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment: demo
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      ECS_TASK_FAMILY: ${{ vars.ECS_TASK_FAMILY }}
+      ECS_CONTAINER_NAME: web-console
+      DEMO_PUBLIC_ORIGIN: ${{ vars.DEMO_PUBLIC_ORIGIN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Select a tested release from main
+        id: release
+        env:
+          REQUESTED_REF: ${{ inputs.ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/select-demo-release.mjs
+      - name: Assume the demo-only deployment role
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: Build immutable demo image
+        id: image
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: node scripts/build-demo-image.mjs
+      - name: Deploy and verify
+        if: ${{ !inputs.image_only }}
+        env:
+          RELEASE_IMAGE: ${{ steps.image.outputs.uri }}
+        run: node scripts/deploy-demo.mjs

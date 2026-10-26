@@ -9,5 +9,5 @@ This is the public hackathon workspace. Preserve the commercial LICENSE.
 - Required configuration must fail explicitly. Do not fall back to a production service.
 - Use synthetic catalogs to exercise imports. The import API is the boundary with separately operated extractors.
 - Run `npm run check:public`, build, lint, and relevant tests before committing. Use disposable loopback PostgreSQL for integration tests.
-- Do not copy deployment workflows or connect this repository to production. Do not merge private history here. Transfer reviewed platform changes back as scoped patches.
+- The approved demo stack and its dedicated deployment workflow live in `infra/aws` and `.github/workflows/deploy-demo.yml`. Deploy only to demo resources. Do not copy private production deployment workflows or grant this repo production application/database credentials. Shared network/load-balancer infrastructure is supplied through private deployment parameters. Do not merge private history here. Transfer reviewed platform changes back as scoped patches.
 - Keep `docs/baseline.json` and the `hackathon-start` tag as the pre-existing-code record. Update the hackathon plan honestly as features land.

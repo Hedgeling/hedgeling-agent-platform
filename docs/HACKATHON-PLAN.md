@@ -34,4 +34,10 @@ The API remains the domain/authorization boundary. Chat and MCP are adapters; ne
 
 The [official event overview](https://cerebralvalley.ai/e/meta-ai-developer-hackathon) lists October 26–November 4, with submissions due November 4 at 9 PM ET. The participant [details/rules page](https://cerebralvalley.ai/e/meta-ai-developer-hackathon/details) was not readable during baseline preparation, so pre-existing-code eligibility and any specific publication/license requirements are not represented here as verified. Reconcile the submission with the accepted participant rules. Preserve the baseline tag and explain the new work in the submission.
 
-Status at baseline: Meta adapter, Meta BYOK and Bedrock are **planned**. No Meta inference is claimed by the initial repository. Update this document with tested models, supported transports and evidence as those features land.
+Status at baseline: Meta adapter, Meta BYOK and Bedrock were **planned**. No Meta inference is claimed by the initial repository.
+
+## Implemented after the baseline
+
+The Meta Responses adapter now supports server-managed chat with Muse Spark 1.3 (`muse-spark-1.3`), structured tool calls, encrypted reasoning replay, cancellation, usage accounting and explicit configuration failures. A live two-turn synthetic tool-call exchange passed on October 26; provider tests also cover legacy conversation conversion, incomplete responses, malformed calls, request cancellation and response-size bounds. Responses are currently buffered; token-by-token model streaming remains future work. The existing console still streams run/tool events.
+
+The isolated AWS demo and manual GitHub deployment pipeline are defined in [the deployment guide](AWS-DEMO.md). Demo owner membership and access use the normal authorization and entitlement checks. There is no public signup or external billing in the demo seed. Meta BYOK, Bedrock, and Meta-powered translation/context enrichment remain planned; the Meta chat adapter does not implement those workloads.

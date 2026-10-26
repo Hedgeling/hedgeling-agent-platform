@@ -10,6 +10,7 @@ RUN npm ci --omit=dev --workspace @hedgeling/web-console --workspace @hedgeling/
 
 FROM node:22-slim AS runner
 WORKDIR /app
+ADD https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /etc/ssl/certs/aws-rds-global-bundle.pem
 ENV NODE_ENV=production
 ENV PORT=8080
 COPY --from=deps /app/node_modules ./node_modules

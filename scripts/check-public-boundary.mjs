@@ -14,7 +14,8 @@ const patterns = [
   ["Stripe credential", /\b(?:(?:sk|rk)_(?:live|test)|whsec)_[A-Za-z0-9]{16,}\b/],
   ["Hedgeling credential", /\bhdlg_(?:sa|scim)_[A-Za-z0-9_-]{20,}\b/],
   ["private key", /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----\s+[A-Za-z0-9+/=\r\n]{40,}/],
-  ["deployment endpoint", /https?:\/\/[^\s/"'`]*(?:\.awsapprunner\.com|\.elb\.amazonaws\.com|\.rds\.amazonaws\.com|\.execute-api\.[\w-]+\.amazonaws\.com|platform\.thehedgeling\.com)/],
+  // AWS's public RDS certificate bundle is not a deployment endpoint.
+  ["deployment endpoint", /https?:\/\/(?!truststore\.pki\.rds\.amazonaws\.com\/global\/global-bundle\.pem)[^\s/"'`]*(?:\.awsapprunner\.com|\.elb\.amazonaws\.com|\.rds\.amazonaws\.com|\.execute-api\.[\w-]+\.amazonaws\.com|platform\.thehedgeling\.com)/],
 ];
 for (const file of new Set(files)) {
   const parts = file.split("/");

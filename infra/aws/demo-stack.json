@@ -1,0 +1,1160 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Isolated invite-only Hedgeling demo, attached to an explicitly supplied VPC and HTTPS load balancer. No production application resources or data are imported.",
+  "Parameters": {
+    "Prefix": {
+      "Type": "String",
+      "Default": "hedgeling-demo",
+      "AllowedPattern": "hedgeling-demo(?:-[a-z0-9-]+)?",
+      "MaxLength": 24
+    },
+    "VpcId": {
+      "Type": "AWS::EC2::VPC::Id"
+    },
+    "PrivateSubnets": {
+      "Type": "List<AWS::EC2::Subnet::Id>"
+    },
+    "ClusterName": {
+      "Type": "String"
+    },
+    "ListenerArn": {
+      "Type": "String"
+    },
+    "AlbSecurityGroupId": {
+      "Type": "AWS::EC2::SecurityGroup::Id"
+    },
+    "HostedZoneId": {
+      "Type": "String"
+    },
+    "AlbDnsName": {
+      "Type": "String"
+    },
+    "AlbHostedZoneId": {
+      "Type": "String"
+    },
+    "DemoDomain": {
+      "Type": "String",
+      "AllowedPattern": "[a-z0-9.-]+"
+    },
+    "ListenerPriority": {
+      "Type": "Number",
+      "Default": 200,
+      "MinValue": 1,
+      "MaxValue": 50000
+    },
+    "GitHubRepository": {
+      "Type": "String",
+      "Default": "Hedgeling/hedgeling-agent-platform"
+    },
+    "OidcProviderArn": {
+      "Type": "String"
+    },
+    "AgentModel": {
+      "Type": "String",
+      "Default": "muse-spark-1.3"
+    },
+    "ServiceEnabled": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": [
+        "true",
+        "false"
+      ]
+    },
+    "ImageUri": {
+      "Type": "String",
+      "Default": "unconfigured"
+    }
+  },
+  "Conditions": {
+    "RunService": {
+      "Fn::Equals": [
+        {
+          "Ref": "ServiceEnabled"
+        },
+        "true"
+      ]
+    }
+  },
+  "Resources": {
+    "Repository": {
+      "Type": "AWS::ECR::Repository",
+      "Properties": {
+        "RepositoryName": {
+          "Fn::Sub": "${Prefix}-console"
+        },
+        "ImageTagMutability": "IMMUTABLE",
+        "ImageScanningConfiguration": {
+          "ScanOnPush": true
+        },
+        "EncryptionConfiguration": {
+          "EncryptionType": "AES256"
+        },
+        "LifecyclePolicy": {
+          "LifecyclePolicyText": "{\"rules\": [{\"rulePriority\": 1, \"description\": \"Remove untagged build layers after a week\", \"selection\": {\"tagStatus\": \"untagged\", \"countType\": \"sinceImagePushed\", \"countUnit\": \"days\", \"countNumber\": 7}, \"action\": {\"type\": \"expire\"}}]}"
+        },
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "LogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/ecs/${Prefix}/console"
+        },
+        "RetentionInDays": 14,
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      }
+    },
+    "TaskSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Demo application; only the shared load balancer may reach it",
+        "VpcId": {
+          "Ref": "VpcId"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 8080,
+            "ToPort": 8080,
+            "SourceSecurityGroupId": {
+              "Ref": "AlbSecurityGroupId"
+            }
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      }
+    },
+    "DatabaseSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Isolated demo PostgreSQL",
+        "VpcId": {
+          "Ref": "VpcId"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 5432,
+            "ToPort": 5432,
+            "SourceSecurityGroupId": {
+              "Ref": "TaskSecurityGroup"
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      }
+    },
+    "DatabaseEgress": {
+      "Type": "AWS::EC2::SecurityGroupEgress",
+      "Properties": {
+        "GroupId": {
+          "Ref": "TaskSecurityGroup"
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 5432,
+        "ToPort": 5432,
+        "DestinationSecurityGroupId": {
+          "Ref": "DatabaseSecurityGroup"
+        }
+      }
+    },
+    "DatabaseSubnetGroup": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "Private subnets for the isolated demo database",
+        "SubnetIds": {
+          "Ref": "PrivateSubnets"
+        },
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      }
+    },
+    "Database": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "DBInstanceIdentifier": {
+          "Fn::Sub": "${Prefix}-db"
+        },
+        "Engine": "postgres",
+        "DBInstanceClass": "db.t4g.micro",
+        "AllocatedStorage": "20",
+        "MaxAllocatedStorage": 30,
+        "StorageType": "gp3",
+        "StorageEncrypted": true,
+        "DBName": "hedgeling_demo",
+        "MasterUsername": "hedgeling_demo",
+        "ManageMasterUserPassword": true,
+        "DBSubnetGroupName": {
+          "Ref": "DatabaseSubnetGroup"
+        },
+        "VPCSecurityGroups": [
+          {
+            "Ref": "DatabaseSecurityGroup"
+          }
+        ],
+        "PubliclyAccessible": false,
+        "MultiAZ": false,
+        "BackupRetentionPeriod": 3,
+        "DeletionProtection": true,
+        "AutoMinorVersionUpgrade": true,
+        "CopyTagsToSnapshot": true,
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      },
+      "DeletionPolicy": "Snapshot",
+      "UpdateReplacePolicy": "Snapshot"
+    },
+    "RuntimeSecret": {
+      "Type": "AWS::SecretsManager::Secret",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${Prefix}/runtime"
+        },
+        "Description": "Demo-only session, model, and vault configuration; values populated outside source control",
+        "GenerateSecretString": {
+          "SecretStringTemplate": "{}",
+          "GenerateStringKey": "sessionSigningSecret",
+          "PasswordLength": 64,
+          "ExcludePunctuation": true
+        },
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "UserPool": {
+      "Type": "AWS::Cognito::UserPool",
+      "Properties": {
+        "UserPoolName": {
+          "Fn::Sub": "${Prefix}-users"
+        },
+        "UsernameAttributes": [
+          "email"
+        ],
+        "UsernameConfiguration": {
+          "CaseSensitive": false
+        },
+        "AutoVerifiedAttributes": [
+          "email"
+        ],
+        "AdminCreateUserConfig": {
+          "AllowAdminCreateUserOnly": true
+        },
+        "Policies": {
+          "PasswordPolicy": {
+            "MinimumLength": 14,
+            "RequireLowercase": true,
+            "RequireUppercase": true,
+            "RequireNumbers": true,
+            "RequireSymbols": true,
+            "TemporaryPasswordValidityDays": 7
+          }
+        },
+        "AccountRecoverySetting": {
+          "RecoveryMechanisms": [
+            {
+              "Name": "verified_email",
+              "Priority": 1
+            }
+          ]
+        },
+        "MfaConfiguration": "OPTIONAL",
+        "EnabledMfas": [
+          "SOFTWARE_TOKEN_MFA"
+        ],
+        "UserPoolTags": {
+          "Environment": "demo",
+          "Project": "hedgeling-agent-platform"
+        }
+      }
+    },
+    "UserPoolDomain": {
+      "Type": "AWS::Cognito::UserPoolDomain",
+      "Properties": {
+        "Domain": {
+          "Fn::Sub": "${Prefix}-${AWS::AccountId}"
+        },
+        "UserPoolId": {
+          "Ref": "UserPool"
+        }
+      }
+    },
+    "UserPoolClient": {
+      "Type": "AWS::Cognito::UserPoolClient",
+      "Properties": {
+        "ClientName": {
+          "Fn::Sub": "${Prefix}-console"
+        },
+        "UserPoolId": {
+          "Ref": "UserPool"
+        },
+        "GenerateSecret": false,
+        "ExplicitAuthFlows": [
+          "ALLOW_USER_PASSWORD_AUTH",
+          "ALLOW_REFRESH_TOKEN_AUTH"
+        ],
+        "EnableTokenRevocation": true,
+        "PreventUserExistenceErrors": "ENABLED",
+        "SupportedIdentityProviders": [
+          "COGNITO"
+        ],
+        "AllowedOAuthFlowsUserPoolClient": true,
+        "AllowedOAuthFlows": [
+          "code"
+        ],
+        "AllowedOAuthScopes": [
+          "openid",
+          "email",
+          "profile"
+        ],
+        "CallbackURLs": [
+          {
+            "Fn::Sub": "https://${DemoDomain}/api/auth/sso/callback"
+          }
+        ],
+        "LogoutURLs": [
+          {
+            "Fn::Sub": "https://${DemoDomain}/login"
+          }
+        ],
+        "AccessTokenValidity": 60,
+        "IdTokenValidity": 60,
+        "RefreshTokenValidity": 7,
+        "TokenValidityUnits": {
+          "AccessToken": "minutes",
+          "IdToken": "minutes",
+          "RefreshToken": "days"
+        },
+        "ReadAttributes": [
+          "email",
+          "email_verified",
+          "name"
+        ],
+        "WriteAttributes": [
+          "email",
+          "name"
+        ]
+      }
+    },
+    "ExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ecs-tasks.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "demo-image-logs-secrets",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "ecr:GetAuthorizationToken",
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Repository",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "LogGroup",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "secretsmanager:GetSecretValue",
+                  "Resource": [
+                    {
+                      "Ref": "RuntimeSecret"
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "Database",
+                        "MasterUserSecret.SecretArn"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      }
+    },
+    "TaskRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ecs-tasks.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      }
+    },
+    "DeployRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Federated": {
+                  "Ref": "OidcProviderArn"
+                }
+              },
+              "Action": "sts:AssumeRoleWithWebIdentity",
+              "Condition": {
+                "StringEquals": {
+                  "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                  "token.actions.githubusercontent.com:sub": {
+                    "Fn::Sub": "repo:${GitHubRepository}:environment:demo"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "deploy-demo-only",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "ecr:GetAuthorizationToken",
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:InitiateLayerUpload",
+                    "ecr:UploadLayerPart",
+                    "ecr:CompleteLayerUpload",
+                    "ecr:PutImage",
+                    "ecr:BatchGetImage",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:DescribeImages"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Repository",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecs:DescribeServices",
+                    "ecs:UpdateService"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${ClusterName}/${Prefix}-console"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecs:DescribeTaskDefinition",
+                    "ecs:RegisterTaskDefinition"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "iam:PassRole",
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "ExecutionRole",
+                        "Arn"
+                      ]
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "TaskRole",
+                        "Arn"
+                      ]
+                    }
+                  ],
+                  "Condition": {
+                    "StringEquals": {
+                      "iam:PassedToService": "ecs-tasks.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      }
+    },
+    "Certificate": {
+      "Type": "AWS::CertificateManager::Certificate",
+      "Properties": {
+        "DomainName": {
+          "Ref": "DemoDomain"
+        },
+        "ValidationMethod": "DNS",
+        "DomainValidationOptions": [
+          {
+            "DomainName": {
+              "Ref": "DemoDomain"
+            },
+            "HostedZoneId": {
+              "Ref": "HostedZoneId"
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      }
+    },
+    "ListenerCertificate": {
+      "Type": "AWS::ElasticLoadBalancingV2::ListenerCertificate",
+      "Properties": {
+        "ListenerArn": {
+          "Ref": "ListenerArn"
+        },
+        "Certificates": [
+          {
+            "CertificateArn": {
+              "Ref": "Certificate"
+            }
+          }
+        ]
+      }
+    },
+    "TargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "VpcId": {
+          "Ref": "VpcId"
+        },
+        "Port": 8080,
+        "Protocol": "HTTP",
+        "TargetType": "ip",
+        "HealthCheckPath": "/api/health",
+        "HealthCheckIntervalSeconds": 15,
+        "HealthyThresholdCount": 2,
+        "UnhealthyThresholdCount": 3,
+        "Matcher": {
+          "HttpCode": "200"
+        },
+        "TargetGroupAttributes": [
+          {
+            "Key": "deregistration_delay.timeout_seconds",
+            "Value": "30"
+          },
+          {
+            "Key": "stickiness.enabled",
+            "Value": "true"
+          },
+          {
+            "Key": "stickiness.type",
+            "Value": "lb_cookie"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      }
+    },
+    "TaskDefinition": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "Family": {
+          "Fn::Sub": "${Prefix}-console"
+        },
+        "RequiresCompatibilities": [
+          "FARGATE"
+        ],
+        "NetworkMode": "awsvpc",
+        "Cpu": "512",
+        "Memory": "1024",
+        "ExecutionRoleArn": {
+          "Fn::GetAtt": [
+            "ExecutionRole",
+            "Arn"
+          ]
+        },
+        "TaskRoleArn": {
+          "Fn::GetAtt": [
+            "TaskRole",
+            "Arn"
+          ]
+        },
+        "RuntimePlatform": {
+          "CpuArchitecture": "X86_64",
+          "OperatingSystemFamily": "LINUX"
+        },
+        "ContainerDefinitions": [
+          {
+            "Name": "web-console",
+            "Image": {
+              "Ref": "ImageUri"
+            },
+            "Essential": true,
+            "PortMappings": [
+              {
+                "ContainerPort": 8080,
+                "Protocol": "tcp"
+              }
+            ],
+            "Environment": [
+              {
+                "Name": "NODE_ENV",
+                "Value": "production"
+              },
+              {
+                "Name": "PORT",
+                "Value": "8080"
+              },
+              {
+                "Name": "PGHOST",
+                "Value": {
+                  "Fn::GetAtt": [
+                    "Database",
+                    "Endpoint.Address"
+                  ]
+                }
+              },
+              {
+                "Name": "PGPORT",
+                "Value": "5432"
+              },
+              {
+                "Name": "PGDATABASE",
+                "Value": "hedgeling_demo"
+              },
+              {
+                "Name": "PGUSER",
+                "Value": "hedgeling_demo"
+              },
+              {
+                "Name": "DATABASE_SSL",
+                "Value": "true"
+              },
+              {
+                "Name": "DATABASE_SSL_CA_PATH",
+                "Value": "/etc/ssl/certs/aws-rds-global-bundle.pem"
+              },
+              {
+                "Name": "HEDGELING_AUTH_MODE",
+                "Value": "cognito"
+              },
+              {
+                "Name": "HEDGELING_PUBLIC_ORIGIN",
+                "Value": {
+                  "Fn::Sub": "https://${DemoDomain}"
+                }
+              },
+              {
+                "Name": "HEDGELING_TRUST_PROXY_HOPS",
+                "Value": "1"
+              },
+              {
+                "Name": "COGNITO_REGION",
+                "Value": {
+                  "Ref": "AWS::Region"
+                }
+              },
+              {
+                "Name": "COGNITO_USER_POOL_ID",
+                "Value": {
+                  "Ref": "UserPool"
+                }
+              },
+              {
+                "Name": "COGNITO_APP_CLIENT_ID",
+                "Value": {
+                  "Ref": "UserPoolClient"
+                }
+              },
+              {
+                "Name": "COGNITO_DOMAIN",
+                "Value": {
+                  "Fn::Sub": "${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"
+                }
+              },
+              {
+                "Name": "COGNITO_USERINFO_URL",
+                "Value": {
+                  "Fn::Sub": "https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/userInfo"
+                }
+              },
+              {
+                "Name": "COGNITO_SSO_REDIRECT_URI",
+                "Value": {
+                  "Fn::Sub": "https://${DemoDomain}/api/auth/sso/callback"
+                }
+              },
+              {
+                "Name": "HEDGELING_SELF_SERVICE_SIGNUP_ENABLED",
+                "Value": "false"
+              },
+              {
+                "Name": "HEDGELING_AGENT_ENABLED",
+                "Value": "true"
+              },
+              {
+                "Name": "HEDGELING_AGENT_ORG_CREATION_ENABLED",
+                "Value": "true"
+              },
+              {
+                "Name": "HEDGELING_AGENT_PROVIDER",
+                "Value": "meta"
+              },
+              {
+                "Name": "HEDGELING_AGENT_META_MODEL",
+                "Value": {
+                  "Ref": "AgentModel"
+                }
+              },
+              {
+                "Name": "HEDGELING_STRIPE_ENABLED",
+                "Value": "false"
+              },
+              {
+                "Name": "HEDGELING_FACILITATED_PAYMENTS_ENABLED",
+                "Value": "false"
+              },
+              {
+                "Name": "HEDGELING_TRIAL_PACKAGE_DOWNLOAD_ENABLED",
+                "Value": "false"
+              },
+              {
+                "Name": "HEDGELING_AI_KEY_ID",
+                "Value": "demo-v1"
+              }
+            ],
+            "Secrets": [
+              {
+                "Name": "PGPASSWORD",
+                "ValueFrom": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "Database",
+                          "MasterUserSecret.SecretArn"
+                        ]
+                      },
+                      ":password::"
+                    ]
+                  ]
+                }
+              },
+              {
+                "Name": "HEDGELING_SESSION_SIGNING_SECRET",
+                "ValueFrom": {
+                  "Fn::Sub": "${RuntimeSecret}:sessionSigningSecret::"
+                }
+              },
+              {
+                "Name": "HEDGELING_META_API_KEY",
+                "ValueFrom": {
+                  "Fn::Sub": "${RuntimeSecret}:metaApiKey::"
+                }
+              },
+              {
+                "Name": "HEDGELING_AI_KEYRING",
+                "ValueFrom": {
+                  "Fn::Sub": "${RuntimeSecret}:aiKeyring::"
+                }
+              }
+            ],
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": {
+                  "Ref": "LogGroup"
+                },
+                "awslogs-region": {
+                  "Ref": "AWS::Region"
+                },
+                "awslogs-stream-prefix": "console"
+              }
+            },
+            "HealthCheck": {
+              "Command": [
+                "CMD-SHELL",
+                "node -e \"fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+              ],
+              "Interval": 30,
+              "Timeout": 5,
+              "Retries": 3,
+              "StartPeriod": 120
+            },
+            "StopTimeout": 60
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      }
+    },
+    "DemoListenerRule": {
+      "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+      "Properties": {
+        "ListenerArn": {
+          "Ref": "ListenerArn"
+        },
+        "Priority": {
+          "Ref": "ListenerPriority"
+        },
+        "Conditions": [
+          {
+            "Field": "host-header",
+            "Values": [
+              {
+                "Ref": "DemoDomain"
+              }
+            ]
+          }
+        ],
+        "Actions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": {
+              "Ref": "TargetGroup"
+            }
+          }
+        ]
+      },
+      "Condition": "RunService",
+      "DependsOn": "ListenerCertificate"
+    },
+    "Service": {
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "ServiceName": {
+          "Fn::Sub": "${Prefix}-console"
+        },
+        "Cluster": {
+          "Ref": "ClusterName"
+        },
+        "LaunchType": "FARGATE",
+        "PlatformVersion": "1.4.0",
+        "DesiredCount": 1,
+        "TaskDefinition": {
+          "Ref": "TaskDefinition"
+        },
+        "HealthCheckGracePeriodSeconds": 150,
+        "DeploymentConfiguration": {
+          "MinimumHealthyPercent": 100,
+          "MaximumPercent": 200,
+          "DeploymentCircuitBreaker": {
+            "Enable": true,
+            "Rollback": true
+          }
+        },
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "AssignPublicIp": "DISABLED",
+            "Subnets": {
+              "Ref": "PrivateSubnets"
+            },
+            "SecurityGroups": [
+              {
+                "Ref": "TaskSecurityGroup"
+              }
+            ]
+          }
+        },
+        "LoadBalancers": [
+          {
+            "ContainerName": "web-console",
+            "ContainerPort": 8080,
+            "TargetGroupArn": {
+              "Ref": "TargetGroup"
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "demo"
+          },
+          {
+            "Key": "Project",
+            "Value": "hedgeling-agent-platform"
+          }
+        ]
+      },
+      "Condition": "RunService",
+      "DependsOn": [
+        "DemoListenerRule",
+        "DatabaseEgress"
+      ]
+    },
+    "DemoDns": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "HostedZoneId": {
+          "Ref": "HostedZoneId"
+        },
+        "Name": {
+          "Ref": "DemoDomain"
+        },
+        "Type": "A",
+        "AliasTarget": {
+          "DNSName": {
+            "Ref": "AlbDnsName"
+          },
+          "HostedZoneId": {
+            "Ref": "AlbHostedZoneId"
+          },
+          "EvaluateTargetHealth": true
+        }
+      },
+      "Condition": "RunService"
+    }
+  },
+  "Outputs": {
+    "RepositoryUri": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Repository",
+          "RepositoryUri"
+        ]
+      }
+    },
+    "RuntimeSecretArn": {
+      "Value": {
+        "Ref": "RuntimeSecret"
+      }
+    },
+    "DatabaseSecretArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Database",
+          "MasterUserSecret.SecretArn"
+        ]
+      }
+    },
+    "DatabaseHost": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Database",
+          "Endpoint.Address"
+        ]
+      }
+    },
+    "UserPoolId": {
+      "Value": {
+        "Ref": "UserPool"
+      }
+    },
+    "UserPoolClientId": {
+      "Value": {
+        "Ref": "UserPoolClient"
+      }
+    },
+    "DeployRoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "DeployRole",
+          "Arn"
+        ]
+      }
+    },
+    "TaskSecurityGroupId": {
+      "Value": {
+        "Ref": "TaskSecurityGroup"
+      }
+    },
+    "ExecutionRoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "ExecutionRole",
+          "Arn"
+        ]
+      }
+    },
+    "TaskRoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "TaskRole",
+          "Arn"
+        ]
+      }
+    },
+    "TargetGroupArn": {
+      "Value": {
+        "Ref": "TargetGroup"
+      }
+    },
+    "PublicOrigin": {
+      "Value": {
+        "Fn::Sub": "https://${DemoDomain}"
+      }
+    }
+  }
+}
