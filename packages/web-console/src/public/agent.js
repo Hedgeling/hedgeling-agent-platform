@@ -1,3 +1,4 @@
+import { renderChatMarkdown } from "./chat-markdown.js";
 import { request, element, proposalCard, Workspace, typewriterComposer } from "./agent-components.js";
 import { extractionProgress } from './extraction.js';
 
@@ -17,20 +18,25 @@ const confirmed = new Set();
 const inertBeforeOverlay = new Map();
 const attention = new AgentAttention();
 let attentionGeneration = 0;
-const shell = element("section", "agent-shell"); shell.id = "hedgelingAgent";
+let activation = null;
+const shell = element("section", "agent-shell"); shell.id = "hedgelingAgent"; shell.tabIndex = -1;
 shell.innerHTML = `
   <header class="agent-header">
     <div class="agent-identity"><img class="agent-avatar" alt=""><div><strong data-agent-name>Hedgeling</strong><span id="agentStatus" role="status" aria-live="polite">Ready when you are</span></div></div>
-    <div class="agent-window-controls"><button type="button" data-mode="overlay" aria-label="Full-screen chat">↗</button><button type="button" data-mode="panel" aria-label="Side panel">◧</button><button type="button" data-mode="minimized" aria-label="Minimize chat">−</button></div>
+    <div class="agent-window-controls" role="group" aria-label="Chat layout">
+      <button type="button" data-mode="overlay" aria-label="Full-screen chat" title="Expand chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg><span>Full screen</span></button>
+      <button type="button" data-mode="panel" aria-label="Side panel" title="Dock chat beside your workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></svg><span>Side panel</span></button>
+      <button type="button" data-mode="minimized" aria-label="Minimize chat" title="Minimize chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18h14"/></svg><span>Minimize</span></button>
+    </div>
   </header>
   <div class="agent-context"><label><span>Working in</span><select id="agentScope" aria-label="Conversation organization" disabled></select></label><button type="button" id="agentNew" disabled>New chat</button></div>
   <div id="agentPlanNotice" class="agent-plan-notice" hidden><p id="agentPlanMessage"></p><button type="button" id="agentUpgrade">View plans</button></div>
   <div class="agent-scroll"><div class="agent-paper"><div id="agentWelcome" class="agent-welcome"><img class="agent-hero" alt=""><span class="agent-eyebrow">YOUR LOCALIZATION COPILOT</span><h1>What shall we work on?</h1><p>Build a workspace. Find the right words.<br>Keep every language moving.</p><div id="agentSuggestions" class="agent-suggestions"></div></div><div id="agentMessages" role="log" aria-label="Conversation"></div><div class="agent-paper-end" aria-hidden="true">— to be continued —</div></div></div>
   <div id="agentError" class="agent-error" role="alert"></div>
-  <footer class="agent-footer"><div class="agent-run-controls"><button type="button" id="agentPause">Pause</button><button type="button" id="agentTakeover">Take over</button><button type="button" id="agentResume" hidden>Resume</button><button type="button" id="agentCancel">Cancel task</button><label><input type="checkbox" id="agentFollow" checked> Follow along</label></div>
+  <footer class="agent-footer"><div class="agent-run-controls"><button type="button" id="agentPause">Pause</button><button type="button" id="agentTakeover">Take over</button><button type="button" id="agentTakeControl" hidden>Take control</button><button type="button" id="agentCancel">Cancel task</button><label><input type="checkbox" id="agentFollow" checked> Follow along</label></div>
   <p id="agentComposerHint" class="agent-composer-hint" role="status" aria-live="polite" hidden></p>
   ${typewriterComposer}
-  <div class="agent-footnote"><span id="agentProviderLabel">You confirm every change.</span><a id="agentCardExamples" href="/agent-preview.html" target="_blank" rel="noopener" hidden>Try card examples ↗</a><label class="agent-theme">Theme <select data-theme-preference><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><button type="button" id="agentOpaque" aria-pressed="false">Solid background</button><label class="agent-resize">Width <input id="agentWidth" type="range" min="360" max="640" value="430" aria-label="Side panel width"></label></div></footer>`;
+  <div class="agent-footnote"><span id="agentProviderLabel">You confirm every change.</span><a id="agentCardExamples" href="/agent-preview.html" target="_blank" rel="noopener" hidden>Try card examples ↗</a><label class="agent-theme">Theme <select data-theme-preference><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><button type="button" id="agentOpaque" aria-pressed="false">Hide workspace edges</button><label class="agent-resize">Width <input id="agentWidth" type="range" min="360" max="640" value="480" aria-label="Side panel width"></label></div></footer>`;
 const launcher = element("button", "agent-launcher"); launcher.type = "button"; launcher.setAttribute("aria-label", "Open Hedgeling assistant");
 launcher.innerHTML = '<img alt=""><span>Ask Hedgeling</span><i aria-hidden="true"></i>';
 const $ = (id) => shell.querySelector(`#${id}`);
@@ -66,7 +72,13 @@ function setMode(next, focus = true) {
     for (const [node, wasInert] of inertBeforeOverlay) node.inert = wasInert;
     inertBeforeOverlay.clear();
   }
-  if (focus) (next === "minimized" ? launcher : !$("agentResume").hidden ? $("agentResume") : $("agentInput")).focus();
+  for (const button of shell.querySelectorAll(".agent-window-controls button")) {
+    button.setAttribute("aria-pressed", String(button.dataset.mode === next));
+    button.disabled = button.dataset.mode === "panel" && matchMedia("(max-width: 760px)").matches;
+  }
+  $("agentOpaque").hidden = next !== "overlay";
+  // Opening or resizing a paused conversation must not resume it by itself.
+  if (focus) (next === "minimized" ? launcher : !$("agentTakeControl").hidden ? $("agentTakeControl") : run?.status === "paused" ? shell : $("agentInput")).focus();
   if (next !== "minimized" && run?.status === "awaiting_confirmation") requestAnimationFrame(() => {
     const scroller = shell.querySelector(".agent-scroll"); scroller.scrollTop = scroller.scrollHeight;
   });
@@ -81,8 +93,7 @@ function updateState(status) {
   const paused = status === "paused";
   const otherController = run?.controllerId && run.controllerId !== controllerId && status !== "cancelled";
   if (otherController) $("agentStatus").textContent = "Viewing conversation · Take control to continue";
-  $("agentResume").textContent = otherController ? "Take control" : "Resume";
-  $("agentResume").hidden = !paused && !otherController; $("agentPause").hidden = paused;
+  $("agentTakeControl").hidden = !otherController; $("agentPause").hidden = paused;
   const chat = scopeChat();
   const organization = config?.organizations.find((org) => org.id === scope);
   const roleRequired = chat.reason === "organization_access_required";
@@ -90,42 +101,33 @@ function updateState(status) {
   $("agentPlanNotice").hidden = chat.allowed;
   $("agentPlanMessage").textContent = `${chat.message || ""}${scope && !canBill && !roleRequired ? " Ask your organization owner or billing administrator to review the plan." : ""}`;
   $("agentUpgrade").hidden = !scope || !canBill;
-  $("agentResume").disabled = !chat.allowed;
-  $("agentInput").disabled = switching || !chat.allowed || !config?.ready || otherController || !["awaiting_input", "completed"].includes(status);
+  $("agentTakeControl").disabled = !chat.allowed || Boolean(activation);
+  $("agentInput").disabled = switching || !chat.allowed || !config?.ready || otherController || !["awaiting_input", "completed", "paused"].includes(status);
   const hint = roleRequired ? "Choose another workspace, or have your organization role reviewed before starting a new chat."
     : !chat.allowed ? "Your conversation is saved. Choose an active workspace or review your plan to continue."
     : !config?.ready ? "The assistant is unavailable. You can continue manually."
     : otherController ? "Select Take control to continue this conversation here."
-    : paused ? "Chat is paused. Select Resume to continue."
+    : paused ? activation ? "Reconnecting your conversation… Your draft will stay here." : "Click or tab into the message field to continue. Nothing is sent until you press Send."
     : status === "awaiting_confirmation" ? "Review the pending change above to continue."
     : ["cancelled", "failed"].includes(status) ? "Start a new chat to type again."
     : $("agentInput").disabled ? "Hedgeling is working. You can type again when this step finishes." : "";
   $("agentComposerHint").textContent = hint;
   $("agentComposerHint").hidden = !hint;
   $("agentInput").setAttribute("aria-describedby", "agentComposerHint");
-  $("agentInput").placeholder = otherController ? "Select Take control above…" : paused ? "Paused — select Resume above…" : "Type your next idea…";
-  $("agentComposer").querySelector("button").disabled = $("agentInput").disabled;
+  $("agentInput").placeholder = otherController ? "Select Take control above…" : paused ? "Click here to continue chatting…" : "Type your next idea…";
+  $("agentComposer").querySelector("button").disabled = $("agentInput").disabled || paused || Boolean(activation);
   $("agentPause").disabled = !run; $("agentCancel").disabled = !run || status === "cancelled";
   for (const button of shell.querySelectorAll(".agent-proposal button")) button.disabled = !chat.allowed || otherController || status !== "awaiting_confirmation";
 }
 function message(role, text, { replay = false } = {}) {
   $("agentWelcome").hidden = true;
   const item = element("article", `agent-message agent-message-${role}`);
-  const paragraph = element("p");
-  if (role !== "user" && !replay && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    const ink = element("span", "agent-ink-reveal"); ink.setAttribute("aria-hidden", "true");
-    item.setAttribute("aria-busy", "true");
-    paragraph.append(ink);
-    const started = performance.now();
-    const reveal = (now) => {
-      if (!item.isConnected) return;
-      const count = Math.min(text.length, Math.ceil(text.length * (now - started) / 700));
-      ink.textContent = text.slice(0, count);
-      if (count < text.length) requestAnimationFrame(reveal); else { paragraph.replaceChildren(document.createTextNode(text)); item.removeAttribute("aria-busy"); }
-    };
-    requestAnimationFrame(reveal);
-  } else paragraph.textContent = text;
-  item.append(element("span", "agent-message-author", role === "user" ? "You" : brand.agentName), paragraph);
+  const content = element("div", "agent-message-content");
+  if (role === "user") { const paragraph = element("p", "", text); content.append(paragraph); }
+  else content.append(renderChatMarkdown(text));
+  // Reveal formatted content as a whole: never flash raw Markdown markers.
+  if (role !== "user" && !replay) content.classList.add("agent-ink-reveal");
+  item.append(element("span", "agent-message-author", role === "user" ? "You" : brand.agentName), content);
   $("agentMessages").append(item);
 }
 async function follow(target, { phase = "working", card, label = "Looking at this section" } = {}) {
@@ -231,6 +233,29 @@ async function pauseRun() {
   if (!run) return;
   const result = await request(`/api/agent/runs/${run.id}/pause`, { controllerId }); run = result.run; updateState(run.status);
 }
+async function activateComposer({ takeControl = false } = {}) {
+  if (activation) return activation;
+  if (!run || !scopeChat().allowed || switching || !config?.ready) return;
+  const otherController = run.controllerId && run.controllerId !== controllerId;
+  if (otherController && !takeControl) return;
+  if (!otherController && run.status !== "paused") return;
+  const currentRun = run.id;
+  activation = (async () => {
+    if (otherController) await pauseRun();
+    const result = await request(`/api/agent/runs/${currentRun}/resume`, { controllerId });
+    if (run?.id !== currentRun || run.generation > result.run.generation) return;
+    run = result.run;
+    // Preserve manual edits instead of refreshing the underlying workspace.
+    if (dirty) $("agentFollow").checked = false;
+    $("agentError").textContent = "";
+    updateState(run.status);
+    if (run.status === "awaiting_confirmation") shell.querySelector(".agent-proposal button:not(:disabled)")?.focus();
+    else $("agentInput").focus();
+  })();
+  updateState(run.status);
+  try { await activation; }
+  finally { activation = null; updateState(run?.status || "awaiting_input"); }
+}
 async function initialize() {
   [config, brand] = await Promise.all([request("/api/agent/config"), request("/design-system/brand.json")]);
   userId = (await request("/api/me")).auth.user.id;
@@ -265,23 +290,18 @@ async function initialize() {
   window.addEventListener("focus", () => { void refreshScopes().catch(() => {}); });
   $("agentPause").addEventListener("click", () => pauseRun().catch(showError));
   $("agentTakeover").addEventListener("click", async () => { try { await pauseRun(); setMode("minimized"); } catch (e) { showError(e); } });
-  $("agentResume").addEventListener("click", async () => {
-    try {
-      if (run.controllerId && run.controllerId !== controllerId) await pauseRun();
-      run = (await request(`/api/agent/runs/${run.id}/resume`, { controllerId })).run;
-      dirty = false; updateState(run.status);
-      if (!$("agentInput").disabled) $("agentInput").focus();
-      else shell.querySelector(".agent-proposal button:not(:disabled)")?.focus();
-      await workspace.refresh(scope);
-    } catch (e) { showError(e); }
+  $("agentTakeControl").addEventListener("click", () => activateComposer({ takeControl: true }).catch(showError));
+  // Pointer activation also permits retrying after a failed resume while focused.
+  for (const name of ["focus", "pointerdown"]) $("agentInput").addEventListener(name, () => {
+    if (run?.status === "paused") void activateComposer().catch(showError);
   });
   $("agentCancel").addEventListener("click", async () => { try { run = (await request(`/api/agent/runs/${run.id}/cancel`, { controllerId })).run; updateState(run.status); } catch (e) { showError(e); } });
   $("agentComposer").addEventListener("submit", async (event) => {
     event.preventDefault(); const text = $("agentInput").value.trim(); if (!text) return;
-    try { if (!run) await startConversation(); if (!run) return; await request(`/api/agent/runs/${run.id}/messages`, { text, controllerId }); $("agentInput").value = ""; updateState("planning"); }
+    try { if (activation) await activation; if (run?.status === "paused") await activateComposer(); if (!run) await startConversation(); if (!run || $("agentInput").disabled) return; await request(`/api/agent/runs/${run.id}/messages`, { text, controllerId }); $("agentInput").value = ""; updateState("planning"); }
     catch (error) { showError(error); }
   });
-  $("agentInput").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (!$("agentInput").disabled) $("agentComposer").requestSubmit(); } });
+  $("agentInput").addEventListener("keydown", (event) => { if (run?.status === "paused" && event.key !== "Tab") void activateComposer().catch(showError); if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (!$("agentInput").disabled) $("agentComposer").requestSubmit(); } });
   const suggestions = config.demo ? ["Set up demo workspace", "Show my projects"] : ["Help me set up an organization", "Show my projects", "Prepare a localization job"];
   for (const text of suggestions) {
     const button = element("button", "", text); button.type = "button";
@@ -305,7 +325,7 @@ async function initialize() {
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     }
   });
-  matchMedia("(max-width: 760px)").addEventListener("change", (event) => { if (event.matches && mode === "panel") setMode("overlay"); });
+  matchMedia("(max-width: 760px)").addEventListener("change", (event) => { setMode(event.matches && mode === "panel" ? "overlay" : mode, false); });
   const saved = sessionStorage.getItem(`hedgeling.agent.run.${userId}`);
   if (saved) {
     try {

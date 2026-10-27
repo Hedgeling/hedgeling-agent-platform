@@ -16,7 +16,7 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, colorScheme: "dark", reducedMotion: "reduce" });
   const separator = app.cookie.indexOf("=");
   await context.addCookies([{ name: app.cookie.slice(0, separator), value: app.cookie.slice(separator + 1), url: app.origin, httpOnly: true, sameSite: "Strict" }]);
-  const page = await context.newPage();
+  const page = await context.newPage(); page.setDefaultTimeout(15000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(app.origin);
   const shell = page.locator("#hedgelingAgent");
@@ -29,8 +29,38 @@ try {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await shell.locator("#agentInput").press("h");
   await shell.locator("#agentInput").fill("");
+  const overlay = await shell.boundingBox();
+  assert.ok(overlay.width >= 1360 && overlay.height >= 940, "Full-screen chat should use nearly the entire display");
+  const column = await shell.locator(".agent-scroll").boundingBox(); assert.ok(column.width > 1300);
+  for (const button of await shell.locator(".agent-window-controls button").all()) {
+    const box = await button.boundingBox(); assert.ok(box.width >= 44 && box.height >= 44);
+    assert.ok((await button.innerText()).trim().length > 1);
+  }
+  // Real event/replay rendering, including hostile provider text, in both themes.
+  const runId = await page.evaluate(() => sessionStorage.getItem(Object.keys(sessionStorage).find(key => key.startsWith("hedgeling.agent.run."))));
+  await app.database.query("insert into agent_events(run_id,kind,data) values($1,'message',$2)", [runId, { role: "assistant", text: "**Clear and bold** words.\n\n- **French** draft\n- German draft\n\n`**literal code**`\n<img src=x onerror=alert(1)>" }]);
+  const bold = shell.locator(".agent-message-content strong").filter({ hasText: "Clear and bold" });
+  await expect(bold).toBeVisible();
+  assert.equal(await bold.evaluate(node => getComputedStyle(node).fontWeight), "700");
+  assert.equal(await shell.locator(".agent-message-content img").count(), 0);
+  await expect(shell.locator(".agent-message-content code")).toHaveText("**literal code**");
+  const contrastChecks = async theme => {
+    await shell.locator("[data-theme-preference]").selectOption(theme);
+    const results = await shell.evaluate(node => {
+      const rgb = color => color.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const luminance = values => values.map(c => c / 255).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4).reduce((sum, c, index) => sum + c * [.2126, .7152, .0722][index], 0);
+      const ratio = (a, b) => { const x = luminance(rgb(a)), y = luminance(rgb(b)); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+      const paper = getComputedStyle(node.querySelector(".agent-paper")).backgroundColor;
+      return [...[".agent-message-content", ".agent-message-author", ".agent-paper-end"].map(selector => ({ selector, contrast: ratio(getComputedStyle(node.querySelector(selector)).color, paper) })),
+        ...[...node.querySelectorAll(".agent-window-controls button")].map(button => { const style = getComputedStyle(button); return { selector: button.getAttribute("aria-label"), contrast: ratio(style.color, style.backgroundColor) }; })];
+    });
+    for (const result of results) assert.ok(result.contrast >= 4.5, `${theme} ${result.selector} contrast ${result.contrast}`);
+  };
+  await contrastChecks("light");
+  await page.screenshot({ path: path.join(artifacts, "01-overlay-light.png") });
+  await contrastChecks("dark");
   await page.screenshot({ path: path.join(artifacts, "01-overlay.png") });
-  await shell.getByRole("button", { name: "Set up demo workspace", exact: true }).click();
+  await shell.locator("#agentInput").fill("Set up demo workspace");
   await shell.getByRole("button", { name: "Send message", exact: true }).click();
   for (const [index, name] of ["Create organization", "Create business unit", "Create project", "Create job draft"].entries()) {
     const button = shell.locator(".agent-proposal").getByRole("button", { name, exact: true });
@@ -48,8 +78,10 @@ try {
       await shell.locator("#agentPause").click();
       await expect(button).toBeDisabled();
       await expect(page.locator("[data-agent-attention]")).toHaveCount(0);
-      await shell.locator("#agentResume").click();
+      await shell.locator("#agentInput").click();
       await expect(button).toBeEnabled();
+      await expect(shell.locator("#agentInput")).toBeDisabled();
+      assert.equal((await app.database.query("select count(*)::int as n from organizations where name='Demo organization'")).rows[0].n, 0);
     }
     await button.click();
   }
@@ -64,10 +96,13 @@ try {
   await page.screenshot({ path: path.join(artifacts, "03-manual-workspace.png") });
   await page.getByRole("button", { name: /Open Hedgeling assistant/ }).click();
   await expect(shell).toHaveAttribute("data-mode", "panel");
-  await expect(shell.locator("#agentResume")).toBeVisible();
-  await page.screenshot({ path: path.join(artifacts, "04-side-panel.png") });
-  await shell.locator("#agentResume").click();
+  await expect(shell.locator("#agentStatus")).toContainText("Paused");
+  await expect(shell.getByRole("button", { name: "Resume", exact: true })).toHaveCount(0);
   await expect(shell.locator("#agentInput")).toBeEnabled();
+  await expect(shell.getByRole("button", { name: "Send message", exact: true })).toBeDisabled();
+  await page.screenshot({ path: path.join(artifacts, "04-side-panel.png") });
+  await shell.locator("#agentInput").click();
+  await expect(shell.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
   await shell.locator("#agentInput").fill("Show my projects");
   await shell.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.locator("#workspaceTab")).toHaveAttribute("data-agent-attention", "working");
@@ -75,6 +110,21 @@ try {
   await expect(shell.locator("#agentFollow")).not.toBeChecked();
   await expect(page.locator("[data-agent-attention]")).toHaveCount(0);
   await expect(shell.locator("#agentInput")).toBeEnabled();
+  await shell.locator("#agentPause").click();
+  await expect(shell.locator("#agentStatus")).toContainText("Paused");
+  await shell.locator("#agentFollow").focus();
+  await page.keyboard.press("Tab");
+  await expect(shell.locator("#agentInput")).toBeFocused();
+  await expect(shell.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
+  await shell.locator("#agentPause").click();
+  await page.route("**/api/agent/runs/*/resume", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Synthetic connection interruption" }) }), { times: 1 });
+  await shell.locator("#agentInput").click();
+  await expect(shell.locator("#agentError")).toContainText("Synthetic connection interruption");
+  await shell.locator("#agentInput").fill("Keep this draft");
+  await shell.locator("#agentInput").click();
+  await expect(shell.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
+  await expect(shell.locator("#agentInput")).toHaveValue("Keep this draft");
+  await shell.locator("#agentInput").fill("");
   await shell.getByRole("button", { name: "Full-screen chat", exact: true }).click();
   await page.keyboard.press("Tab");
   assert.equal(await page.evaluate(() => document.activeElement.closest("#hedgelingAgent") !== null), true);
@@ -82,12 +132,25 @@ try {
   await expect(shell).toHaveAttribute("data-opaque", "true");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await shell.locator("[data-theme-preference]").selectOption("light");
   await page.screenshot({ path: path.join(artifacts, "05-mobile-light.png") });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.reload();
   await expect(shell).toBeVisible();
   await expect(shell.getByText("Website launch is ready as a draft.", { exact: true })).toBeVisible();
   await expect(page.locator("[data-agent-attention]")).toHaveCount(0);
+  await expect(bold).toBeVisible();
+  if (await shell.locator("#agentTakeControl").isVisible()) await shell.locator("#agentTakeControl").click();
+  else await shell.locator("#agentInput").click();
+  await expect(shell.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
+  // A second document cannot silently steal control from a live tab.
+  const storage = await page.evaluate(() => Object.fromEntries(Object.entries(sessionStorage)));
+  const other = await context.newPage();
+  await other.addInitScript(values => { for (const [key, value] of Object.entries(values)) sessionStorage.setItem(key, value); }, storage);
+  await other.goto(app.origin);
+  await expect(other.locator("#agentTakeControl")).toBeVisible();
+  await expect(other.locator("#agentInput")).toBeDisabled();
+  await other.close();
   // The playground uses the same cards without sending any writes.
   const preview = await context.newPage();
   const mutations = [];
@@ -232,5 +295,5 @@ try {
   assert.equal((await app.database.query("select count(*)::int as n from projects where name='Documentation'")).rows[0].n, 0);
   await page.screenshot({ path: path.join(artifacts, "11-workspace-management.png"), fullPage: true });
   assert.deepEqual(errors, []);
-  console.log(`Agent browser checks passed: creation and edit confirmations, semantic highlights, manual override, compact typewriter, zero-write card examples, focus, mobile, replay, second brand, onboarding launcher, and inventory/job pagination beyond 100. Screenshots: ${artifacts}`);
+  console.log(`Agent browser checks passed: creation and edit confirmations, semantic highlights, manual override, Markdown and contrast, click/keyboard resume, explicit tab ownership, zero-write card examples, focus, mobile, replay, second brand, onboarding launcher, and inventory/job pagination beyond 100. Screenshots: ${artifacts}`);
 } finally { console.log(`Browser artifacts: ${artifacts}`); await browser?.close(); await app.close(); }
