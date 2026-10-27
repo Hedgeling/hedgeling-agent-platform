@@ -14,6 +14,10 @@ const running = ["planning", "reading", "executing"];
 const activityLabels = {
   console_get_project_locales: 'Checking the project’s languages',
   console_propose_project_locales: 'Preparing new target languages',
+  console_get_extraction_config: 'Reading extraction configuration',
+  console_get_extraction_settings: 'Reading saved project settings',
+  console_propose_extraction_tuning: 'Preparing an extraction tuning preview',
+  console_propose_tuning_apply: 'Reviewing tuned settings and re-extraction',
   console_list_source_connections: 'Checking connected repositories',
   console_propose_extraction: 'Preparing your source extraction',
   console_list_extractions: 'Looking up extraction requests',

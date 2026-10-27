@@ -12,3 +12,5 @@
 .extraction-sample li { margin: 6px 0; white-space: pre-wrap; }
 .extraction-success { padding: 12px; border-inline-start: 3px solid var(--text-accent); }
 .extraction-panel textarea { width: 100%; color: var(--text-main); background: var(--background-pane); border: 1px solid var(--line-soft); border-radius: 6px; padding: 10px; box-sizing: border-box; font: inherit; }
+
+.extraction-config { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow: auto; font-size: .875rem; }

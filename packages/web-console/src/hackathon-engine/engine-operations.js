@@ -13,6 +13,7 @@ export function engineOperations({ url, token, fetchImpl = fetch }) {
     return 'v1/jobs/' + id;
   };
   return Object.freeze({ ...engineReader({ url, token, fetchImpl }),
+    configuration: (connectionId, ref, path) => call('v1/connections/' + encodeURIComponent(connectionId) + '/config?' + new URLSearchParams({ ref, path })),
     create: (body, idempotencyKey) => call('v1/jobs', { body, idempotencyKey }),
     job: id => call(jobPath(id)),
     artifact: id => call(jobPath(id) + '/artifact', { maxBytes: 21 * 1024 * 1024 }),

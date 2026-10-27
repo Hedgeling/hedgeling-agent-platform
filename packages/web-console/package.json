@@ -40,7 +40,8 @@
     "test:navigation:browser": "node scripts/run-console-shell-browser-tests.js",
     "test:commercial:browser": "node scripts/run-commercial-browser-tests.js",
     "test:extraction:browser": "node scripts/run-extraction-browser-tests.js",
-    "test:locales:browser": "node scripts/run-project-locales-browser-tests.js"
+    "test:locales:browser": "node scripts/run-project-locales-browser-tests.js",
+    "test:tuning:browser": "node scripts/run-tuning-browser-tests.js"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1116.0",

@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "3a6fd717c0ad8206b61f660c9ca4e6be3cffca3b",
+  "revision": "0f05d7cc641acd4da3c27601aedd5b9f57dba5d0",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -27,7 +27,12 @@
     {
       "source": "src/engine-operations.js",
       "destination": "engine-operations.js",
-      "sha256": "e67beb7829131db3ff65e077ad1af48a7127d78a48479036850adaefe6a52ee4"
+      "sha256": "fff2809790af2f17ab54076bf5290299bc9465026fc92167ca1c0e82d6d8b7f7"
+    },
+    {
+      "source": "src/tuning-config.js",
+      "destination": "tuning-config.js",
+      "sha256": "119500dd2cc4dd51261bc0b0ec7ace53dc6e87d697973d4c5d47d7faef73bc5c"
     },
     {
       "source": "src/project-locales.js",
@@ -47,7 +52,7 @@
     {
       "source": "src/extraction-actions.js",
       "destination": "extraction-actions.js",
-      "sha256": "62920cd4eebd34abf61dcc05a273934f3f70d4c0c522631491774a7a74219743"
+      "sha256": "aa4556255673f1dc4d27c9152bc302ab827bbe7f8625279d035af2f69d60f3f3"
     },
     {
       "source": "src/extraction-catalog.js",
@@ -57,7 +62,7 @@
     {
       "source": "src/extraction-workflow.js",
       "destination": "extraction-workflow.js",
-      "sha256": "c027ed17273825c10870e5953823eff74083188bf367ba847241d30c49759623"
+      "sha256": "8c12a29ecfdac158d6d3f3e2559e38fb10819fde677ba6d01df51abd13df2b67"
     },
     {
       "source": "LICENSE",
@@ -87,7 +92,12 @@
     {
       "source": "src/extraction-actions.js",
       "destination": "../../../api-contract/extraction-actions.js",
-      "sha256": "62920cd4eebd34abf61dcc05a273934f3f70d4c0c522631491774a7a74219743"
+      "sha256": "aa4556255673f1dc4d27c9152bc302ab827bbe7f8625279d035af2f69d60f3f3"
+    },
+    {
+      "source": "contracts/202610272100_extraction_tuning.sql",
+      "destination": "../../db/migrations/202610272100_extraction_tuning.sql",
+      "sha256": "7971ae66f323716aafbd68bdf61598e2d1ff67d1529f3feed7f12f0824536e2d"
     },
     {
       "source": "contracts/202610271200_extraction_workflow.sql",
@@ -107,12 +117,12 @@
     {
       "source": "ui/extraction.js",
       "destination": "../public/extraction.js",
-      "sha256": "5ae5bf439ca21330ffb823a83d496445b70567741ca6a4b843c510dcc2b4cd24"
+      "sha256": "8bd374fb433feeeb216548be3fe42d188c823ccfaf2a31bd4c7992cc60f75570"
     },
     {
       "source": "ui/extraction.css",
       "destination": "../public/extraction.css",
-      "sha256": "93fff6df4103b5830bb6b5df61c014af7841fc9a91c8774a2141a29225bac44f"
+      "sha256": "0fd2c3748e957ef60dea8b428e3c73d6af35d2f1ee9f7ac2749df6544725bd50"
     }
   ]
 }

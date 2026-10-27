@@ -176,6 +176,10 @@ function receive(item, { replay = false } = {}) {
     const resource = data.organization || data.businessUnit || data.project || data.job;
     if (resource) message("assistant", data.addedLocales ? `Added ${data.addedLocales.join(", ")} to ${resource.name}.` : data.uiTarget?.action?.endsWith(".update") ? `${resource.name} has been updated.` : `${resource.name} is ready${data.job ? " as a draft" : ""}.`, { replay });
     if (data.extraction) $("agentMessages").append(extractionProgress({ projectSlug: data.extraction.projectSlug, extractionId: data.extraction.id, request,
+      onTuneApply: async ({ projectSlug, extractionId }) => {
+        if (run?.status !== 'awaiting_input') throw new Error('Click the chat field and finish any pending approval first.');
+        await request(`/api/agent/runs/${run.id}/messages`, { controllerId, text: `Review applying tuning ${extractionId} to project ${projectSlug}. Prepare saving its accepted settings and re-extracting the pinned source; do not import yet.` });
+      },
       onImport: async ({ projectSlug, extractionId }) => {
         if (run?.status !== 'awaiting_input') throw new Error('Resume the conversation and finish any pending approval before reviewing this import.');
         await request(`/api/agent/runs/${run.id}/messages`, { controllerId, text: `Review importing extraction ${extractionId} into project ${projectSlug}. Prepare the import preview; do not start another extraction.` });
@@ -217,6 +221,7 @@ async function refreshScopes() {
 }
 async function startConversation(organizationId = scope) {
   if (switching) return; switching = true;
+  updateState(run?.status || "awaiting_input");
   $("agentScope").disabled = $("agentNew").disabled = true;
   try {
     if (run && !["paused", "cancelled"].includes(run.status)) {

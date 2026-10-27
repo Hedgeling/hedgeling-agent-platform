@@ -42,6 +42,17 @@ function fixtureTurn(history, organizationId) {
   // Explicit synthetic prompts for local browser/MCP tests. Production Meta
   // follows the extraction skill using these same authenticated tools.
   const lastUser = history.findLast(item => item.role === 'user' && !item.confirmation && item.parts?.some(p => p.text));
+  const tuningPrompt = /^Tune extraction for project "([^"]+)" at "([^"]+)" in "([^"]+)"\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  if (tuningPrompt && !confirmation) {
+    if (!response) return part('console_list_source_connections', { projectSlug: tuningPrompt[1] });
+    if (response.name === 'console_list_source_connections' && response.response.connections?.length === 1) return part('console_get_extraction_config', { projectSlug:tuningPrompt[1],connectionId:response.response.connections[0].connectionId,ref:tuningPrompt[2],configPath:'.hedgeling/extract.config.json' });
+    if (response.name === 'console_get_extraction_config' && !response.response.error) {
+      const discovered = history.flatMap(h => h.parts || []).findLast(p => p.functionResponse?.name === 'console_list_source_connections')?.functionResponse.response;
+      return part('console_propose_extraction_tuning', { projectSlug:tuningPrompt[1],connectionId:discovered.connections[0].connectionId,ref:tuningPrompt[2],scanRoots:[tuningPrompt[3]],configPath:'.hedgeling/extract.config.json' });
+    }
+  }
+  const applyTuning = /^Review applying tuning ([a-f0-9-]{36}) to project ([\w-]+)\./.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  if (!response && !confirmation && applyTuning) return part('console_propose_tuning_apply', { projectSlug:applyTuning[2],extractionId:applyTuning[1] });
   const extractionPrompt = /^Extract source from project "([^"]+)" at "([^"]+)" in "([^"]+)"\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
   if (response?.name === 'console_list_source_connections' && extractionPrompt) {
     const connections = response.response.connections || [];
