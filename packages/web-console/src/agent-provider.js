@@ -122,10 +122,15 @@ export async function nextAgentTurn({ run, auth, history, tools, signal }, { che
   const serialized = JSON.stringify(body);
   const estimate = Buffer.byteLength(serialized) + 2048;
   if (estimate > 100000) throw fail(400, "This conversation is full. Start a new conversation to continue.");
+  // Entitlements are server-managed. Keep the default plan allowance while
+  // supporting explicit higher grants, bounded by a finite platform ceiling.
+  const configuredDailyLimit = chat.limits?.dailyUserTokens ?? 500000;
+  if (!Number.isSafeInteger(configuredDailyLimit) || configuredDailyLimit < 0) throw fail(503, "The chat allowance is misconfigured. Contact your administrator.", "agent_allowance_invalid");
+  const dailyLimit = Math.min(configuredDailyLimit, 10000000);
   const usage = await withTransaction(async (client) => {
     await client.query("select pg_advisory_xact_lock(hashtext($1))", [`agent-budget:${auth.user.id}`]);
     const used = (await client.query("select coalesce(sum(coalesce(actual_tokens,reserved_tokens)),0)::bigint as tokens from agent_model_usage where user_id=$1 and created_at >= date_trunc('day',now())", [auth.user.id])).rows[0];
-    if (Number(used.tokens) + estimate > Math.min(Number(chat.limits?.dailyUserTokens) || 500000, 500000)) throw fail(429, "Your daily included chat allowance has been reached. You can continue manually and chat again tomorrow.");
+    if (Number(used.tokens) + estimate > dailyLimit) throw fail(429, "Your daily included chat allowance has been reached. You can continue manually and chat again tomorrow.");
     return (await client.query("insert into agent_model_usage(run_id,user_id,organization_id,model,reserved_tokens) values($1,$2,$3,$4,$5) returning id", [run.id, auth.user.id, run.organization_id, config.model, estimate])).rows[0];
   });
   const scope = { organizationId: run.organization_id, operation: "agent_chat", idempotencyKey: `agent-chat:${usage.id}`, idempotencyFingerprint: fingerprint(body), actor: { actorType: "user", actorUserId: auth.user.id } };
