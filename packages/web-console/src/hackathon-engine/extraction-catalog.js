@@ -17,7 +17,9 @@ function text(value, limit = 8192) {
 }
 export function catalogState(artifact, expected) {
   const catalog = artifact?.catalog;
-  if (artifact?.version !== 1 || catalog?.schemaVersion !== 1 || !Array.isArray(catalog.entries)
+  // Catalog v2 adds optional select metadata; its source/context fields retain
+  // the v1 shape. Only explicitly supported versions cross the import boundary.
+  if (artifact?.version !== 1 || ![1, 2].includes(catalog?.schemaVersion) || !Array.isArray(catalog.entries)
     || catalog.entries.length > 10000 || catalog.sourceLocale !== expected.sourceLocale
     || artifact.provenance?.commitSha !== expected.commitSha || artifact.provenance?.repositoryId !== expected.repositoryId
     || artifact.provenance?.operation !== 'extract') invalid();

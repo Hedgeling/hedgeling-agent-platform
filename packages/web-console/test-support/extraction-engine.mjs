@@ -36,7 +36,7 @@ export async function extractionEngine() {
     if (control.complete) { job.status = 'succeeded'; job.phase = 'complete'; job.commitSha = 'a'.repeat(40); }
     if (!match[2]) return send(200, { job });
     if (job.status !== 'succeeded') return send(409, {});
-    return send(200, { version: 1, catalog: { schemaVersion: 1, sourceLocale: job.sourceLocale, entries },
+    return send(200, { version: 1, catalog: { schemaVersion: 2, sourceLocale: job.sourceLocale, entries },
       provenance: { repositoryId: control.corruptArtifact ? 999 : 123, commitSha: job.commitSha, operation: 'extract' } });
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

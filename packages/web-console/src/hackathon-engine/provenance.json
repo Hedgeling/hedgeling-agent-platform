@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "d18505068dd781289fc66937a87910c28ece9118",
+  "revision": "e90590d294fb2360d4864a242bc46928bc830bff",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -37,7 +37,7 @@
     {
       "source": "src/extraction-catalog.js",
       "destination": "extraction-catalog.js",
-      "sha256": "f3a69868a72b0a423e2e2e4a8942c9b0304e7f772ef1256effe226ad94d5f252"
+      "sha256": "53c899ec169142503fbeef822723606b0f99a22f585323735ce03cc1b2950a01"
     },
     {
       "source": "src/extraction-workflow.js",
