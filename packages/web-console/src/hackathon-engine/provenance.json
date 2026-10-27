@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "4fcd3271c24073366c17f39148aa8a3ce91ad6a4",
+  "revision": "3a6fd717c0ad8206b61f660c9ca4e6be3cffca3b",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -28,6 +28,16 @@
       "source": "src/engine-operations.js",
       "destination": "engine-operations.js",
       "sha256": "e67beb7829131db3ff65e077ad1af48a7127d78a48479036850adaefe6a52ee4"
+    },
+    {
+      "source": "src/project-locales.js",
+      "destination": "project-locales.js",
+      "sha256": "64721f02b54d9548e62e20def2fed78cbca31b29d059a74ef31656afd816410a"
+    },
+    {
+      "source": "src/project-locales-actions.js",
+      "destination": "project-locales-actions.js",
+      "sha256": "6d3f9c56235e3887df5ae4cfc3f5b547e403907a7101cc587dd2f41fd427d845"
     },
     {
       "source": "src/meta-translation.js",
@@ -58,6 +68,21 @@
       "source": "NOTICE",
       "destination": "NOTICE",
       "sha256": "91424905df6ef3e602591ed759c25d56369ea5f2549ca2fa10a3e16ac7dfb18f"
+    },
+    {
+      "source": "src/project-locales-actions.js",
+      "destination": "../../../api-contract/project-locales-actions.js",
+      "sha256": "6d3f9c56235e3887df5ae4cfc3f5b547e403907a7101cc587dd2f41fd427d845"
+    },
+    {
+      "source": "ui/project-locales.js",
+      "destination": "../public/project-locales.js",
+      "sha256": "7704858f7357851cb5fd80597de09f6c360e7f586b4e84201955bcd28a03db63"
+    },
+    {
+      "source": "ui/project-locales.css",
+      "destination": "../public/project-locales.css",
+      "sha256": "18aa04d42cd605c0fad29fd1cbc80d3232aa82440b8e84cc9c4a7945337e8113"
     },
     {
       "source": "src/extraction-actions.js",

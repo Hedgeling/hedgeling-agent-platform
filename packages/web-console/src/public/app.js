@@ -297,6 +297,7 @@ async function loadProject() {
   // Project selection is presented by the workspace picker.
   $("locale").closest("label").hidden = !hasProject;
   if (!hasProject) {
+    $("manageProjectLanguages").hidden = true;
     projectPermissionSet = new Set();
     applyPermissionVisibility();
     return false;
@@ -308,9 +309,13 @@ async function loadProject() {
   const enabledLocales = localeData.locales.filter((item) => item.enabled).map((item) => item.locale);
   locales = enabledLocales.length ? enabledLocales : fallbackLocales;
   if (!locales.includes(selectedLocale)) selectedLocale = locales[0] || selectedLocale;
-  const permissionData = await api(`/api/projects/${encodeURIComponent(selectedProjectSlug)}/permissions?locale=${encodeURIComponent(selectedLocale)}`);
+  const [permissionData, projectAccess] = await Promise.all([
+    api(`/api/projects/${encodeURIComponent(selectedProjectSlug)}/permissions?locale=${encodeURIComponent(selectedLocale)}`),
+    api(`/api/projects/${encodeURIComponent(selectedProjectSlug)}/permissions`),
+  ]);
   projectPermissionSet = new Set(permissionData.permissions || []);
   applyPermissionVisibility();
+  $("manageProjectLanguages").hidden = !(projectAccess.permissions || []).includes("locales.manage");
   populateSelect($("locale"), locales, selectedLocale);
   populateSelect($("personaLocale"), locales, selectedLocale);
   return true;
@@ -3690,6 +3695,11 @@ async function init() {
   activateView(target?.view || landing, { adminSection: target?.adminSection });
   await handleConnectCallback();
 }
+
+$("manageProjectLanguages").addEventListener("click", () => {
+  const project = projects.find(p => p.slug === selectedProjectSlug);
+  if (project) document.dispatchEvent(new CustomEvent("hedgeling:project-languages", { detail: { projectSlug: project.slug, organizationId: project.organizationId } }));
+});
 
 init().catch((err) => toast(err.message, "bad"));
 

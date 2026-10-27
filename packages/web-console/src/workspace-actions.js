@@ -4,6 +4,7 @@ import { query, withTransaction } from "./db.js";
 import { organizationPermissions, projectPermissions } from "./authorization.js";
 import { insertAuditEvent } from "./audit.js";
 import { isHumanDecisionActor } from "./principal-policy.js";
+import { projectLocales } from './project-locales-integration.js';
 import { extractionWorkflow } from './extraction-integration.js';
 
 import { fail } from "./action-errors.js";
@@ -114,6 +115,7 @@ async function creationLimits(client, organizationId, action, input) {
 }
 async function prepare(action, input, auth, context = {}, database = db) {
   const userId = await activeUser(auth, database);
+  if (action.name === 'project.locales.add') return projectLocales.prepare(input, auth, context, database, database !== db);
   if (action.name.startsWith('extraction.')) return extractionWorkflow.prepare(action.name, input, auth, context, database, database !== db);
   if (isWorkspaceUpdate(action.name)) return prepareWorkspaceUpdate(action, input, auth, context, database, database !== db);
   let organizationId = null;
@@ -159,6 +161,7 @@ export async function executeWorkspaceAction(name, input, auth, context = {}) {
   const action = WORKSPACE_ACTIONS.find((a) => a.name === name);
   if (!action) throw fail(404, "Unknown workspace action");
   input = normalizeInput(action, input);
+  if (name === 'project.locales.get') return projectLocales.read(input, auth, context);
   if (name.startsWith('extraction.') && action.readOnly) return extractionWorkflow.read(name, input, auth, context);
   if (name === "organizations.list") {
     let organizations = (await accessibleOrganizations(auth)).filter((o) => !Object.hasOwn(context, "organizationId") || context.organizationId === null || o.id === context.organizationId);
@@ -193,7 +196,8 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     if (expectedFingerprint !== proposal.fingerprint) throw fail(409, "The displayed proposal has changed");
     if (proposal.status === "confirmed") {
       await assertRunScope(auth, proposal.organization_id);
-      if (proposal.action.startsWith('extraction.')) await extractionWorkflow.replay(proposal.input, auth, {}, client);
+      if (proposal.action === 'project.locales.add') await projectLocales.replay(proposal.input, auth, {}, client);
+      else if (proposal.action.startsWith('extraction.')) await extractionWorkflow.replay(proposal.input, auth, {}, client);
       else if (isWorkspaceUpdate(proposal.action)) await prepareWorkspaceUpdate(WORKSPACE_ACTIONS.find((a) => a.name === proposal.action), proposal.input, auth, {}, client, false, true);
       else if (proposal.result?.projectSlug) await allowProject(auth, await project({ projectSlug: proposal.result.projectSlug }), "jobs.view", proposal.input.targetLocales);
       return { result: proposal.result, replayed: true };
@@ -211,7 +215,9 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     const input = proposal.input;
     let result;
     let organizationId = prepared.organizationId;
-    if (action.name.startsWith('extraction.')) {
+    if (action.name === 'project.locales.add') {
+      result = await projectLocales.apply(prepared, client);
+    } else if (action.name.startsWith('extraction.')) {
       result = await extractionWorkflow.apply(action.name, prepared, proposal, auth, client);
     } else if (isWorkspaceUpdate(action.name)) {
       result = await applyWorkspaceUpdate(action, input, prepared, client);

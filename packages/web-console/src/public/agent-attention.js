@@ -1,6 +1,8 @@
 // Only semantic destinations owned by the console are addressable. Tool/model
 // text never becomes a selector, script, URL, or click instruction.
 const toolActions = Object.freeze({
+  console_get_project_locales: 'read',
+  console_propose_project_locales: 'project.locales.add',
   console_list_source_connections: 'read',
   console_propose_extraction: 'extraction.start',
   console_list_extractions: 'read',
@@ -52,6 +54,10 @@ export class AgentAttention {
     let target;
     if (resource && ["organization", "business_unit", "project", "job"].includes(resource.type)) {
       target = [...document.querySelectorAll("#workspaceRoot [data-resource-id]")].find((node) => node.dataset.resourceType === resource.type && node.dataset.resourceId === resource.id);
+    }
+    if (action === 'project.locales.add' && resource?.type === 'project') {
+      const languages = [...document.querySelectorAll('#workspaceRoot .project-languages')].find(node => node.dataset.projectId === resource.id);
+      target = languages?.querySelector('summary') || target;
     }
     if (!target && action !== "read") target = [...document.querySelectorAll("#workspaceRoot [data-workspace-action]")].find((node) => node.dataset.workspaceAction === action)?.querySelector("summary");
     if (!target && action === "read") target = document.querySelector("#workspaceRoot .workspace-heading");

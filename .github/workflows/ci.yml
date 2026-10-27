@@ -40,5 +40,6 @@ jobs:
       - run: npm run test:navigation:browser
       - run: npm run test:agent:browser
       - run: npm -w @hedgeling/web-console run test:extraction:browser
+      - run: npm -w @hedgeling/web-console run test:locales:browser
       - run: npm run test:commercial:browser
       - run: docker build -f packages/web-console/Dockerfile .
