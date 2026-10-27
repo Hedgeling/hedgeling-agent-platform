@@ -102,3 +102,36 @@ test("assistant budget blocks dispatch; cancellation and unknown outcomes retain
   await assert.rejects(nextAgentTurn({ ...input, signal: new AbortController().signal }, access), (error) => error.status === 502 && !error.message.includes("private"));
   assert.equal(dispatched, 1); assert.ok(updates.at(-1)[1] > 0); assert.equal(updates.at(-1)[2], "unknown");
 });
+
+test("explicit chat allowance grants admit usage above the default but retain finite, validated limits", async (t) => {
+  const settings = { HEDGELING_AGENT_PROVIDER: "gemini", HEDGELING_AGENT_GEMINI_MODEL: config.model, HEDGELING_GEMINI_API_KEY: config.key };
+  const previous = Object.fromEntries(Object.keys(settings).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, settings);
+  t.after(() => { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+  let used = 600000, dispatched = 0, reservations = 0;
+  const updates = [];
+  t.mock.method(pool, "connect", async () => ({ release() {}, async query(sql) {
+    if (sql.includes(" as tokens from agent_model_usage")) return { rows: [{ tokens: used }] };
+    if (sql.startsWith("insert into agent_model_usage")) { reservations++; return { rows: [{ id: "test-grant" }] }; }
+    return { rows: [] };
+  } }));
+  t.mock.method(pool, "query", async (_sql, args) => { updates.push(args); return { rows: [] }; });
+  t.mock.method(globalThis, "fetch", async () => { dispatched++; return Response.json({ candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }], usageMetadata: { totalTokenCount: 23 } }); });
+  const input = { run: { id: "test-run", organization_id: null }, auth: { user: { id: "test-user" } }, history: [{ role: "user", parts: [{ text: "Hello" }] }], tools: [], signal: new AbortController().signal };
+  const turn = (limits) => nextAgentTurn(input, { checkAccess: async () => ({ allowed: true, limits }) });
+  await assert.rejects(turn({}), (error) => error.status === 429);
+  assert.equal((await turn({ dailyUserTokens: 10000000 })).parts[0].text, "ok");
+  assert.deepEqual(updates, [["test-grant", 23, "succeeded"]]);
+  used = 9999999; // A reservation cannot cross the configured ceiling.
+  await assert.rejects(turn({ dailyUserTokens: 10000000 }), (error) => error.status === 429);
+  used = 10000000;
+  await assert.rejects(turn({ dailyUserTokens: 20000000 }), (error) => error.status === 429);
+  used = 100;
+  await assert.rejects(turn({ dailyUserTokens: 100 }), (error) => error.status === 429);
+  used = 0;
+  await assert.rejects(turn({ dailyUserTokens: 0 }), (error) => error.status === 429);
+  for (const dailyUserTokens of [-1, 1.5, "10000000", "invalid", Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    await assert.rejects(turn({ dailyUserTokens }), (error) => error.code === "agent_allowance_invalid");
+  }
+  assert.equal(dispatched, 1); assert.equal(reservations, 1);
+});
