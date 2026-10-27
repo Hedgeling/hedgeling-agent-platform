@@ -75,6 +75,16 @@
       "Type": "String",
       "Default": "",
       "Description": "Optional server-to-server client secret ARN"
+    },
+    "MetaResponsesUrl": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Server-only Meta Responses HTTPS endpoint; required for organization Meta keys."
+    },
+    "MetaTranslationModel": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Meta model used for organization-owned contextual translations."
     }
   },
   "Conditions": {
@@ -948,6 +958,18 @@
                     "Ref": "AWS::NoValue"
                   }
                 ]
+              },
+              {
+                "Name": "HEDGELING_META_RESPONSES_URL",
+                "Value": {
+                  "Ref": "MetaResponsesUrl"
+                }
+              },
+              {
+                "Name": "HEDGELING_META_TRANSLATION_MODEL",
+                "Value": {
+                  "Ref": "MetaTranslationModel"
+                }
               }
             ],
             "Secrets": [

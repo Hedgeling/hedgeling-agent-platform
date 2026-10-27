@@ -5,6 +5,7 @@ import { fail } from './action-errors.js';
 import { localSignIn, requireLocalRequest } from "./local-auth.js";
 import express from "express";
 import agentRouter from "./agent-runtime.js";
+import { generateMetaText, metaTranslationConfiguration } from "./hackathon-engine/meta-translation.js";
 import organizationAiRouter, { translationProvider, expireAiProposals } from "./organization-ai.js";
 import billingConsoleRouter from "./billing-console.js";
 import path from "node:path";
@@ -1903,14 +1904,14 @@ app.post(
       { status: 503, code: "ai_output_limit_invalid" },
     );
   }
-  const configuredGeminiModel = geminiModelForPlan(
-    req.commercialAccess?.limits,
-  );
   const provider = await translationProvider(usageScope.organizationId);
+  const configuredModel = provider.provider === "meta" ? metaTranslationConfiguration().model : geminiModelForPlan(req.commercialAccess?.limits);
+  const providerLabel = provider.provider === "meta" ? "Meta" : "Gemini";
+  const translationSource = provider.provider === "meta" ? "mt" : "gemini";
   const managed = provider.mode === "managed";
   const creditRate = managed ? await loadActiveAiCreditRate({
-    provider: "gemini",
-    model: configuredGeminiModel,
+    provider: provider.provider,
+    model: configuredModel,
     operation: "translation",
   }) : null;
   const creditReservation = managed ? estimateAiCreditReservation(creditRate, {
@@ -1958,9 +1959,9 @@ app.post(
   usageScope.attemptNumber = reservation.attemptNumber;
 
   let revised = "";
-  let geminiResult = null;
+  let providerResult = null;
   let validationError = "";
-  const geminiAttempts = [];
+  const providerAttempts = [];
   const recordRevisionUsage = async ({
     client,
     outcome,
@@ -1969,14 +1970,14 @@ app.post(
     responseStatus = null,
     responseBody = null,
   }) => {
-    const attemptTextMeasurements = geminiAttempts.map((attempt) => (
+    const attemptTextMeasurements = providerAttempts.map((attempt) => (
       measureText(attempt.text, req.params.locale)
     ));
     const outputMeasurement = measureText(revised, req.params.locale);
-    const billedCredits = managed && outcome === "succeeded" && geminiResult
+    const billedCredits = managed && outcome === "succeeded" && providerResult
       ? calculateAiCredits(
         creditRate,
-        geminiBillableTokenUsage(geminiResult.raw?.usageMetadata),
+        geminiBillableTokenUsage(providerResult.raw?.usageMetadata),
       )
       : { quantity: 0, components: {} };
     return recordUsageEvent({
@@ -1986,9 +1987,9 @@ app.post(
       outcome,
       responseStatus,
       responseBody,
-      provider: "gemini",
-      model: geminiResult?.model || null,
-      providerRequestId: geminiResult?.raw?.responseId || null,
+      provider: provider.provider,
+      model: providerResult?.model || null,
+      providerRequestId: providerResult?.raw?.responseId || null,
       measurements: mergeMeasurements(
         {
           ai_generation_actions: outcome === "succeeded" ? 1 : 0,
@@ -2004,7 +2005,7 @@ app.post(
             0,
           ),
         },
-        ...geminiAttempts.map((attempt) => (
+        ...providerAttempts.map((attempt) => (
           geminiTokenMeasurements(attempt.raw?.usageMetadata)
         )),
       ),
@@ -2019,7 +2020,7 @@ app.post(
       }],
       metadata: {
         billingCategory: managed ? "managed_translation" : "organization_provider",
-        attempts: geminiAttempts.map((attempt, index) => ({
+        attempts: providerAttempts.map((attempt, index) => ({
           attempt: index + 1,
           model: attempt.model,
           apiVersion: attempt.apiVersion,
@@ -2034,8 +2035,8 @@ app.post(
           reservedQuantity: creditReservation.quantity,
           rateCardKey: creditRate?.rateCardKey || null,
           rateCardVersion: creditRate?.rateCardVersion || null,
-          provider: "gemini",
-          model: configuredGeminiModel,
+          provider: provider.provider,
+          model: configuredModel,
           operation: "translation",
         },
         providerError: providerError
@@ -2053,22 +2054,22 @@ app.post(
       ? `\n\nPrevious output was rejected because: ${validationError}. Produce a corrected final string only.`
       : "";
     try {
-      geminiResult = await callGeminiText({
+      providerResult = await (provider.provider === "meta" ? generateMetaText : callGeminiText)({
         system: prompt.system,
         user: `${prompt.user}${retryNote}`,
-        model: configuredGeminiModel,
+        model: configuredModel,
         maxOutputTokens: maximumOutputTokens,
         apiKey: provider.key,
       });
     } catch (error) {
       await recordRevisionUsage({
-        outcome: geminiAttempts.length ? "partial" : "failed",
+        outcome: providerAttempts.length ? "partial" : "failed",
         providerError: error,
       });
       throw error;
     }
-    revised = cleanGeminiTranslation(geminiResult.text);
-    geminiAttempts.push(geminiResult);
+    revised = cleanGeminiTranslation(providerResult.text);
+    providerAttempts.push(providerResult);
     validationError = "";
     if (isInvalidTranslationText(revised)) validationError = "invalid or bracketed placeholder output";
     else if (!placeholdersPreserved(source.sourceText, revised)) validationError = "required placeholders were not preserved";
@@ -2084,27 +2085,27 @@ app.post(
 
   if (validationError) {
     await recordRevisionUsage({ outcome: "failed" });
-    return res.status(502).json({ error: `Gemini revision rejected: ${validationError}` });
+    return res.status(502).json({ error: `${providerLabel} revision rejected: ${validationError}` });
   }
 
   let responseBody;
   try {
     responseBody = await withTransaction(async (client) => {
       const upserted = await client.query(
-      `insert into translations(source_string_id, locale, text, mt_status, human_status, source)
-       values($1, $2, $3, 'ready', 'pending', 'gemini')
+      `insert into translations(source_string_id, locale, text, mt_status, human_status, source, provider, model)
+       values($1, $2, $3, 'ready', 'pending', $4, $5, $6)
        on conflict(source_string_id, locale) do update
        set text = excluded.text,
            mt_status = 'ready',
            human_status = 'pending',
-           source = 'gemini',
+           source = excluded.source, provider = excluded.provider, model = excluded.model, confidence = null, review_note = null,
            updated_at = now()
-       returning id, locale, text, mt_status as "mtStatus", human_status as "humanStatus", source, updated_at as "updatedAt"`,
-      [source.id, req.params.locale, revised],
+       returning id, locale, text, mt_status as "mtStatus", human_status as "humanStatus", source, provider, model, updated_at as "updatedAt"`,
+      [source.id, req.params.locale, revised, translationSource, provider.provider, providerResult.model],
     );
       const revision = await client.query(
       `insert into translation_revisions(translation_id, source_string_id, locale, previous_text, next_text, revision_source, instruction, prompt_snapshot)
-       values($1, $2, $3, $4, $5, 'gemini', $6, $7)
+       values($1, $2, $3, $4, $5, $8, $6, $7)
        returning id`,
       [
         upserted.rows[0].id,
@@ -2115,21 +2116,23 @@ app.post(
         instruction || null,
         JSON.stringify({
           ...prompt.promptSnapshot,
-          model: geminiResult.model,
-          apiVersion: geminiResult.apiVersion,
-          finishReason: geminiResult.raw?.candidates?.[0]?.finishReason || null,
-          usageMetadata: geminiResult.raw?.usageMetadata || {},
+          provider: provider.provider,
+          model: providerResult.model,
+          apiVersion: providerResult.apiVersion,
+          finishReason: providerResult.raw?.candidates?.[0]?.finishReason || null,
+          usageMetadata: providerResult.raw?.usageMetadata || {},
         }),
+        translationSource,
       ],
     );
       const successfulResponse = {
-        message: "Gemini revision complete. Review and save manually to mark it verified.",
+        message: `${providerLabel} revision complete. Review and save manually to mark it verified.`,
         translation: upserted.rows[0],
         usageWarnings: reservation.warnings,
         billingCategory: managed ? "managed_translation" : "organization_provider",
         aiCredits: managed ? calculateAiCredits(
           creditRate,
-          geminiBillableTokenUsage(geminiResult.raw?.usageMetadata),
+          geminiBillableTokenUsage(providerResult.raw?.usageMetadata),
         ).quantity : 0,
       };
       await recordRevisionUsage({

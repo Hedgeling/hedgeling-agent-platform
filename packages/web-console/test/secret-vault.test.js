@@ -14,6 +14,10 @@ test("provider secrets authenticate their tenant, support key rotation, and fail
     const saved = encryptSecret("private-provider-key", "org-a");
     assert.ok(!JSON.stringify(saved).includes("private-provider-key"));
     assert.equal(decryptSecret(saved, "org-a"), "private-provider-key");
+    assert.throws(() => decryptSecret(saved, "org-a", "meta"), { code: "ai_key_unavailable" });
+    const meta = encryptSecret("private-meta-key", "org-a", "meta");
+    assert.equal(decryptSecret(meta, "org-a", "meta"), "private-meta-key");
+    assert.throws(() => decryptSecret(meta, "org-a"), { code: "ai_key_unavailable" });
     assert.throws(() => decryptSecret(saved, "org-b"), { code: "ai_key_unavailable" });
     assert.throws(() => decryptSecret({ ...saved, ciphertext: Buffer.from("tampered").toString("base64") }, "org-a"), { code: "ai_key_unavailable" });
     process.env.HEDGELING_AI_KEYRING = JSON.stringify({ old, next }); process.env.HEDGELING_AI_KEY_ID = "next";
