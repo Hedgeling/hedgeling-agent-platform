@@ -49,3 +49,13 @@ Use `/api/health`, ECS service events and the demo CloudWatch log group for trou
 Rotate a model key in the demo runtime secret, then force a new demo service deployment; ECS injects secret values at task startup. Keep AI keyring entries needed to decrypt previously saved credentials when rotating the active key. Restarting tasks interrupts active agent runs, so deploy between demo sessions. The current single-task service is a staging configuration, not a high-availability claim.
 
 Additional judges require individual Cognito logins and explicit workspace membership. Never enable public signup merely to grant a judge access. The seeded organization provides the initial chat context; newly created organizations still need their own entitlement setup. Product onboarding and Meta BYOK are not replaced by this operator-only bootstrap.
+
+## Synthetic extraction project
+
+The source workflow needs the separate private engine connection configured on the demo server. Vendor the event-only modules from a clean reviewed commit in the submission repository; retain their license and hash manifest. Server startup applies the additive extraction connection/request migration. The old engine is never included in this console image.
+
+After deployment, run the explicit one-off command `node packages/web-console/scripts/seed-extraction-demo.js` using the demo task's existing network, roles and secret references. Set `HEDGELING_DEMO_SEED_ENABLED=true` and `HEDGELING_DEMO_SOURCE` to a JSON object containing `connectionId`, `repositoryId`, `owner`, and `repository` from the verified synthetic GitHub installation. It only accepts `hackathon-source` for `Hedgeling/hedgeling-meta-hackathon` and refuses other database/workspace identities or conflicting records. The numeric repository ID must come from the verified installation, not a guessed value.
+
+This creates **Source demo → Source extraction demo** (`extraction-demo`) within the existing synthetic workspace, with English source and access limited to `examples/source`. Existing workspace owners inherit their normal project permissions. It creates no new memberships, billing, extraction jobs or imports. Repeating the same seed is safe; changed bindings require explicit review.
+
+Try chat: “Extract source strings for project extraction-demo from its connected repository, using main and examples/source.” Confirm the extraction, wait for the progress card, then select **Review import** and confirm separately. Manual access is in the workspace project's **Source extraction** panel. The preview discloses hosted source processing and the pinned commit. No translation or repository write starts in this flow. Label any operator smoke run separately from live Meta chat verification.

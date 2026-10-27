@@ -1,6 +1,11 @@
 // Only semantic destinations owned by the console are addressable. Tool/model
 // text never becomes a selector, script, URL, or click instruction.
 const toolActions = Object.freeze({
+  console_list_source_connections: 'read',
+  console_propose_extraction: 'extraction.start',
+  console_list_extractions: 'read',
+  console_get_extraction: 'read',
+  console_propose_extraction_import: 'extraction.import',
   console_propose_organization: "organization.create",
   console_propose_business_unit: "business_unit.create",
   console_propose_project: "project.create",

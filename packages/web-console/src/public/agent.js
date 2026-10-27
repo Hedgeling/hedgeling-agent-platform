@@ -1,4 +1,5 @@
 import { request, element, proposalCard, Workspace, typewriterComposer } from "./agent-components.js";
+import { extractionProgress } from './extraction.js';
 
 // A duplicated tab copies sessionStorage. Give every document its own lease
 // identity so two tabs can never accidentally share control.
@@ -169,6 +170,17 @@ function receive(item, { replay = false } = {}) {
     if (card) card.replaceChildren(element("p", "agent-receipt", "✓ Change confirmed"));
     const resource = data.organization || data.businessUnit || data.project || data.job;
     if (resource) message("assistant", data.uiTarget?.action?.endsWith(".update") ? `${resource.name} has been updated.` : `${resource.name} is ready${data.job ? " as a draft" : ""}.`, { replay });
+    if (data.extraction) $("agentMessages").append(extractionProgress({ projectSlug: data.extraction.projectSlug, extractionId: data.extraction.id, request,
+      onImport: async ({ projectSlug, extractionId }) => {
+        if (run?.status !== 'awaiting_input') throw new Error('Resume the conversation and finish any pending approval before reviewing this import.');
+        await request(`/api/agent/runs/${run.id}/messages`, { controllerId, text: `Review importing extraction ${extractionId} into project ${projectSlug}. Prepare the import preview; do not start another extraction.` });
+      } }));
+    if (data.import) {
+      message('assistant', 'Your extracted source strings have been imported. Existing translations were preserved.', { replay });
+      for (const progress of shell.querySelectorAll('[data-extraction-id]')) {
+        if (progress.dataset.extractionId === data.import.extractionId) progress.dispatchEvent(new Event('extraction-refresh'));
+      }
+    }
     if (!hasWorkspace) {
       const link = element("a", "agent-workspace-link", "Open workspace to inspect this change"); link.href = "/?workspace=1";
       $("agentMessages").append(link);

@@ -12,6 +12,11 @@ const route = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(ne
 const active = new Map();
 const running = ["planning", "reading", "executing"];
 const activityLabels = {
+  console_list_source_connections: 'Checking connected repositories',
+  console_propose_extraction: 'Preparing your source extraction',
+  console_list_extractions: 'Looking up extraction requests',
+  console_get_extraction: 'Checking extraction progress',
+  console_propose_extraction_import: 'Reviewing extracted source strings',
   console_list_organizations: "Checking your organizations",
   console_get_workspace: "Looking at the workspace",
   console_list_projects: "Looking up your projects",

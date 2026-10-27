@@ -11,14 +11,16 @@ export function serverUrl(value, label) {
 }
 
 export async function requestJson(url, { token, body, signal = new AbortController().signal,
-  fetchImpl = fetch, maxBytes = 524288 } = {}) {
+  fetchImpl = fetch, maxBytes = 524288, idempotencyKey } = {}) {
   signal.throwIfAborted();
   if (!token || /[\r\n]/.test(token)) throw new AgentError(503, 'A server credential is required.');
+  if (idempotencyKey !== undefined && !/^[A-Za-z0-9_.:-]{8,128}$/.test(idempotencyKey)) throw new AgentError(400, 'Invalid idempotency key.');
   const deadline = AbortSignal.any([signal, AbortSignal.timeout(45000)]);
   try {
     const response = await fetchImpl(url, {
       method: body === undefined ? 'GET' : 'POST',
       headers: { authorization: `Bearer ${token}`, accept: 'application/json',
+        ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
         ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: deadline, redirect: 'error',

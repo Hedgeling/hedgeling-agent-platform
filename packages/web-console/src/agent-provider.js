@@ -28,6 +28,8 @@ function fixtureTurn(history, organizationId) {
   const part = (name, args) => ({ role: "model", parts: [{ functionCall: { name, args } }] });
   if (confirmation) {
     const result = JSON.parse(confirmation.text.slice("Confirmed result: ".length));
+    if (result.extraction) return part('console_get_extraction', { projectSlug: result.extraction.projectSlug, extractionId: result.extraction.id });
+    if (result.import) return { role: 'model', parts: [{ text: 'Your source strings were imported after confirmation. Existing translations were preserved.' }] };
     if (result.uiTarget?.action?.endsWith(".update")) return { role: "model", parts: [{ text: "Saved your confirmed changes. You can see the updated item in Projects." }] };
     if (result.organization) return part("console_propose_business_unit", { organizationId: result.organization.id, name: "Product" });
     if (result.businessUnit) return part("console_propose_project", { businessUnitId: result.businessUnit.id, name: "Website", sourceLocale: "en", targetLocales: ["fr", "de"] });
@@ -36,6 +38,18 @@ function fixtureTurn(history, organizationId) {
   }
   const rename = !response?.name?.endsWith("_update") && fixtureRename(history, organizationId, part);
   if (rename) return rename;
+  // Explicit synthetic prompts for local browser/MCP tests. Production Meta
+  // follows the extraction skill using these same authenticated tools.
+  const lastUser = history.findLast(item => item.role === 'user' && !item.confirmation && item.parts?.some(p => p.text));
+  const extractionPrompt = /^Extract source from project "([^"]+)" at "([^"]+)" in "([^"]+)"\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  if (response?.name === 'console_list_source_connections' && extractionPrompt) {
+    const connections = response.response.connections || [];
+    if (connections.length !== 1) return { role: 'model', parts: [{ text: 'Choose one connected repository before extracting.' }] };
+    return part('console_propose_extraction', { projectSlug: extractionPrompt[1], connectionId: connections[0].connectionId, ref: extractionPrompt[2], scanRoots: [extractionPrompt[3]] });
+  }
+  if (!response && !confirmation && extractionPrompt) return part('console_list_source_connections', { projectSlug: extractionPrompt[1] });
+  const importPrompt = /^Review importing extraction ([a-f0-9-]{36}) into project ([\w-]+)\./.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  if (!response && !confirmation && importPrompt) return part('console_propose_extraction_import', { projectSlug: importPrompt[2], extractionId: importPrompt[1] });
   if (response?.name === "console_report_workspace" && response.response.metrics) {
     const m = response.response.metrics;
     return { role: "model", parts: [{ text: `Across the projects you can access: ${m.projects} projects, ${m.businessUnits} business units, and ${m.jobs} localization-job drafts. These totals cover all permitted matches, not just the first page. Translation execution is not included.` }] };

@@ -1,4 +1,6 @@
+import { EXTRACTION_SKILL } from './hackathon-engine/extraction-actions.js';
 export const agentSkills = Object.freeze([
+  EXTRACTION_SKILL,
   { id: "billing-and-provider-handoff", version: 1, actions: [],
     instructions: "Chat is included with an active platform plan or 14-day trial, subject to fair-use limits. It never consumes translation credits. Translation work uses either Hedgeling credits or the organization's Gemini key; BYOK does not replace the platform subscription. Direct billing questions to Admin > Billing & usage and provider settings to Admin > AI providers & keys. Never ask for or repeat payment card numbers or API keys in chat; guide the person to the secure settings form. Never claim a payment or provider setting changed without a confirmed result." },
   { id: "workspace-management", version: 1, actions: ["organizations.list", "workspace.get", "projects.list", "localization_jobs.list", "organization.update", "business_unit.update", "project.update", "localization_job.update"],

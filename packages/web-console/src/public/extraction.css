@@ -1,0 +1,14 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+.extraction-panel, .extraction-progress { color: var(--text-main); }
+.extraction-panel > div { margin-top: 16px; }
+.extraction-progress { margin: 16px 0; padding: 18px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--background-pane); overflow-wrap: anywhere; }
+.extraction-progress h4 { margin: 8px 0; font-size: 17px; }
+.extraction-progress p { line-height: 1.5; }
+.extraction-progress button { margin: 8px 8px 0 0; }
+.extraction-eyebrow { color: var(--text-accent); letter-spacing: .1em; font-size: 11px; font-weight: 700; }
+.extraction-commit { font-family: var(--font-mono, monospace); font-size: 11px; }
+.extraction-note { color: var(--text-muted); font-size: 12px; }
+.extraction-sample { margin: 12px 0; padding-left: 20px; font-family: 'Courier Prime', monospace; }
+.extraction-sample li { margin: 6px 0; white-space: pre-wrap; }
+.extraction-success { padding: 12px; border-inline-start: 3px solid var(--text-accent); }
+.extraction-panel textarea { width: 100%; color: var(--text-main); background: var(--background-pane); border: 1px solid var(--line-soft); border-radius: 6px; padding: 10px; box-sizing: border-box; font: inherit; }
