@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "4cfe2875f3c44015dfa6ed8069a327f00ab5bd6e",
+  "revision": "4fcd3271c24073366c17f39148aa8a3ce91ad6a4",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -73,6 +73,11 @@
       "source": "contracts/202610271600_meta_byok.sql",
       "destination": "../../db/migrations/202610271600_meta_byok.sql",
       "sha256": "762e176d8ec36eb5cdaa3b33c205fa65cccc9ebcd19b39e488403729c1d97ef5"
+    },
+    {
+      "source": "ui/chat-markdown.js",
+      "destination": "../public/chat-markdown.js",
+      "sha256": "6a8aaed798901a49f011391eefcc57fdc02109d12f8c79131d1878a9531483cc"
     },
     {
       "source": "ui/extraction.js",

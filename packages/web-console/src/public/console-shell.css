@@ -2,7 +2,7 @@
 .console-layout { --sidebar-width: 224px; display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); grid-template-rows: 64px minmax(0, 1fr); height: 100dvh; overflow: hidden; }
 .console-layout[data-sidebar-collapsed="true"] { --sidebar-width: 72px; }
 .console-layout [hidden] { display: none !important; }
-.console-layout :is(.console-main, .console-sidebar, .console-topbar) :is(button, input, select, textarea, .tab-link) { border-width: 1px; border-color: var(--line-soft); border-radius: var(--radius-sm); box-shadow: none; }
+.console-layout :is(.console-main, .console-sidebar, .console-topbar) :is(button, input, select, textarea, .tab-link) { border-width: 1px; border-color: var(--border-color-heavy); border-radius: var(--radius-sm); box-shadow: none; }
 .console-layout :is(.console-main, .console-sidebar, .console-topbar) :is(button, .tab-link):hover { transform: none; box-shadow: none; }
 .console-layout :focus-visible { outline: 2px solid var(--text-accent); outline-offset: 3px; }
 .console-layout svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
