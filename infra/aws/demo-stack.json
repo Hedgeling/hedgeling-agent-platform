@@ -65,6 +65,16 @@
       "Type": "String",
       "Description": "Exact sub_claim_prefix reported by the repository OIDC customization API; supports immutable owner/repository IDs.",
       "AllowedPattern": "repo:[A-Za-z0-9_.@-]+/[A-Za-z0-9_.@-]+"
+    },
+    "EngineUrl": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Optional server-side private engine HTTPS base URL"
+    },
+    "EngineClientSecretArn": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Optional server-to-server client secret ARN"
     }
   },
   "Conditions": {
@@ -74,6 +84,34 @@
           "Ref": "ServiceEnabled"
         },
         "true"
+      ]
+    },
+    "EngineConfigured": {
+      "Fn::And": [
+        {
+          "Fn::Not": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "EngineUrl"
+                },
+                ""
+              ]
+            }
+          ]
+        },
+        {
+          "Fn::Not": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "EngineClientSecretArn"
+                },
+                ""
+              ]
+            }
+          ]
+        }
       ]
     }
   },
@@ -474,6 +512,17 @@
                       "Fn::GetAtt": [
                         "Database",
                         "MasterUserSecret.SecretArn"
+                      ]
+                    },
+                    {
+                      "Fn::If": [
+                        "EngineConfigured",
+                        {
+                          "Ref": "EngineClientSecretArn"
+                        },
+                        {
+                          "Ref": "AWS::NoValue"
+                        }
                       ]
                     }
                   ]
@@ -885,6 +934,20 @@
               {
                 "Name": "HEDGELING_AI_KEY_ID",
                 "Value": "demo-v1"
+              },
+              {
+                "Fn::If": [
+                  "EngineConfigured",
+                  {
+                    "Name": "HEDGELING_ENGINE_URL",
+                    "Value": {
+                      "Ref": "EngineUrl"
+                    }
+                  },
+                  {
+                    "Ref": "AWS::NoValue"
+                  }
+                ]
               }
             ],
             "Secrets": [
@@ -922,6 +985,20 @@
                 "ValueFrom": {
                   "Fn::Sub": "${RuntimeSecret}:aiKeyring::"
                 }
+              },
+              {
+                "Fn::If": [
+                  "EngineConfigured",
+                  {
+                    "Name": "HEDGELING_ENGINE_TOKEN",
+                    "ValueFrom": {
+                      "Fn::Sub": "${EngineClientSecretArn}:token::"
+                    }
+                  },
+                  {
+                    "Ref": "AWS::NoValue"
+                  }
+                ]
               }
             ],
             "LogConfiguration": {

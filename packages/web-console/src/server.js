@@ -1,4 +1,5 @@
 import actionsRouter from "./actions.js";
+import { engineStatus } from "./hackathon-engine/engine-status.js";
 import { localSignIn, requireLocalRequest } from "./local-auth.js";
 import express from "express";
 import agentRouter from "./agent-runtime.js";
@@ -10,6 +11,7 @@ import { query, withTransaction } from "./db.js";
 import {
   authenticationConfiguration,
   requireAuthentication,
+  requirePlatformAdmin,
   requirePlatformOperationsAccess,
   validateAuthenticationConfiguration,
 } from "./auth.js";
@@ -1077,6 +1079,11 @@ app.use(express.static(path.join(__dirname, "public")));
 app.get("/api/me", (req, res) => {
   res.json({ auth: req.auth });
 });
+
+app.get("/api/platform/engine-status", requirePlatformAdmin, asyncRoute(async (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(await engineStatus());
+}));
 
 app.use("/api/actions", actionsRouter);
 app.use("/api/agent", authRateLimit({ key: "agent-console", limit: 300, identity: (req) => req.auth?.user?.id }), agentRouter);
