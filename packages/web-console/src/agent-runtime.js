@@ -12,6 +12,8 @@ const route = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(ne
 const active = new Map();
 const running = ["planning", "reading", "executing"];
 const activityLabels = {
+  console_get_project_locales: 'Checking the project’s languages',
+  console_propose_project_locales: 'Preparing new target languages',
   console_list_source_connections: 'Checking connected repositories',
   console_propose_extraction: 'Preparing your source extraction',
   console_list_extractions: 'Looking up extraction requests',

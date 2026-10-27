@@ -28,6 +28,7 @@ function fixtureTurn(history, organizationId) {
   const part = (name, args) => ({ role: "model", parts: [{ functionCall: { name, args } }] });
   if (confirmation) {
     const result = JSON.parse(confirmation.text.slice("Confirmed result: ".length));
+    if (result.addedLocales) return { role: 'model', parts: [{ text: `Added ${result.addedLocales.join(', ')} to your project after confirmation. Choose a translation action when you’re ready.` }] };
     if (result.extraction) return part('console_get_extraction', { projectSlug: result.extraction.projectSlug, extractionId: result.extraction.id });
     if (result.import) return { role: 'model', parts: [{ text: 'Your source strings were imported after confirmation. Existing translations were preserved.' }] };
     if (result.uiTarget?.action?.endsWith(".update")) return { role: "model", parts: [{ text: "Saved your confirmed changes. You can see the updated item in Projects." }] };
@@ -46,6 +47,11 @@ function fixtureTurn(history, organizationId) {
     const connections = response.response.connections || [];
     if (connections.length !== 1) return { role: 'model', parts: [{ text: 'Choose one connected repository before extracting.' }] };
     return part('console_propose_extraction', { projectSlug: extractionPrompt[1], connectionId: connections[0].connectionId, ref: extractionPrompt[2], scanRoots: [extractionPrompt[3]] });
+  }
+  const languagePrompt = /^Add locales "([^"]+)" to project "([^"]+)"\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  if (languagePrompt && !confirmation) {
+    if (!response) return part('console_get_project_locales', { projectSlug: languagePrompt[2] });
+    if (response.name === 'console_get_project_locales' && !response.response.error) return part('console_propose_project_locales', { projectSlug: languagePrompt[2], targetLocales: languagePrompt[1].split(',').map(value => value.trim()) });
   }
   if (!response && !confirmation && extractionPrompt) return part('console_list_source_connections', { projectSlug: extractionPrompt[1] });
   const importPrompt = /^Review importing extraction ([a-f0-9-]{36}) into project ([\w-]+)\./.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');

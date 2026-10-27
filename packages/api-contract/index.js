@@ -2,6 +2,7 @@
 // These describe behavior, not authorization grants. The server reauthorizes
 // each invocation using its authenticated principal and resolved resource.
 import Ajv from "ajv";
+import { PROJECT_LOCALE_ACTIONS } from './project-locales-actions.js';
 import { EXTRACTION_ACTIONS } from './extraction-actions.js';
 export const ACTION_CONTRACT_VERSION = 1;
 const text = { type: "string", minLength: 1, maxLength: 200, pattern: "\\S" };
@@ -19,6 +20,7 @@ export const REPORT_ACTIONS = [
 ];
 export const WORKSPACE_ACTIONS = [
   ...EXTRACTION_ACTIONS,
+  ...PROJECT_LOCALE_ACTIONS,
   action("organizations.list", "console_list_organizations", "List permitted organizations in pages. Follow page.nextCursor until hasMore is false; never treat one page as the full account list.", "organization.view", schema({ search, ...paging }, [])),
   action("workspace.get", "console_get_workspace", "Read an organization and pages of permitted projects and business units. Continue each collection using pages.projects.nextCursor as projectCursor and pages.businessUnits.nextCursor as businessUnitCursor. For totals use console_report_workspace.", "organization.view", schema({ organizationId: id, limit: paging.limit, projectCursor: paging.cursor, businessUnitCursor: paging.cursor }, ["organizationId"])),
   action("organization.create", "console_propose_organization", "Preview creating an empty customer organization and its initial owner. Requires human confirmation; creates no subscription, BU, project or credential.", "", schema({ name: text }), false),

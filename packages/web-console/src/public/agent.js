@@ -130,10 +130,13 @@ function message(role, text, { replay = false } = {}) {
   item.append(element("span", "agent-message-author", role === "user" ? "You" : brand.agentName), content);
   $("agentMessages").append(item);
 }
+function hasUnsavedEdits() {
+  return dirty || [...document.querySelectorAll('.project-languages form input')].some(input => input.value.trim());
+}
 async function follow(target, { phase = "working", card, label = "Looking at this section" } = {}) {
   const generation = ++attentionGeneration;
   if (!target || !$("agentFollow").checked || ["paused", "cancelled"].includes(run?.status)) return;
-  if (dirty) { await pauseRun(); showError(new Error("Your unsaved edits are still on screen. Save them before resuming the agent.")); return; }
+  if (hasUnsavedEdits()) { await pauseRun(); showError(new Error("Your unsaved edits are still on screen. Save them before resuming the agent.")); return; }
   if (target.view === "workspace") {
     await workspace.refresh(target.organizationId, target.resource?.type === "job" ? target.resource.id : null);
     if (generation !== attentionGeneration || !$("agentFollow").checked || ["paused", "cancelled"].includes(run?.status)) return;
@@ -171,7 +174,7 @@ function receive(item, { replay = false } = {}) {
     const card = shell.querySelector(`[data-proposal-id="${data.proposalId}"]`);
     if (card) card.replaceChildren(element("p", "agent-receipt", "✓ Change confirmed"));
     const resource = data.organization || data.businessUnit || data.project || data.job;
-    if (resource) message("assistant", data.uiTarget?.action?.endsWith(".update") ? `${resource.name} has been updated.` : `${resource.name} is ready${data.job ? " as a draft" : ""}.`, { replay });
+    if (resource) message("assistant", data.addedLocales ? `Added ${data.addedLocales.join(", ")} to ${resource.name}.` : data.uiTarget?.action?.endsWith(".update") ? `${resource.name} has been updated.` : `${resource.name} is ready${data.job ? " as a draft" : ""}.`, { replay });
     if (data.extraction) $("agentMessages").append(extractionProgress({ projectSlug: data.extraction.projectSlug, extractionId: data.extraction.id, request,
       onImport: async ({ projectSlug, extractionId }) => {
         if (run?.status !== 'awaiting_input') throw new Error('Resume the conversation and finish any pending approval before reviewing this import.');
@@ -246,7 +249,7 @@ async function activateComposer({ takeControl = false } = {}) {
     if (run?.id !== currentRun || run.generation > result.run.generation) return;
     run = result.run;
     // Preserve manual edits instead of refreshing the underlying workspace.
-    if (dirty) $("agentFollow").checked = false;
+    if (hasUnsavedEdits()) $("agentFollow").checked = false;
     $("agentError").textContent = "";
     updateState(run.status);
     if (run.status === "awaiting_confirmation") shell.querySelector(".agent-proposal button:not(:disabled)")?.focus();
@@ -275,6 +278,16 @@ async function initialize() {
     async browseWorkspace(id) { await initialized; await workspace.refresh(id); },
     async showProjects() { await initialized; await workspace.refresh(workspace.organizationId || config.organizations[0]?.id || null); },
   };
+  document.addEventListener("hedgeling:project-languages", async ({ detail }) => {
+    try {
+      setMode("minimized");
+      window.HedgelingConsole?.navigate("workspace", { manual: true, load: false });
+      await workspace.refresh(detail.organizationId);
+      const panel = [...document.querySelectorAll('.project-languages')].find(node => node.dataset.projectSlug === detail.projectSlug);
+      const details = panel?.querySelector('details');
+      if (details) { details.open = true; details.querySelector('input')?.focus(); panel.scrollIntoView({ block: 'center' }); }
+    } catch (error) { window.HedgelingConsole?.notify(error.message); }
+  });
   window.HedgelingShell?.agentAvailable(config, brand);
   document.addEventListener("hedgeling:manual-navigation", () => { $("agentFollow").checked = false; attentionGeneration++; attention.clear(); });
   $("agentFollow").addEventListener("change", () => { if (!$("agentFollow").checked) { attentionGeneration++; attention.clear(); } });
@@ -314,7 +327,7 @@ async function initialize() {
   }
   $("agentOpaque").addEventListener("click", () => { const opaque = shell.dataset.opaque !== "true"; shell.dataset.opaque = String(opaque); $("agentOpaque").setAttribute("aria-pressed", String(opaque)); });
   $("agentWidth").addEventListener("input", (event) => document.documentElement.style.setProperty("--agent-panel-width", `${Number(event.target.value)}px`));
-  document.addEventListener("input", (event) => { if (event.target.closest("main") && (event.target.matches("textarea:not([readonly])") || event.target.closest("form"))) dirty = true; });
+  document.addEventListener("input", (event) => { if (event.target.closest("main") && !event.target.closest(".project-languages") && (event.target.matches("textarea:not([readonly])") || event.target.closest("form"))) dirty = true; });
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "Space") { event.preventDefault(); setMode(mode === "minimized" ? "panel" : "minimized"); }
     if (event.key === "Escape" && mode === "overlay") { event.preventDefault(); setMode("minimized"); }

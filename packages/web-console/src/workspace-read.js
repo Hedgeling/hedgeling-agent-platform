@@ -47,6 +47,12 @@ export async function readWorkspace(auth, input, context) {
     p.canViewJobs = permissions.includes("jobs.view");
     const unscoped = await projectPermissions(auth, { ...p, organizationId: input.organizationId });
     p.canEdit = unscoped.includes("projects.manage");
+    p.canManageLocales = unscoped.includes("locales.manage");
+    if (!p.canManageLocales) {
+      const visibleLocales = [];
+      for (const locale of p.targetLocales) if ((await projectPermissions(auth, { ...p, organizationId: input.organizationId }, { locale })).includes("locales.view")) visibleLocales.push(locale);
+      p.targetLocales = visibleLocales;
+    }
     p.canExtract = unscoped.includes('imports.run') && unscoped.includes('strings.view');
   }
   return { organization: data.organization, projects: projects.items, businessUnits: units.items, pages: { projects: projects.page, businessUnits: units.page } };
