@@ -4,6 +4,7 @@ import { query, withTransaction } from "./db.js";
 import { organizationPermissions, projectPermissions } from "./authorization.js";
 import { insertAuditEvent } from "./audit.js";
 import { isHumanDecisionActor } from "./principal-policy.js";
+import { extractionWorkflow } from './extraction-integration.js';
 
 import { fail } from "./action-errors.js";
 import { accessibleOrganizations, readWorkspace, readJobs } from "./workspace-read.js";
@@ -113,6 +114,7 @@ async function creationLimits(client, organizationId, action, input) {
 }
 async function prepare(action, input, auth, context = {}, database = db) {
   const userId = await activeUser(auth, database);
+  if (action.name.startsWith('extraction.')) return extractionWorkflow.prepare(action.name, input, auth, context, database, database !== db);
   if (isWorkspaceUpdate(action.name)) return prepareWorkspaceUpdate(action, input, auth, context, database, database !== db);
   let organizationId = null;
   let resources = {};
@@ -157,6 +159,7 @@ export async function executeWorkspaceAction(name, input, auth, context = {}) {
   const action = WORKSPACE_ACTIONS.find((a) => a.name === name);
   if (!action) throw fail(404, "Unknown workspace action");
   input = normalizeInput(action, input);
+  if (name.startsWith('extraction.') && action.readOnly) return extractionWorkflow.read(name, input, auth, context);
   if (name === "organizations.list") {
     let organizations = (await accessibleOrganizations(auth)).filter((o) => !Object.hasOwn(context, "organizationId") || context.organizationId === null || o.id === context.organizationId);
     if (input.search) organizations = organizations.filter((o) => `${o.name} ${o.slug}`.toLowerCase().includes(input.search.toLowerCase()));
@@ -190,7 +193,8 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     if (expectedFingerprint !== proposal.fingerprint) throw fail(409, "The displayed proposal has changed");
     if (proposal.status === "confirmed") {
       await assertRunScope(auth, proposal.organization_id);
-      if (isWorkspaceUpdate(proposal.action)) await prepareWorkspaceUpdate(WORKSPACE_ACTIONS.find((a) => a.name === proposal.action), proposal.input, auth, {}, client, false, true);
+      if (proposal.action.startsWith('extraction.')) await extractionWorkflow.replay(proposal.input, auth, {}, client);
+      else if (isWorkspaceUpdate(proposal.action)) await prepareWorkspaceUpdate(WORKSPACE_ACTIONS.find((a) => a.name === proposal.action), proposal.input, auth, {}, client, false, true);
       else if (proposal.result?.projectSlug) await allowProject(auth, await project({ projectSlug: proposal.result.projectSlug }), "jobs.view", proposal.input.targetLocales);
       return { result: proposal.result, replayed: true };
     }
@@ -207,7 +211,9 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     const input = proposal.input;
     let result;
     let organizationId = prepared.organizationId;
-    if (isWorkspaceUpdate(action.name)) {
+    if (action.name.startsWith('extraction.')) {
+      result = await extractionWorkflow.apply(action.name, prepared, proposal, auth, client);
+    } else if (isWorkspaceUpdate(action.name)) {
       result = await applyWorkspaceUpdate(action, input, prepared, client);
     } else if (action.name === "organization.create") {
       await client.query("select pg_advisory_xact_lock(hashtext($1))", [`agent-org-create:${auth.user.id}`]);
@@ -240,7 +246,7 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     }
     const resourceType = { organization: "organization", business_unit: "business_unit", project: "project", localization_job: "job" }[action.name.split(".")[0]];
     const resource = result.organization || result.businessUnit || result.project || result.job;
-    result.uiTarget = { view: "workspace", organizationId, projectSlug: result.project?.slug || result.projectSlug || null, action: action.name, resource: { type: resourceType, id: resource.id } };
+    result.uiTarget ||= { view: "workspace", organizationId, projectSlug: result.project?.slug || result.projectSlug || null, action: action.name, resource: { type: resourceType, id: resource?.id } };
     await insertAuditEvent(client, { auth, organizationId, action: `${action.name}.confirmed`, resourceType: action.name.split(".")[0], resourceId: Object.values(result)[0]?.id || null,
       beforeState: prepared.preview.changes ? Object.fromEntries(prepared.preview.changes.map((c) => [c.field, c.before])) : undefined,
       afterState: result, metadata: { proposalId, projectId: prepared.preview.resources.project?.id || result.project?.id || null, agentRunId: proposal.run_id, initiatedBy: proposal.run_id ? "agent" : "manual", confirmation: "human", fingerprint: proposal.fingerprint } });

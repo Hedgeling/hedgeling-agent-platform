@@ -1,6 +1,7 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "caec8e413a5e8277ff0182c93db32020ff47f167",
+  "revision": "e90590d294fb2360d4864a242bc46928bc830bff",
+  "dirty": false,
   "license": "Apache-2.0",
   "files": [
     {
@@ -11,17 +12,37 @@
     {
       "source": "src/http.js",
       "destination": "http.js",
-      "sha256": "86a62f18e8acbc2b74e3b002a8b0523eaf045e0824e1966b7af8b09b77eb20ea"
+      "sha256": "0c7b3b785f32aeb7134fa183e3b02874fca584e75e09706d3b9bf3363f8e3682"
     },
     {
       "source": "src/engine-client.js",
       "destination": "engine-client.js",
-      "sha256": "523759b2ddee0c1d0a1b60adae9e38318dc22c57187a8b631a13478c75edb446"
+      "sha256": "46ca15165bd5182aa7af068cd47ca2336fca5f38cdb2b164221fc06916641a6d"
     },
     {
       "source": "src/engine-status.js",
       "destination": "engine-status.js",
       "sha256": "b8f220225a754cc5dc5cf309a6727098c2cbc4494546795c47c06cfc97811aa2"
+    },
+    {
+      "source": "src/engine-operations.js",
+      "destination": "engine-operations.js",
+      "sha256": "e67beb7829131db3ff65e077ad1af48a7127d78a48479036850adaefe6a52ee4"
+    },
+    {
+      "source": "src/extraction-actions.js",
+      "destination": "extraction-actions.js",
+      "sha256": "62920cd4eebd34abf61dcc05a273934f3f70d4c0c522631491774a7a74219743"
+    },
+    {
+      "source": "src/extraction-catalog.js",
+      "destination": "extraction-catalog.js",
+      "sha256": "53c899ec169142503fbeef822723606b0f99a22f585323735ce03cc1b2950a01"
+    },
+    {
+      "source": "src/extraction-workflow.js",
+      "destination": "extraction-workflow.js",
+      "sha256": "c027ed17273825c10870e5953823eff74083188bf367ba847241d30c49759623"
     },
     {
       "source": "LICENSE",
@@ -32,6 +53,26 @@
       "source": "NOTICE",
       "destination": "NOTICE",
       "sha256": "91424905df6ef3e602591ed759c25d56369ea5f2549ca2fa10a3e16ac7dfb18f"
+    },
+    {
+      "source": "src/extraction-actions.js",
+      "destination": "../../../api-contract/extraction-actions.js",
+      "sha256": "62920cd4eebd34abf61dcc05a273934f3f70d4c0c522631491774a7a74219743"
+    },
+    {
+      "source": "contracts/202610271200_extraction_workflow.sql",
+      "destination": "../../db/migrations/202610271200_extraction_workflow.sql",
+      "sha256": "4a49ea48cd3f5e21db26d2573244659d05ed247143ef8cbb1b5d2fe1a578f0d7"
+    },
+    {
+      "source": "ui/extraction.js",
+      "destination": "../public/extraction.js",
+      "sha256": "5ae5bf439ca21330ffb823a83d496445b70567741ca6a4b843c510dcc2b4cd24"
+    },
+    {
+      "source": "ui/extraction.css",
+      "destination": "../public/extraction.css",
+      "sha256": "93fff6df4103b5830bb6b5df61c014af7841fc9a91c8774a2141a29225bac44f"
     }
   ]
 }

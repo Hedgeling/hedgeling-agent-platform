@@ -790,7 +790,7 @@ function planUsagePolicies(limits) {
   });
 }
 
-export async function reserveUsage(input) {
+export async function reserveUsage(input, { transaction = withTransaction } = {}) {
   const measurements = normalizedMeasurements(input.measurements, "usage")
     .filter((measurement) => measurement.quantity > 0);
   const relevantMetrics = [...new Set([
@@ -798,7 +798,7 @@ export async function reserveUsage(input) {
     ...(input.relevantMetrics || []),
   ])].sort();
 
-  const result = await withTransaction(async (client) => {
+  const result = await transaction(async (client) => {
     await client.query(
       "select pg_advisory_xact_lock(hashtext($1))",
       [`usage-reservation-key:${input.organizationId}:${input.idempotencyKey}`],

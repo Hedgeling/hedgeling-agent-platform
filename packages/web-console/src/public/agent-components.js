@@ -1,3 +1,4 @@
+import { extractionPanel } from './extraction.js';
 export async function request(path, body) {
   const response = await fetch(path, { method: body === undefined ? "GET" : "POST", headers: { "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const data = await response.json().catch(() => ({}));
@@ -9,6 +10,7 @@ export function element(tag, className = "", text = "") {
 }
 export const actionLabel = { "organization.create": "Create organization", "business_unit.create": "Create business unit", "project.create": "Create project", "localization_job.create": "Create job draft", "organization.update": "Save organization name", "business_unit.update": "Save business-unit name", "project.update": "Save project name", "localization_job.update": "Save job changes" };
 const workflowLabels = { machine_translation: "AI translation", human_translation: "Human translation", review: "Review", qa: "Quality check" };
+Object.assign(actionLabel, { 'extraction.start': 'Start extraction', 'extraction.import': 'Import source strings' });
 const displayField = (key, value) => Array.isArray(value) ? value.map((v) => key === "steps" ? workflowLabels[v] || v : v).join(key === "steps" ? " → " : ", ") : String(value ?? "—");
 export function proposalCard(proposal, confirm, reject, { example = false } = {}) {
   const card = element("article", "agent-proposal"); card.dataset.proposalId = proposal.id;
@@ -16,7 +18,7 @@ export function proposalCard(proposal, confirm, reject, { example = false } = {}
   heading.append(element("span", "agent-eyebrow", example ? "EXAMPLE · APPROVAL CARD" : "HERE’S THE PLAN"), element("span", "agent-stamp", "Your call"));
   card.append(heading, element("h3", "", actionLabel[proposal.preview.action] || "Review change"));
   appendProposalDetails(card, proposal.preview);
-  card.append(element("p", "agent-card-help", example ? "Give it a try—this is just a preview. Your workspace stays as it is." : proposal.preview.changes ? "Happy with these changes? Save them when you’re ready. Want a tweak? Discard this preview and tell me what to adjust." : "Looks good? Create it when you’re ready. Want a tweak? Choose Discard, then tell me what to change and I’ll prepare a fresh preview."));
+  card.append(element("p", "agent-card-help", example ? "Give it a try—this is just a preview. Your workspace stays as it is." : proposal.preview.action.startsWith('extraction.') ? 'Ready to go? Confirm this step below. Want to change the selection? Discard it and tell me what to adjust.' : proposal.preview.changes ? "Happy with these changes? Save them when you’re ready. Want a tweak? Discard this preview and tell me what to adjust." : "Looks good? Create it when you’re ready. Want a tweak? Choose Discard, then tell me what to change and I’ll prepare a fresh preview."));
   const actions = element("div", "agent-card-actions");
   const yes = element("button", "primary", actionLabel[proposal.preview.action] || "Confirm change"); yes.type = "button";
   const no = element("button", "", "Discard"); no.type = "button";
@@ -33,7 +35,7 @@ export function proposalCard(proposal, confirm, reject, { example = false } = {}
 // and interaction: chat replies versus a manual form's review step.
 function appendProposalDetails(card, preview) {
   const fields = element("dl", "agent-fields");
-  const labels = { name: "Name", sourceLocale: "Source language", targetLocales: "Target languages", steps: "Workflow" };
+  const labels = { name: "Name", sourceLocale: "Source language", targetLocales: "Target languages", steps: "Workflow", repository: 'Repository', ref: 'Source revision', scanRoots: 'Source paths', commitSha: 'Pinned commit' };
   for (const [key, label] of preview.changes ? [] : Object.entries(labels)) {
     const value = preview.fields[key];
     if (value !== undefined) fields.append(element("dt", "", label), element("dd", "", displayField(key, value)));
@@ -61,7 +63,7 @@ export function workspaceConfirmation(proposal, { confirm, edit, cancel }) {
   const title = element("h3", "", updating ? "Review changes" : "Review details");
   title.id = `workspace-review-${proposal.id}`; title.tabIndex = -1; card.setAttribute("aria-labelledby", title.id);
   card.append(element("p", "workspace-confirmation-step", "REVIEW & CONFIRM"), title,
-    element("p", "workspace-confirmation-help", updating ? "Check the changes below before saving. Choose Edit details to return to the form." : "Check the details below before creating this item. Choose Edit details to return to the form."));
+    element("p", "workspace-confirmation-help", proposal.preview.action.startsWith('extraction.') ? 'Review this step before confirming. Use Edit details to return without starting it.' : updating ? "Check the changes below before saving. Choose Edit details to return to the form." : "Check the details below before creating this item. Choose Edit details to return to the form."));
   appendProposalDetails(card, proposal.preview);
   const actions = element("div", "workspace-confirmation-actions");
   const back = element("button", "", "Edit details"), dismiss = element("button", "", "Cancel");
@@ -190,6 +192,8 @@ export class Workspace {
         link.dataset.resourceType = "project"; link.dataset.resourceId = p.id;
         link.addEventListener("click", () => window.HedgelingConsole?.openProject(p.slug, { manual: true })); card.append(link);
         if (p.canEdit) card.append(this.form("project.update", [input("name", "Project name", p.name)], { projectSlug: p.slug }, `Edit project: ${p.name}`));
+        if (p.canExtract) card.append(extractionPanel({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId,
+          onImported: () => window.HedgelingConsole?.refresh() }));
         if (p.canViewJobs) {
           const jobs = element("div");
           for (const job of recentJobs.filter((job) => job.projectSlug === p.slug)) jobs.append(jobLine(job, editJob));
@@ -229,7 +233,16 @@ export class Workspace {
       { name: "workflow", label: "Workflow", options: [["machine_translation,review", "AI translation → Human review"], ["human_translation,review", "Human translation → Review"], ["machine_translation,review,qa", "AI translation → Review → QA"]] },
     ]));
     fragment.append(forms);
-    if (generation === this.refreshGeneration) { this.root.replaceChildren(fragment); window.HedgelingShell?.workspaceChanged(organizationId); }
+    if (generation === this.refreshGeneration) {
+      // Keep open source forms/approvals intact during agent-driven refreshes.
+      // Only retain a panel when the refreshed project still permits extraction.
+      const panels = new Map([...this.root.querySelectorAll('.extraction-panel')].map(node => [node.dataset.projectId, node]));
+      for (const next of fragment.querySelectorAll('.extraction-panel')) {
+        const current = panels.get(next.dataset.projectId);
+        if (current) next.replaceWith(current);
+      }
+      this.root.replaceChildren(fragment); window.HedgelingShell?.workspaceChanged(organizationId);
+    }
   }
   form(action, fields, fixed = {}, title = null) {
     const details = element("details", `workspace-form${title ? " workspace-inline-edit" : ""}`); details.dataset.workspaceAction = action; details.append(element("summary", "", title || actionLabel[action]));

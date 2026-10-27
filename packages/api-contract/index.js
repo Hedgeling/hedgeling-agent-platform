@@ -2,6 +2,7 @@
 // These describe behavior, not authorization grants. The server reauthorizes
 // each invocation using its authenticated principal and resolved resource.
 import Ajv from "ajv";
+import { EXTRACTION_ACTIONS } from './extraction-actions.js';
 export const ACTION_CONTRACT_VERSION = 1;
 const text = { type: "string", minLength: 1, maxLength: 200, pattern: "\\S" };
 const id = { type: "string", pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" };
@@ -17,6 +18,7 @@ export const REPORT_ACTIONS = [
   { ...action("reports.jobs.summary", "console_report_jobs", "Aggregate ALL matching permitted localization jobs in one organization, grouped by status, project, business unit or target locale. Totals cover every matching job, independent of group pagination. Follow page.nextCursor for remaining groups. Locale groups overlap for multilingual jobs.", "jobs.view", schema({ organizationId: id, projectSlug: text, ...jobFilters, groupBy: { type: "string", enum: ["status", "project", "business_unit", "target_locale"] }, ...paging }, ["organizationId"])), scope: "reporting" },
 ];
 export const WORKSPACE_ACTIONS = [
+  ...EXTRACTION_ACTIONS,
   action("organizations.list", "console_list_organizations", "List permitted organizations in pages. Follow page.nextCursor until hasMore is false; never treat one page as the full account list.", "organization.view", schema({ search, ...paging }, [])),
   action("workspace.get", "console_get_workspace", "Read an organization and pages of permitted projects and business units. Continue each collection using pages.projects.nextCursor as projectCursor and pages.businessUnits.nextCursor as businessUnitCursor. For totals use console_report_workspace.", "organization.view", schema({ organizationId: id, limit: paging.limit, projectCursor: paging.cursor, businessUnitCursor: paging.cursor }, ["organizationId"])),
   action("organization.create", "console_propose_organization", "Preview creating an empty customer organization and its initial owner. Requires human confirmation; creates no subscription, BU, project or credential.", "", schema({ name: text }), false),

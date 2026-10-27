@@ -38,7 +38,8 @@
     "test:agent:browser": "node scripts/run-agent-browser-tests.js",
     "dev:agent": "node scripts/dev-agent.js",
     "test:navigation:browser": "node scripts/run-console-shell-browser-tests.js",
-    "test:commercial:browser": "node scripts/run-commercial-browser-tests.js"
+    "test:commercial:browser": "node scripts/run-commercial-browser-tests.js",
+    "test:extraction:browser": "node scripts/run-extraction-browser-tests.js"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1116.0",

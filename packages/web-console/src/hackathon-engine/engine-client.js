@@ -3,7 +3,7 @@ import { AgentError } from './errors.js';
 import { requestJson, serverUrl } from './http.js';
 
 // Operator/server verification only. This is not an end-user authorization layer.
-// Write methods are intentionally absent until the authenticated approval flow lands.
+// Write methods live only in the separate authenticated workflow adapter.
 export function engineReader({ url, token, fetchImpl = fetch }) {
   const base = serverUrl(url, 'HEDGELING_ENGINE_URL');
   if (!token) throw new AgentError(503, 'HEDGELING_ENGINE_TOKEN is required.');

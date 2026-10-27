@@ -1,5 +1,7 @@
 import actionsRouter from "./actions.js";
 import { engineStatus } from "./hackathon-engine/engine-status.js";
+import { registerExtractionImport } from './extraction-integration.js';
+import { fail } from './action-errors.js';
 import { localSignIn, requireLocalRequest } from "./local-auth.js";
 import express from "express";
 import agentRouter from "./agent-runtime.js";
@@ -251,7 +253,7 @@ function importedSourceChanged(existing, fields) {
     || existing.limitChars !== fields.limitChars;
 }
 
-async function measureChangedImportSources(projectId, state) {
+async function measureChangedImportSources(projectId, state, database = { query }) {
   const entries = Object.values(state.files || {}).flatMap((file) => (
     Object.entries(file?.entries || {})
       .filter(([, entry]) => Boolean(entry?.sourceText))
@@ -260,7 +262,7 @@ async function measureChangedImportSources(projectId, state) {
   if (!entries.length) {
     return { source_words_processed: 0, source_characters_processed: 0 };
   }
-  const existingResult = await query(
+  const existingResult = await database.query(
     `select source_hash as "sourceHash", source_text as "sourceText",
             shape, purpose, visual_context as "visualContext",
             limit_chars as "limitChars"
@@ -545,6 +547,7 @@ export async function importHedgelingState({
   // v1.3.0 spec 10: the sync push route stamps its revisions "sync" so the
   // revision log distinguishes the sanctioned transport from ad-hoc imports.
   revisionSource = null,
+  transaction = withTransaction,
 }) {
   if (!state || typeof state !== "object" || !state.files || typeof state.files !== "object") {
     const err = new Error("state must be a Hedgeling hedgeling_package.json object");
@@ -594,7 +597,7 @@ export async function importHedgelingState({
   }
   if (sourceLocale) importedLocalesForLimit.delete(sourceLocale);
 
-  await withTransaction(async (client) => {
+  await transaction(async (client) => {
     const project = await client.query(
       `insert into projects(slug, name) values($1, $2)
        on conflict(slug) do update set name = excluded.name, updated_at = now()
@@ -978,6 +981,24 @@ export async function importHedgelingState({
 
   return counts;
 }
+
+registerExtractionImport(async ({ prepared, proposal, auth, database }) => {
+  const project = prepared.preview.resources.project;
+  const state = prepared.state;
+  const identity = usageIdentity({ get: name => name === 'idempotency-key' ? `extraction-${proposal.id}` : '' }, 'state_import', {
+    projectId: project.id, extractionId: prepared.row.id, artifactHash: prepared.preview.resources.artifactHash,
+  });
+  const measurements = await measureChangedImportSources(project.id, state, database);
+  const transaction = callback => callback(database);
+  const reservation = await reserveUsage({ organizationId: project.organizationId, businessUnitId: project.businessUnitId,
+    projectId: project.id, operation: 'state_import', ...identity, measurements,
+    relevantMetrics: Object.keys(measurements).filter(key => measurements[key] > 0), planLimits: prepared.access.limits }, { transaction });
+  if (reservation.duplicate) throw fail(409, 'This import has already been processed. Refresh the extraction.');
+  return importHedgelingState({ state, projectSlug: project.slug, projectName: project.name, overwriteHuman: false, pruneMissing: false,
+    resourceLimits: prepared.access.limits?.resources || {}, transaction,
+    usageContext: { organizationId: project.organizationId, businessUnitId: project.businessUnitId, projectId: project.id,
+      actor: usageActor(auth), reservationId: reservation.id, attemptNumber: reservation.attemptNumber, usageWarnings: reservation.warnings, ...identity } });
+});
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
