@@ -1,4 +1,17 @@
 const commercialConsole = import("./commercial.js");
+const libraryModules = Promise.all([import('./library.js'), import('./agent-components.js')]);
+const libraryPanels = new Map();
+const libraryControllerId = crypto.randomUUID();
+function canUseLibrary(kind) { return ['view','propose','approve','manage'].some(action => hasProjectPermission(kind + '.' + action)); }
+async function loadLibrary(kind, draft = null) {
+  const roots = { prompt: 'libraryPromptRoot', persona: 'libraryPersonaRoot', glossary: 'libraryGlossaryRoot' };
+  const root = document.getElementById(roots[kind]);
+  const previous = libraryPanels.get(kind);
+  if (previous?.dirty && !draft) return;
+  const [{ mountLibrary }, { request, workspaceConfirmation }] = await libraryModules;
+  const panel = mountLibrary({ root, kind, projectSlug: selectedProjectSlug, request, confirmation: workspaceConfirmation, controllerId: libraryControllerId, draft });
+  libraryPanels.set(kind, panel); await panel.ready;
+}
 const fallbackLocales = [
   "en-GB",
   "en-AU",
@@ -33,9 +46,6 @@ function selectedFacetSourceName() {
     : null;
 }
 let selectedView = "home";
-let promptCache = [];
-let glossaryCache = [];
-let personaCache = [];
 let projectPermissionSet = new Set();
 let accessOrganizations = [];
 let accessState = null;
@@ -269,8 +279,8 @@ function syncConsoleShell() {
 
 function canVisitView(view) {
   const permission = { review: "strings.view", prompts: "prompts.view", glossary: "glossary.view", personas: "personas.view" }[view];
-  if (permission) return hasProjectPermission(permission);
-  if (view === "library") return ["prompts.view", "glossary.view", "personas.view"].some(hasProjectPermission);
+  if (permission) return view === "review" ? hasProjectPermission(permission) : canUseLibrary(view);
+  if (view === "library") return ["prompts", "glossary", "personas"].some(canUseLibrary);
   if (view === "access") return accessOrganizations.length > 0;
   if (view === "operations") return canViewPlatformPayments();
   return ["home", "workspace", "work"].includes(view);
@@ -317,7 +327,6 @@ async function loadProject() {
   applyPermissionVisibility();
   $("manageProjectLanguages").hidden = !(projectAccess.permissions || []).includes("locales.manage");
   populateSelect($("locale"), locales, selectedLocale);
-  populateSelect($("personaLocale"), locales, selectedLocale);
   return true;
 }
 
@@ -3046,195 +3055,9 @@ async function reviseWithAi() {
   }
 }
 
-async function loadPrompts() {
-  const data = await api(projectPath("/api/prompts"));
-  promptCache = data.prompts || [];
-  renderPrompts();
-}
-
-function renderPrompts() {
-  if (!promptCache.length) {
-    $("promptList").innerHTML = `<div class="list-empty">No prompts stored.</div>`;
-    return;
-  }
-  $("promptList").innerHTML = promptCache.map((prompt) => `
-    <article class="editor-row" data-key="${escapeHtml(prompt.key)}">
-      <div class="row-head">
-        <div>
-          <strong>${escapeHtml(prompt.key)}</strong>
-          <span>${escapeHtml(prompt.updatedAt ? new Date(prompt.updatedAt).toLocaleString() : "")}</span>
-        </div>
-        ${badge(prompt.active ? "active" : "inactive", prompt.active ? "good" : "neutral")}
-      </div>
-      <input class="prompt-label" value="${escapeHtml(prompt.label)}">
-      <textarea class="prompt-body" spellcheck="false">${escapeHtml(prompt.body)}</textarea>
-      <div class="actions">
-        <button class="primary prompt-save" type="button">Save prompt</button>
-      </div>
-    </article>
-  `).join("");
-}
-
-async function savePrompt(row) {
-  const key = row.dataset.key;
-  await api(projectPath(`/api/prompts/${encodeURIComponent(key)}`), {
-    method: "PUT",
-    body: JSON.stringify({
-      label: row.querySelector(".prompt-label").value,
-      body: row.querySelector(".prompt-body").value,
-    }),
-  });
-  toast("Prompt saved", "good");
-  await loadPrompts();
-}
-
-async function createPrompt(event) {
-  event.preventDefault();
-  const key = $("promptKey").value.trim();
-  if (!key) return;
-  await api(projectPath(`/api/prompts/${encodeURIComponent(key)}`), {
-    method: "PUT",
-    body: JSON.stringify({
-      label: $("promptLabel").value.trim() || key,
-      body: "",
-    }),
-  });
-  $("promptKey").value = "";
-  $("promptLabel").value = "";
-  toast("Prompt added", "good");
-  await loadPrompts();
-}
-
-async function loadGlossary() {
-  const data = await api(projectPath("/api/glossary"));
-  glossaryCache = data.terms || [];
-  renderGlossary();
-}
-
-function renderGlossary() {
-  if (!glossaryCache.length) {
-    $("glossaryList").innerHTML = `<div class="list-empty">No glossary terms stored.</div>`;
-    return;
-  }
-  $("glossaryList").innerHTML = `
-    <div class="table-head glossary-grid">
-      <span>Term</span><span>Locale</span><span>Translation</span><span>Description</span><span>DNT</span><span></span>
-    </div>
-    ${glossaryCache.map((term) => `
-      <form class="table-row glossary-grid" data-id="${escapeHtml(term.id)}">
-        <input class="term" value="${escapeHtml(term.term)}" required>
-        <input class="locale" value="${escapeHtml(term.locale || "")}">
-        <input class="translation" value="${escapeHtml(term.translation || "")}">
-        <input class="description" value="${escapeHtml(term.description || "")}">
-        <label class="check-field compact"><input class="dnt" type="checkbox" ${term.doNotTranslate ? "checked" : ""}><span>DNT</span></label>
-        <div class="row-actions">
-          <button class="glossary-save" type="submit">Save</button>
-          <button class="danger glossary-delete" type="button">Delete</button>
-        </div>
-      </form>
-    `).join("")}
-  `;
-}
-
-function glossaryPayload(scope) {
-  return {
-    term: scope.querySelector(".term")?.value ?? $("glossaryTerm").value,
-    locale: scope.querySelector(".locale")?.value ?? selectedLocale,
-    translation: scope.querySelector(".translation")?.value ?? $("glossaryTranslation").value,
-    description: scope.querySelector(".description")?.value ?? $("glossaryDescription").value,
-    doNotTranslate: scope.querySelector(".dnt")?.checked ?? $("glossaryDnt").checked,
-  };
-}
-
-async function createGlossary(event) {
-  event.preventDefault();
-  await api(projectPath("/api/glossary"), {
-    method: "POST",
-    body: JSON.stringify({
-      term: $("glossaryTerm").value,
-      locale: selectedLocale,
-      translation: $("glossaryTranslation").value,
-      description: $("glossaryDescription").value,
-      doNotTranslate: $("glossaryDnt").checked,
-    }),
-  });
-  event.target.reset();
-  toast("Glossary term added", "good");
-  await loadGlossary();
-}
-
-async function saveGlossary(row) {
-  await api(projectPath(`/api/glossary/${row.dataset.id}`), {
-    method: "PUT",
-    body: JSON.stringify(glossaryPayload(row)),
-  });
-  toast("Glossary term saved", "good");
-  await loadGlossary();
-}
-
-async function deleteGlossary(row) {
-  await api(projectPath(`/api/glossary/${row.dataset.id}`), { method: "DELETE" });
-  toast("Glossary term deleted", "good");
-  await loadGlossary();
-}
-
-async function loadPersonas() {
-  const data = await api(projectPath("/api/personas"));
-  personaCache = data.personas || [];
-  renderPersona();
-}
-
-function currentPersona() {
-  const locale = $("personaLocale").value || selectedLocale;
-  return personaCache.find((persona) => persona.locale === locale) || {
-    locale,
-    active: true,
-    body: {
-      locale,
-      developer_persona: "",
-      relationship: "",
-      sentence_rhythm: "",
-      humor_sources: [],
-      internet_language_policy: "",
-      never_rules: [],
-    },
-  };
-}
-
-function renderPersona() {
-  const persona = currentPersona();
-  $("personaActive").checked = persona.active !== false;
-  $("personaBody").value = jsonText(persona.body);
-  $("personaMessage").hidden = true;
-}
-
-function formatPersona() {
-  try {
-    $("personaBody").value = jsonText(JSON.parse($("personaBody").value));
-    $("personaMessage").hidden = true;
-  } catch (err) {
-    $("personaMessage").textContent = err.message;
-    $("personaMessage").hidden = false;
-  }
-}
-
-async function savePersona() {
-  let body;
-  try {
-    body = JSON.parse($("personaBody").value);
-  } catch (err) {
-    $("personaMessage").textContent = err.message;
-    $("personaMessage").hidden = false;
-    return;
-  }
-  const locale = $("personaLocale").value;
-  await api(projectPath(`/api/personas/${encodeURIComponent(locale)}`), {
-    method: "PUT",
-    body: JSON.stringify({ body, active: $("personaActive").checked }),
-  });
-  toast("Persona saved", "good");
-  await loadPersonas();
-}
+const loadPrompts = () => loadLibrary('prompt');
+const loadGlossary = () => loadLibrary('glossary');
+const loadPersonas = () => loadLibrary('persona');
 
 function activateView(view, { manual = false, adminSection, fromHistory = false, load = true } = {}) {
   if (!canVisitView(view)) view = "home";
@@ -3275,9 +3098,9 @@ function bindEvents() {
     $("emptyState").hidden = false;
     await loadProject();
     const loaders = [loadStrings()];
-    if (hasProjectPermission("prompts.view")) loaders.push(loadPrompts());
-    if (hasProjectPermission("glossary.view")) loaders.push(loadGlossary());
-    if (hasProjectPermission("personas.view")) loaders.push(loadPersonas());
+    if (canUseLibrary("prompts")) loaders.push(loadPrompts());
+    if (canUseLibrary("glossary")) loaders.push(loadGlossary());
+    if (canUseLibrary("personas")) loaders.push(loadPersonas());
     await Promise.all(loaders);
   });
   $("locale").addEventListener("change", async () => {
@@ -3285,12 +3108,10 @@ function bindEvents() {
     const permissionData = await api(`/api/projects/${encodeURIComponent(selectedProjectSlug)}/permissions?locale=${encodeURIComponent(selectedLocale)}`);
     projectPermissionSet = new Set(permissionData.permissions || []);
     applyPermissionVisibility();
-    populateSelect($("personaLocale"), locales, selectedLocale);
-    await loadStrings();
+      await loadStrings();
     if (selectedStringId) await loadDetail(selectedStringId);
-    if (selectedView === "personas") renderPersona();
+    if (selectedView === "personas") await loadPersonas();
   });
-  $("personaLocale").addEventListener("change", renderPersona);
   $("search").addEventListener("input", debounce(() => loadStrings().catch((err) => toast(err.message, "bad"))));
   $("status").addEventListener("change", () => loadStrings().catch((err) => toast(err.message, "bad")));
   $("sourceFacet").addEventListener("change", () => {
@@ -3309,10 +3130,6 @@ function bindEvents() {
   $("rejectTranslation").addEventListener("click", () => rejectTranslation().catch((err) => toast(err.message, "bad")));
   $("reloadDetail").addEventListener("click", () => loadDetail().catch((err) => toast(err.message, "bad")));
   $("reviseTranslation").addEventListener("click", () => reviseWithAi().catch((err) => toast(err.message, "bad")));
-  $("promptCreate").addEventListener("submit", (event) => createPrompt(event).catch((err) => toast(err.message, "bad")));
-  $("glossaryCreate").addEventListener("submit", (event) => createGlossary(event).catch((err) => toast(err.message, "bad")));
-  $("formatPersona").addEventListener("click", formatPersona);
-  $("savePersona").addEventListener("click", () => savePersona().catch((err) => toast(err.message, "bad")));
   $("accessOrganization").addEventListener("change", () => {
     $("vendorInviteResult").hidden = true;
     $("vendorInviteResult").textContent = "";
@@ -3665,18 +3482,7 @@ function bindEvents() {
     document.querySelectorAll(".subtabs button").forEach((item) => item.classList.toggle("active", item === button));
     document.querySelectorAll(".inspect-pane").forEach((pane) => pane.classList.toggle("active", pane.id === `panel-${button.dataset.panel}`));
   });
-  $("promptList").addEventListener("click", (event) => {
-    const button = event.target.closest(".prompt-save");
-    if (button) savePrompt(button.closest(".editor-row")).catch((err) => toast(err.message, "bad"));
-  });
-  $("glossaryList").addEventListener("submit", (event) => {
-    event.preventDefault();
-    saveGlossary(event.target).catch((err) => toast(err.message, "bad"));
-  });
-  $("glossaryList").addEventListener("click", (event) => {
-    const button = event.target.closest(".glossary-delete");
-    if (button) deleteGlossary(button.closest(".table-row")).catch((err) => toast(err.message, "bad"));
-  });
+
 }
 
 async function init() {
@@ -3705,6 +3511,13 @@ init().catch((err) => toast(err.message, "bad"));
 
 // The agent addresses semantic destinations; it never supplies selectors or JS.
 window.HedgelingConsole = {
+  libraryDirty() { return [...libraryPanels.values()].some(p => p.dirty); },
+  async openLibrary(projectSlug, kind = null, draft = null) {
+    if (projectSlug && projectSlug !== selectedProjectSlug) await this.openProject(projectSlug);
+    const view = { prompt: 'prompts', persona: 'personas', glossary: 'glossary' }[kind];
+    activateView(view || 'library', { load: false });
+    if (view) await loadLibrary(kind, draft);
+  },
   openWorkspace() { activateView("workspace"); },
   navigate: activateView,
   notify(message) { toast(message, "bad"); },

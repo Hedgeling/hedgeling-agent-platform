@@ -8,4 +8,4 @@ run(['build', '--platform', 'linux/amd64', '--label', `org.opencontainers.image.
 // Linux host networking keeps the disposable database loopback-only. These
 // tests start the real server from the production image with local fixture auth.
 run(['run', '--rm', '--network', 'host', '-e', `TEST_DATABASE_URL=${database}`, '-e', 'HEDGELING_REQUIRE_AGENT_TEST_DATABASE=true', image,
-  'node', '--test', 'packages/web-console/test/agent-console.integration.mjs', 'packages/web-console/test/project-locales.integration.mjs']);
+  'node', '--test', 'packages/web-console/test/agent-console.integration.mjs', 'packages/web-console/test/project-locales.integration.mjs', 'packages/web-console/test/library.integration.mjs']);

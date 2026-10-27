@@ -12,16 +12,18 @@ export function element(tag, className = "", text = "") {
 export const actionLabel = { "organization.create": "Create organization", "business_unit.create": "Create business unit", "project.create": "Create project", "localization_job.create": "Create job draft", "organization.update": "Save organization name", "business_unit.update": "Save business-unit name", "project.update": "Save project name", "localization_job.update": "Save job changes" };
 const workflowLabels = { machine_translation: "AI translation", human_translation: "Human translation", review: "Review", qa: "Quality check" };
 Object.assign(actionLabel, { 'project.locales.add': 'Add target languages', 'extraction.tune': 'Run tuning preview', 'extraction.tuning.apply': 'Save settings and re-extract', 'extraction.start': 'Start extraction', 'extraction.import': 'Import source strings' });
-const displayField = (key, value) => Array.isArray(value) ? value.map((v) => key === "steps" ? workflowLabels[v] || v : v).join(key === "steps" ? " → " : ", ") : value && typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "—");
-export function proposalCard(proposal, confirm, reject, { example = false } = {}) {
+Object.assign(actionLabel, { 'library.prompt.save': 'Save instructions', 'library.persona.save': 'Save persona', 'library.glossary.save': 'Save term', 'library.restore': 'Restore revision', 'library.review': 'Confirm review' });
+const proposalLabel = preview => preview.library?.disposition === 'submit' ? 'Submit suggestion' : preview.library?.disposition === 'reject' ? 'Reject suggestion' : preview.library?.disposition === 'approve' ? 'Approve suggestion' : actionLabel[preview.action];
+const displayField = (key, value) => typeof value === 'boolean' ? (value ? 'Yes' : 'No') : Array.isArray(value) ? value.map((v) => key === "steps" ? workflowLabels[v] || v : v).join(key === "steps" ? " → " : ", ") : value && typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "—");
+export function proposalCard(proposal, confirm, reject, { example = false, edit = null } = {}) {
   const card = element("article", "agent-proposal"); card.dataset.proposalId = proposal.id;
   const heading = element("div", "agent-card-heading");
   heading.append(element("span", "agent-eyebrow", example ? "EXAMPLE · APPROVAL CARD" : "HERE’S THE PLAN"), element("span", "agent-stamp", "Your call"));
-  card.append(heading, element("h3", "", actionLabel[proposal.preview.action] || "Review change"));
+  card.append(heading, element("h3", "", proposalLabel(proposal.preview) || "Review change"));
   appendProposalDetails(card, proposal.preview);
   card.append(element("p", "agent-card-help", example ? "Give it a try—this is just a preview. Your workspace stays as it is." : proposal.preview.action.startsWith('extraction.') ? 'Ready to go? Confirm this step below. Want to change the selection? Discard it and tell me what to adjust.' : proposal.preview.changes ? "Happy with these changes? Save them when you’re ready. Want a tweak? Discard this preview and tell me what to adjust." : "Looks good? Create it when you’re ready. Want a tweak? Choose Discard, then tell me what to change and I’ll prepare a fresh preview."));
   const actions = element("div", "agent-card-actions");
-  const yes = element("button", "primary", actionLabel[proposal.preview.action] || "Confirm change"); yes.type = "button";
+  const yes = element("button", "primary", proposalLabel(proposal.preview) || "Confirm change"); yes.type = "button";
   const no = element("button", "", "Discard"); no.type = "button";
   const error = element("p", "agent-error"); error.setAttribute("role", "alert");
   for (const [button, handler] of [[yes, confirm], [no, reject]]) button.addEventListener("click", async () => {
@@ -29,6 +31,11 @@ export function proposalCard(proposal, confirm, reject, { example = false } = {}
     try { await handler(proposal); card.replaceChildren(element("p", "agent-receipt", example ? (button === yes ? "Preview approved. No workspace changes were made." : "Preview discarded.") : (button === yes ? "Change confirmed." : "Proposal discarded."))); }
     catch (e) { error.textContent = e.message; yes.disabled = no.disabled = false; }
   });
+  if (edit && proposal.preview.action.startsWith('library.') && proposal.preview.action.endsWith('.save')) {
+    const change = element('button', '', 'Edit in Library'); change.type='button';
+    change.addEventListener('click', async () => { yes.disabled=no.disabled=change.disabled=true;error.textContent='';try{await edit(proposal);card.replaceChildren(element('p','agent-receipt','Preview discarded. Edit the draft in Library, then review it again.'));}catch(e){error.textContent=e.message;yes.disabled=no.disabled=change.disabled=false;} });
+    actions.append(change);
+  }
   actions.append(yes, no); card.append(actions, error); return card;
 }
 
@@ -45,11 +52,14 @@ function appendProposalDetails(card, preview) {
   const scope = resources.organization?.name || resources.businessUnit?.name || resources.project?.name;
   if (scope) fields.append(element("dt", "", "In"), element("dd", "", scope));
   if (resources.sourceCount !== undefined) fields.append(element("dt", "", "Source content"), element("dd", "", `${resources.sourceCount} strings`));
+  if (preview.library) {
+    fields.append(element('dt','','Library asset'),element('dd','',preview.library.label),element('dt','','Language'),element('dd','',preview.library.locale || 'Project-wide'),element('dt','','On confirmation'),element('dd','',preview.library.disposition === 'submit' ? 'Submit for review; keep active guidance unchanged' : preview.library.disposition === 'reject' ? 'Reject this suggestion' : 'Save this guidance'));
+  }
   card.append(fields);
   if (preview.changes) for (const change of preview.changes) {
     const section = element("section", "agent-change"); section.append(element("h4", "", change.label));
     const values = element("dl", "agent-change-values");
-    values.append(element("dt", "", "Current"), element("dd", "", displayField(change.field, change.before)), element("dt", "", "After"), element("dd", "agent-change-after", displayField(change.field, change.after)));
+    values.append(element("dt", "", "Current"), element("dd", "", displayField(change.field, change.before)), element("dt", "", ["submit","reject"].includes(preview.library?.disposition) ? "Suggested" : "After"), element("dd", "agent-change-after", displayField(change.field, change.after)));
     section.append(values); card.append(section);
   }
   if (preview.cost) card.append(element("p", "agent-cost-note", preview.cost));
@@ -68,7 +78,7 @@ export function workspaceConfirmation(proposal, { confirm, edit, cancel }) {
   appendProposalDetails(card, proposal.preview);
   const actions = element("div", "workspace-confirmation-actions");
   const back = element("button", "", "Edit details"), dismiss = element("button", "", "Cancel");
-  const save = element("button", "primary", actionLabel[proposal.preview.action] || "Save changes");
+  const save = element("button", "primary", proposalLabel(proposal.preview) || "Save changes");
   const buttons = [back, dismiss, save];
   const error = element("p", "agent-error"); error.setAttribute("role", "alert");
   for (const [button, handler] of [[back, edit], [dismiss, cancel], [save, confirm]]) {

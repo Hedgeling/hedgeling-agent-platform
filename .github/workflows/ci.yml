@@ -51,6 +51,7 @@ jobs:
       - run: npm -w @hedgeling/web-console run test:extraction:browser
       - run: npm -w @hedgeling/web-console run test:locales:browser
       - run: npm -w @hedgeling/web-console run test:tuning:browser
+      - run: npm -w @hedgeling/web-console run test:library:browser
       - run: npm run test:commercial:browser
       - name: Build and test the release container
         env:

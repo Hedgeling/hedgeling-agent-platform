@@ -4,6 +4,7 @@ import { query, withTransaction } from "./db.js";
 import { organizationPermissions, projectPermissions } from "./authorization.js";
 import { insertAuditEvent } from "./audit.js";
 import { isHumanDecisionActor } from "./principal-policy.js";
+import { library } from './library-integration.js';
 import { projectLocales } from './project-locales-integration.js';
 import { extractionWorkflow } from './extraction-integration.js';
 
@@ -115,6 +116,7 @@ async function creationLimits(client, organizationId, action, input) {
 }
 async function prepare(action, input, auth, context = {}, database = db) {
   const userId = await activeUser(auth, database);
+  if (action.name.startsWith('library.')) return library.prepare(action.name, input, auth, context, database, database !== db);
   if (action.name === 'project.locales.add') return projectLocales.prepare(input, auth, context, database, database !== db);
   if (action.name.startsWith('extraction.')) return extractionWorkflow.prepare(action.name, input, auth, context, database, database !== db);
   if (isWorkspaceUpdate(action.name)) return prepareWorkspaceUpdate(action, input, auth, context, database, database !== db);
@@ -161,6 +163,7 @@ export async function executeWorkspaceAction(name, input, auth, context = {}) {
   const action = WORKSPACE_ACTIONS.find((a) => a.name === name);
   if (!action) throw fail(404, "Unknown workspace action");
   input = normalizeInput(action, input);
+  if (name.startsWith('library.') && action.readOnly) { const result = await library.read(name, input, auth, context); return { ...result, uiTarget: { view: 'library', projectSlug: input.projectSlug, kind: input.kind || null, action: 'library.read' } }; }
   if (name === 'project.locales.get') return projectLocales.read(input, auth, context);
   if (name.startsWith('extraction.') && action.readOnly) return extractionWorkflow.read(name, input, auth, context);
   if (name === "organizations.list") {
@@ -184,7 +187,7 @@ export async function executeWorkspaceAction(name, input, auth, context = {}) {
       values($1,$2,$3,$4,$5,$6,$7) returning id, preview, fingerprint, status, expires_at as "expiresAt"`,
     [auth.user.id, context.runId || null, prepared.organizationId, name, input, prepared.preview, fingerprint(prepared.preview)])).rows[0];
   });
-  return { proposal, uiTarget: { view: "workspace", organizationId: prepared.organizationId, action: name, ...(prepared.resource ? { resource: prepared.resource } : {}) } };
+  return { proposal, uiTarget: prepared.uiTarget || { view: "workspace", organizationId: prepared.organizationId, action: name, ...(prepared.resource ? { resource: prepared.resource } : {}) } };
 }
 
 export async function confirmProposal(auth, proposalId, expectedFingerprint, controllerId) {
@@ -196,7 +199,8 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     if (expectedFingerprint !== proposal.fingerprint) throw fail(409, "The displayed proposal has changed");
     if (proposal.status === "confirmed") {
       await assertRunScope(auth, proposal.organization_id);
-      if (proposal.action === 'project.locales.add') await projectLocales.replay(proposal.input, auth, {}, client);
+      if (proposal.action.startsWith('library.')) await library.replay(proposal.input, auth, {}, client, proposal.result);
+      else if (proposal.action === 'project.locales.add') await projectLocales.replay(proposal.input, auth, {}, client);
       else if (proposal.action.startsWith('extraction.')) await extractionWorkflow.replay(proposal.input, auth, {}, client);
       else if (isWorkspaceUpdate(proposal.action)) await prepareWorkspaceUpdate(WORKSPACE_ACTIONS.find((a) => a.name === proposal.action), proposal.input, auth, {}, client, false, true);
       else if (proposal.result?.projectSlug) await allowProject(auth, await project({ projectSlug: proposal.result.projectSlug }), "jobs.view", proposal.input.targetLocales);
@@ -215,7 +219,9 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     const input = proposal.input;
     let result;
     let organizationId = prepared.organizationId;
-    if (action.name === 'project.locales.add') {
+    if (action.name.startsWith('library.')) {
+      result = await library.apply(prepared, proposal, auth, client);
+    } else if (action.name === 'project.locales.add') {
       result = await projectLocales.apply(prepared, client);
     } else if (action.name.startsWith('extraction.')) {
       result = await extractionWorkflow.apply(action.name, prepared, proposal, auth, client);

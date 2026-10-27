@@ -1,6 +1,8 @@
+import { LIBRARY_SKILL } from './hackathon-engine/library-actions.js';
 import { PROJECT_LOCALE_SKILL } from './hackathon-engine/project-locales-actions.js';
 import { EXTRACTION_SKILL } from './hackathon-engine/extraction-actions.js';
 export const agentSkills = Object.freeze([
+  LIBRARY_SKILL,
   EXTRACTION_SKILL,
   PROJECT_LOCALE_SKILL,
   { id: "billing-and-provider-handoff", version: 1, actions: [],

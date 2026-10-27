@@ -131,12 +131,17 @@ function message(role, text, { replay = false } = {}) {
   $("agentMessages").append(item);
 }
 function hasUnsavedEdits() {
-  return dirty || [...document.querySelectorAll('.project-languages form input')].some(input => input.value.trim());
+  return dirty || window.HedgelingConsole?.libraryDirty() || [...document.querySelectorAll('.project-languages form input')].some(input => input.value.trim());
 }
 async function follow(target, { phase = "working", card, label = "Looking at this section" } = {}) {
   const generation = ++attentionGeneration;
   if (!target || !$("agentFollow").checked || ["paused", "cancelled"].includes(run?.status)) return;
   if (hasUnsavedEdits()) { await pauseRun(); showError(new Error("Your unsaved edits are still on screen. Save them before resuming the agent.")); return; }
+  if (target.view === 'library') {
+    await window.HedgelingConsole?.openLibrary(target.projectSlug, target.kind);
+    if (generation !== attentionGeneration || !$("agentFollow").checked) return;
+    attention.show({ action: target.action || 'library.read', resource: target.resource, phase, card, label });
+  }
   if (target.view === "workspace") {
     await workspace.refresh(target.organizationId, target.resource?.type === "job" ? target.resource.id : null);
     if (generation !== attentionGeneration || !$("agentFollow").checked || ["paused", "cancelled"].includes(run?.status)) return;
@@ -153,7 +158,8 @@ function receive(item, { replay = false } = {}) {
   if (kind === "activity") {
     const line = element("p", "agent-activity", `${data.status === "complete" ? "✓ " : "· "}${data.label}`);
     $("agentMessages").append(line);
-    if (!replay && data.status === "working" && actionForTool(data.tool)) void follow({ view: "workspace", organizationId: scope, action: actionForTool(data.tool) }, { label: data.label }).catch(showError);
+    if (!replay && data.status === "working" && actionForTool(data.tool)) void follow({ view: actionForTool(data.tool).startsWith("library.") ? "library" : "workspace", organizationId: scope, action: actionForTool(data.tool) }, { label: data.label }).catch(showError);
+    if (!replay && data.status === 'complete' && data.uiTarget?.view === 'library') void follow(data.uiTarget, { label: data.label }).catch(showError);
     if (!replay && data.status === "failed") { attentionGeneration++; attention.clear(); }
   }
   if (kind === "state") { if (run && Object.hasOwn(data, "controllerId")) run.controllerId = data.controllerId; if (data.organizationId) { scope = data.organizationId; if (run) run.organizationId = scope; void refreshScopes(); } updateState(data.status); }
@@ -166,7 +172,11 @@ function receive(item, { replay = false } = {}) {
       await refreshScopes(); await workspace.refresh(scope, result.result.job?.id); await window.HedgelingConsole?.refresh();
       await follow(result.result.uiTarget, { phase: "complete", label: proposal.preview.action.endsWith(".update") ? "Updated · ready to inspect" : "Created · ready to inspect" });
       if (run?.status !== "paused") await request(`/api/agent/runs/${run.id}/continue`, { controllerId });
-    }, async (proposal) => { await request(`/api/agent/proposals/${proposal.id}/reject`, { controllerId }); }));
+    }, async (proposal) => { await request(`/api/agent/proposals/${proposal.id}/reject`, { controllerId }); }, { edit: async proposal => {
+      await request(`/api/agent/proposals/${proposal.id}/reject`, { controllerId });
+      $("agentFollow").checked=false;attention.clear();setMode('minimized');
+      await window.HedgelingConsole?.openLibrary(proposal.preview.fields.projectSlug, proposal.preview.library.kind, proposal.preview.fields);
+    } }));
     if (!replay) void follow(data.uiTarget || { view: "workspace", organizationId: scope, action: data.preview.action }, { phase: "approval", card: shell.querySelector(`[data-proposal-id="${data.id}"]`), label: "Your approval is needed here" }).catch(showError);
   }
   if (kind === "result") {
@@ -174,6 +184,7 @@ function receive(item, { replay = false } = {}) {
     const card = shell.querySelector(`[data-proposal-id="${data.proposalId}"]`);
     if (card) card.replaceChildren(element("p", "agent-receipt", "✓ Change confirmed"));
     const resource = data.organization || data.businessUnit || data.project || data.job;
+    if (data.library) message('assistant', data.library.status === 'submitted' ? `${data.library.label} was submitted for review. Active guidance is unchanged.` : data.library.status === 'rejected' ? `${data.library.label}: suggestion rejected.` : `${data.library.label} saved${data.library.active ? ' and active for future revisions' : ' as inactive guidance'}.`, { replay });
     if (resource) message("assistant", data.addedLocales ? `Added ${data.addedLocales.join(", ")} to ${resource.name}.` : data.uiTarget?.action?.endsWith(".update") ? `${resource.name} has been updated.` : `${resource.name} is ready${data.job ? " as a draft" : ""}.`, { replay });
     if (data.extraction) $("agentMessages").append(extractionProgress({ projectSlug: data.extraction.projectSlug, extractionId: data.extraction.id, request,
       onTuneApply: async ({ projectSlug, extractionId }) => {
@@ -332,7 +343,7 @@ async function initialize() {
   }
   $("agentOpaque").addEventListener("click", () => { const opaque = shell.dataset.opaque !== "true"; shell.dataset.opaque = String(opaque); $("agentOpaque").setAttribute("aria-pressed", String(opaque)); });
   $("agentWidth").addEventListener("input", (event) => document.documentElement.style.setProperty("--agent-panel-width", `${Number(event.target.value)}px`));
-  document.addEventListener("input", (event) => { if (event.target.closest("main") && !event.target.closest(".project-languages") && (event.target.matches("textarea:not([readonly])") || event.target.closest("form"))) dirty = true; });
+  document.addEventListener("input", (event) => { if (event.target.closest("main") && !event.target.closest(".project-languages, .library-workbench") && (event.target.matches("textarea:not([readonly])") || event.target.closest("form"))) dirty = true; });
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "Space") { event.preventDefault(); setMode(mode === "minimized" ? "panel" : "minimized"); }
     if (event.key === "Escape" && mode === "overlay") { event.preventDefault(); setMode("minimized"); }

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import actionsRouter from "./actions.js";
 import { engineStatus } from "./hackathon-engine/engine-status.js";
 import { registerExtractionImport } from './extraction-integration.js';
@@ -1634,6 +1635,7 @@ app.get("/api/prompts", requireProjectPermission("prompts.view"), asyncRoute(asy
 }));
 
 app.put("/api/prompts/:key", requireProjectPermission("prompts.manage"), asyncRoute(async (req, res) => {
+  if (process.env.HEDGELING_AGENT_ENABLED === 'true') return res.status(409).json({ error: 'Review this change in Library before saving.', code: 'library_confirmation_required' });
   const project = await getProject(String(req.query.project || "scroll-goblin"));
   const { label, body } = req.body;
   const result = await query(
@@ -1656,6 +1658,7 @@ app.get("/api/personas", requireProjectPermission("personas.view"), asyncRoute(a
 }));
 
 app.put("/api/personas/:locale", requireProjectPermission("personas.manage"), asyncRoute(async (req, res) => {
+  if (process.env.HEDGELING_AGENT_ENABLED === 'true') return res.status(409).json({ error: 'Review this change in Library before saving.', code: 'library_confirmation_required' });
   const project = await getProject(String(req.query.project || "scroll-goblin"));
   const { body, active } = req.body;
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -1682,6 +1685,7 @@ app.get("/api/glossary", requireProjectPermission("glossary.view"), asyncRoute(a
 }));
 
 app.post("/api/glossary", requireProjectPermission("glossary.manage"), asyncRoute(async (req, res) => {
+  if (process.env.HEDGELING_AGENT_ENABLED === 'true') return res.status(409).json({ error: 'Review this change in Library before saving.', code: 'library_confirmation_required' });
   const project = await getProject(String(req.query.project || "scroll-goblin"));
   const { term, locale, translation, description, doNotTranslate } = req.body;
   if (typeof term !== "string" || !term.trim()) return res.status(400).json({ error: "term is required" });
@@ -1695,6 +1699,7 @@ app.post("/api/glossary", requireProjectPermission("glossary.manage"), asyncRout
 }));
 
 app.put("/api/glossary/:id", requireProjectPermission("glossary.manage"), asyncRoute(async (req, res) => {
+  if (process.env.HEDGELING_AGENT_ENABLED === 'true') return res.status(409).json({ error: 'Review this change in Library before saving.', code: 'library_confirmation_required' });
   const project = await getProject(String(req.query.project || "scroll-goblin"));
   const { term, locale, translation, description, doNotTranslate } = req.body;
   if (typeof term !== "string" || !term.trim()) return res.status(400).json({ error: "term is required" });
@@ -1715,6 +1720,7 @@ app.put("/api/glossary/:id", requireProjectPermission("glossary.manage"), asyncR
 }));
 
 app.delete("/api/glossary/:id", requireProjectPermission("glossary.manage"), asyncRoute(async (req, res) => {
+  if (process.env.HEDGELING_AGENT_ENABLED === 'true') return res.status(409).json({ error: 'Review this change in Library before saving.', code: 'library_confirmation_required' });
   const project = await getProject(String(req.query.project || "scroll-goblin"));
   const result = await query("delete from glossary_terms where id = $1 and project_id = $2 returning id", [req.params.id, project.id]);
   if (!result.rows[0]) return res.status(404).json({ error: "Not found" });
@@ -1849,17 +1855,17 @@ app.post(
       [source.id],
     ),
     query(
-      "select key, label, body from prompts where project_id = $1 and active = true order by key",
+      "select id, key, label, body, updated_at as \"updatedAt\" from prompts where project_id = $1 and active = true order by key",
       [source.projectId],
     ),
     query(
-      "select body from personas where project_id = $1 and locale = $2 and active = true",
+      "select id, body, updated_at as \"updatedAt\" from personas where project_id = $1 and locale = $2 and active = true",
       [source.projectId, req.params.locale],
     ),
     query(
-      `select term, locale, translation, description, do_not_translate as "doNotTranslate"
+      `select id, term, locale, translation, description, do_not_translate as "doNotTranslate", updated_at as "updatedAt"
        from glossary_terms
-       where project_id = $1 and (locale is null or locale = $2)
+       where project_id = $1 and active = true and (locale is null or locale = $2)
        order by lower(term), locale nulls first`,
       [source.projectId, req.params.locale],
     ),
@@ -1878,6 +1884,12 @@ app.post(
     persona: personaResult.rows[0]?.body || null,
     glossary: glossaryResult.rows,
   });
+  const assetVersion = row => createHash("sha256").update(JSON.stringify(row)).digest("hex");
+  prompt.promptSnapshot.libraryVersions = {
+    prompts: promptResult.rows.map(r => ({ id: r.id, key: r.key, updatedAt: r.updatedAt, contentHash: assetVersion(r) })),
+    persona: personaResult.rows.map(r => ({ id: r.id, locale: req.params.locale, updatedAt: r.updatedAt, contentHash: assetVersion(r) })),
+    glossary: glossaryResult.rows.map(r => ({ id: r.id, updatedAt: r.updatedAt, contentHash: assetVersion(r) })),
+  };
   const usageRequest = usageIdentity(req, "ai_translation_revision", {
     sourceId: source.id,
     locale: req.params.locale,

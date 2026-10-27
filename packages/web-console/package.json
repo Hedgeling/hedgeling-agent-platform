@@ -41,6 +41,7 @@
     "test:commercial:browser": "node scripts/run-commercial-browser-tests.js",
     "test:extraction:browser": "node scripts/run-extraction-browser-tests.js",
     "test:locales:browser": "node scripts/run-project-locales-browser-tests.js",
+    "test:library:browser": "node scripts/run-library-browser-tests.js",
     "test:tuning:browser": "node scripts/run-tuning-browser-tests.js"
   },
   "dependencies": {
