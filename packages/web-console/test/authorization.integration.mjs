@@ -349,6 +349,7 @@ try {
       "202610241200_agent_console.sql",
       "202610241300_workspace_management.sql",
       "202610241500_console_commercial_foundation.sql",
+      "202610271200_extraction_workflow.sql",
     ],
   );
   assert.equal(
