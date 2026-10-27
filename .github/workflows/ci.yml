@@ -1,5 +1,8 @@
 name: Public platform checks
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 permissions:
   contents: read
 jobs:
@@ -20,12 +23,13 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql://platform:local-ci-only@127.0.0.1:5432/platform_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node --test scripts/demo-release.test.mjs
       - run: npm run check:public
       - run: npm run build
       - run: npm run lint
@@ -36,10 +40,29 @@ jobs:
       - run: npm run test:local
       - run: npm run test:authorization
       - run: npm -w @hedgeling/web-console run security:verify
-      - run: npx playwright install --with-deps chromium
+      - name: Install browser dependencies with bounded retries
+        timeout-minutes: 6
+        run: |
+          echo 'Acquire::Retries "2"; Acquire::http::Timeout "30"; Acquire::https::Timeout "30";' | sudo tee /etc/apt/apt.conf.d/99-hedgeling-ci
+          sudo apt-get update
+          npx playwright install --with-deps chromium
       - run: npm run test:navigation:browser
       - run: npm run test:agent:browser
       - run: npm -w @hedgeling/web-console run test:extraction:browser
       - run: npm -w @hedgeling/web-console run test:locales:browser
       - run: npm run test:commercial:browser
-      - run: docker build -f packages/web-console/Dockerfile .
+      - name: Build and test the release container
+        env:
+          RELEASE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/test-demo-image.mjs
+      - name: Save the tested main image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker save hedgeling-demo-tested:${{ github.sha }} -o /tmp/hedgeling-demo-image.tar
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: demo-image-${{ github.sha }}
+          path: /tmp/hedgeling-demo-image.tar
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error

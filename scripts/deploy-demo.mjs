@@ -15,6 +15,10 @@ if (origin.protocol !== "https:" || origin.username || origin.password || origin
 const aws = (args) => JSON.parse(execFileSync("aws", [...args, "--region", region, "--output", "json"], { encoding: "utf8", env: { ...process.env, AWS_PAGER: "" } }) || "{}");
 const account = aws(["sts", "get-caller-identity"]).Account;
 if (!image.startsWith(`${account}.dkr.ecr.${region}.amazonaws.com/hedgeling-demo`) || !/@sha256:[a-f0-9]{64}$/.test(image)) throw new Error("A demo image digest in the current account is required");
+if (process.env.AUTOMATIC_RELEASE === 'true') {
+  const main = execFileSync('git', ['ls-remote', 'origin', 'refs/heads/main'], { encoding: 'utf8' }).split(/\s/)[0];
+  if (main !== process.env.RELEASE_SHA) { console.log('Skipping superseded automatic release.'); process.exit(0); }
+}
 const before = aws(["ecs", "describe-services", "--cluster", cluster, "--services", service]);
 if (before.failures?.length || before.services?.length !== 1) throw new Error("Bootstrap the demo service before using the deployment workflow");
 const current = before.services[0];

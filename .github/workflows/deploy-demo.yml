@@ -1,14 +1,18 @@
 name: Deploy demo
 on:
+  workflow_run:
+    workflows: [Public platform checks]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       ref:
-        description: Main or a tested full commit SHA on main (also used for rollback)
+        description: Main or a tested full commit SHA on main; its CI image must still be retained
         default: main
         required: true
         type: string
       image_only:
-        description: Build the image without updating ECS (initial infrastructure bootstrap)
+        description: Publish the tested image without updating ECS
         default: false
         type: boolean
 permissions:
@@ -20,6 +24,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     environment: demo
@@ -32,31 +37,46 @@ jobs:
       ECS_CONTAINER_NAME: web-console
       DEMO_PUBLIC_ORIGIN: ${{ vars.DEMO_PUBLIC_ORIGIN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Select a tested release from main
         id: release
         env:
-          REQUESTED_REF: ${{ inputs.ref }}
+          REQUESTED_REF: ${{ github.event.workflow_run.head_sha || inputs.ref }}
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+          AUTOMATIC_RELEASE: ${{ github.event_name == 'workflow_run' }}
           GH_TOKEN: ${{ github.token }}
         run: node scripts/select-demo-release.mjs
+      - name: Download the exact image tested by CI
+        if: steps.release.outputs.deploy == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: demo-image-${{ steps.release.outputs.sha }}
+          path: /tmp/hedgeling-demo-release
+          run-id: ${{ steps.release.outputs.run_id }}
+          github-token: ${{ github.token }}
       - name: Assume the demo-only deployment role
+        if: steps.release.outputs.deploy == 'true'
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           mask-aws-account-id: true
-      - name: Build immutable demo image
+      - name: Publish the tested image
+        if: steps.release.outputs.deploy == 'true'
         id: image
         env:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          RELEASE_ARCHIVE: /tmp/hedgeling-demo-release/hedgeling-demo-image.tar
         run: node scripts/build-demo-image.mjs
       - name: Deploy and verify
-        if: ${{ !inputs.image_only }}
+        if: steps.release.outputs.deploy == 'true' && !inputs.image_only
         env:
           RELEASE_IMAGE: ${{ steps.image.outputs.uri }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          AUTOMATIC_RELEASE: ${{ github.event_name == 'workflow_run' }}
         run: node scripts/deploy-demo.mjs
