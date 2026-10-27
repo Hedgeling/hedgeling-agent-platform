@@ -1,0 +1,37 @@
+{
+  "repository": "Hedgeling/hedgeling-meta-hackathon",
+  "revision": "caec8e413a5e8277ff0182c93db32020ff47f167",
+  "license": "Apache-2.0",
+  "files": [
+    {
+      "source": "src/errors.js",
+      "destination": "errors.js",
+      "sha256": "39cda22e8434d3a78f156d7a8ccd4cc6b3301f9ac11127bb6e8680449b53fb2a"
+    },
+    {
+      "source": "src/http.js",
+      "destination": "http.js",
+      "sha256": "86a62f18e8acbc2b74e3b002a8b0523eaf045e0824e1966b7af8b09b77eb20ea"
+    },
+    {
+      "source": "src/engine-client.js",
+      "destination": "engine-client.js",
+      "sha256": "523759b2ddee0c1d0a1b60adae9e38318dc22c57187a8b631a13478c75edb446"
+    },
+    {
+      "source": "src/engine-status.js",
+      "destination": "engine-status.js",
+      "sha256": "b8f220225a754cc5dc5cf309a6727098c2cbc4494546795c47c06cfc97811aa2"
+    },
+    {
+      "source": "LICENSE",
+      "destination": "LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "source": "NOTICE",
+      "destination": "NOTICE",
+      "sha256": "91424905df6ef3e602591ed759c25d56369ea5f2549ca2fa10a3e16ac7dfb18f"
+    }
+  ]
+}
