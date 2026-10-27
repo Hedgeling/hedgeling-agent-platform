@@ -11,8 +11,8 @@ export function element(tag, className = "", text = "") {
 }
 export const actionLabel = { "organization.create": "Create organization", "business_unit.create": "Create business unit", "project.create": "Create project", "localization_job.create": "Create job draft", "organization.update": "Save organization name", "business_unit.update": "Save business-unit name", "project.update": "Save project name", "localization_job.update": "Save job changes" };
 const workflowLabels = { machine_translation: "AI translation", human_translation: "Human translation", review: "Review", qa: "Quality check" };
-Object.assign(actionLabel, { 'project.locales.add': 'Add target languages', 'extraction.start': 'Start extraction', 'extraction.import': 'Import source strings' });
-const displayField = (key, value) => Array.isArray(value) ? value.map((v) => key === "steps" ? workflowLabels[v] || v : v).join(key === "steps" ? " → " : ", ") : String(value ?? "—");
+Object.assign(actionLabel, { 'project.locales.add': 'Add target languages', 'extraction.tune': 'Run tuning preview', 'extraction.tuning.apply': 'Save settings and re-extract', 'extraction.start': 'Start extraction', 'extraction.import': 'Import source strings' });
+const displayField = (key, value) => Array.isArray(value) ? value.map((v) => key === "steps" ? workflowLabels[v] || v : v).join(key === "steps" ? " → " : ", ") : value && typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "—");
 export function proposalCard(proposal, confirm, reject, { example = false } = {}) {
   const card = element("article", "agent-proposal"); card.dataset.proposalId = proposal.id;
   const heading = element("div", "agent-card-heading");
@@ -36,8 +36,8 @@ export function proposalCard(proposal, confirm, reject, { example = false } = {}
 // and interaction: chat replies versus a manual form's review step.
 function appendProposalDetails(card, preview) {
   const fields = element("dl", "agent-fields");
-  const labels = { name: "Name", sourceLocale: "Source language", targetLocales: "Target languages", steps: "Workflow", repository: 'Repository', ref: 'Source revision', scanRoots: 'Source paths', commitSha: 'Pinned commit' };
-  for (const [key, label] of preview.changes ? [] : Object.entries(labels)) {
+  const labels = { name: "Name", sourceLocale: "Source language", targetLocales: "Target languages", steps: "Workflow", repository: 'Repository', ref: 'Source revision', scanRoots: 'Source paths', commitSha: 'Pinned commit', settings: 'Extraction settings' };
+  for (const [key, label] of preview.changes ? Object.entries(labels).filter(([key]) => ['commitSha', 'scanRoots'].includes(key)) : Object.entries(labels)) {
     const value = preview.fields[key];
     if (value !== undefined) fields.append(element("dt", "", label), element("dd", "", displayField(key, value)));
   }

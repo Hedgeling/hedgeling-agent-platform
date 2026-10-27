@@ -21,7 +21,8 @@ export async function extractionEngine() {
     const route = new URL(req.url, 'https://localhost').pathname;
     calls.push({ method: req.method, route, key: req.headers['idempotency-key'] });
     if (req.headers.authorization !== 'Bearer synthetic-engine-token') return send(401, {});
-    if (route === '/v1/capabilities') return send(200, { sourceConfigured: true, operations: ['extract'] });
+    if (route === '/v1/capabilities') return send(200, { sourceConfigured: true, operations: ['extract', 'tune'] });
+    if (route === '/v1/connections/test-source/config') return send(200, {repositoryId:123,commitSha:'a'.repeat(40),path:new URL(req.url,'https://localhost').searchParams.get('path'),found:true,settings:{excludeFields:['telemetryLabel']},ignoredFields:['translation']});
     if (route === '/v1/jobs' && req.method === 'POST') {
       let raw = ''; for await (const part of req) raw += part;
       const body = JSON.parse(raw); const requestKey = req.headers['idempotency-key'];
@@ -37,7 +38,7 @@ export async function extractionEngine() {
     if (!match[2]) return send(200, { job });
     if (job.status !== 'succeeded') return send(409, {});
     return send(200, { version: 1, catalog: { schemaVersion: 2, sourceLocale: job.sourceLocale, entries },
-      provenance: { repositoryId: control.corruptArtifact ? 999 : 123, commitSha: job.commitSha, operation: 'extract' } });
+      provenance: { repositoryId: control.corruptArtifact ? 999 : 123, commitSha: job.commitSha, operation: job.operation }, ...(job.operation === 'tune' ? {tuning:{mode:'deterministic',wrote:false,llmCalls:0,before:{strings:2,diagnostics:{total:10}},after:{strings:2,diagnostics:{total:5}},acceptedEdits:[{field:'excludeCallees',value:'trackDebug'}],settings:{...job.settings,excludeCallees:[...(job.settings?.excludeCallees || []),'trackDebug']}}}: {}) });
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   return { env: { HEDGELING_ENGINE_URL: `https://127.0.0.1:${server.address().port}`, HEDGELING_ENGINE_TOKEN: 'synthetic-engine-token', NODE_EXTRA_CA_CERTS: cert }, jobs, calls, control,
