@@ -10,7 +10,7 @@
 .commercial-section h3 { margin-top:0; }
 .commercial-notice { padding:16px; border:1px solid var(--line-soft); border-left:4px solid var(--text-accent); border-radius:8px; line-height:1.6; }
 .commercial-form { display:grid; gap:12px; max-width:540px; }
-.commercial-form[hidden],.commercial-plans[hidden] { display:none; }
+.commercial-form[hidden],.commercial-plans[hidden],.commercial-routing[hidden] { display:none; }
 .commercial-form label { display:grid; gap:8px; }
 .commercial-form input { width:100%; box-sizing:border-box; }
 .commercial-form button { justify-self:start; }
@@ -21,7 +21,7 @@
 .commercial-confirmation p { line-height:1.6; }
 .commercial-confirmation .primary { margin-left:auto; }
 .commercial-error { color:var(--red); font-weight:var(--weight-bold); }
-.commercial-routing { border:0; padding:0; margin:28px 0 0; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.commercial-routing { border:0; padding:0; margin:28px 0 0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
 .commercial-routing legend { margin-bottom:16px; font-weight:600; }
 .commercial-provider-choice { white-space:normal; text-align:left; padding:18px; height:auto; }
 .commercial-provider-choice small { display:block; margin-top:8px; line-height:1.6; font-weight:normal; }

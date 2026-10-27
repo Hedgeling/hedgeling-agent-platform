@@ -4,9 +4,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { chromium, expect } from "@playwright/test";
+import { metaProvider } from "../test-support/meta-provider.mjs";
 import { localConsole } from "../test-support/local-console.mjs";
 
-const app = await localConsole(process.env.TEST_DATABASE_URL || process.argv[2], { HEDGELING_AI_KEY_ID: "browser", HEDGELING_AI_KEYRING: JSON.stringify({ browser: crypto.randomBytes(32).toString("base64") }) });
+const meta = await metaProvider();
+const app = await localConsole(process.env.TEST_DATABASE_URL || process.argv[2], { ...meta.env, HEDGELING_AI_KEY_ID: "browser", HEDGELING_AI_KEYRING: JSON.stringify({ browser: crypto.randomBytes(32).toString("base64") }) });
 const artifacts = process.env.HEDGELING_COMMERCIAL_BROWSER_ARTIFACTS || await fs.mkdtemp(path.join(os.tmpdir(), "hedgeling-commercial-browser-"));
 await fs.mkdir(artifacts, { recursive: true });
 let browser;
@@ -37,9 +39,11 @@ try {
   assert.equal((await app.database.query("select ai_credit_overage_cap_minor::int as cap from organization_spend_controls where organization_id=$1", [org])).rows[0].cap, 2500);
   await page.locator("#sectionNav").getByRole("button", { name: "AI providers & keys", exact: true }).click();
   const providers = page.locator("#aiProvidersConsole");
+  const geminiConnection = providers.locator('[data-provider="gemini"]');
+  const metaConnection = providers.locator('[data-provider="meta"]');
   const syntheticKey = "synthetic-browser-Gemini-key-1234";
   await providers.getByLabel("Gemini API key", { exact: true }).fill(syntheticKey);
-  await providers.getByRole("button", { name: "Review connection" }).click();
+  await geminiConnection.getByRole("button", { name: "Review connection" }).click();
   await expect(providers.getByRole("heading", { name: "Connect Gemini key" })).toBeFocused();
   assert.equal((await app.database.query("select count(*)::int as n from organization_ai_credentials")).rows[0].n, 0);
   assert.ok(!(await providers.textContent()).includes(syntheticKey));
@@ -47,18 +51,34 @@ try {
   await providers.getByRole("button", { name: "Edit details" }).click();
   await expect(providers.getByLabel("Gemini API key", { exact: true })).toHaveValue("");
   await providers.getByLabel("Gemini API key", { exact: true }).fill(syntheticKey);
-  await providers.getByRole("button", { name: "Review connection" }).click();
+  await geminiConnection.getByRole("button", { name: "Review connection" }).click();
   await providers.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(providers.getByText("Connected · ••••1234", { exact: true })).toBeVisible();
   await providers.getByRole("button", { name: "My organization’s Gemini key", exact: false }).click();
   await expect(providers.getByText("Google bills your organization directly.", { exact: false }).last()).toBeVisible();
   await providers.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(providers.locator(".commercial-provider-choice.selected")).toContainText("My organization");
+  await metaConnection.getByLabel("Meta API key", { exact: true }).fill("synthetic-Meta-browser-key-5678");
+  await metaConnection.getByRole("button", { name: "Review connection" }).click();
+  await expect(metaConnection.getByRole("heading", { name: "Connect Meta key" })).toBeFocused();
+  await expect(metaConnection.getByText("••••5678", { exact: true })).toBeVisible();
+  await metaConnection.getByRole("button", { name: "Confirm", exact: true }).click();
+  await expect(metaConnection.getByText("Connected · ••••5678")).toBeVisible();
+  await expect(geminiConnection.getByText("Connected · ••••1234")).toBeVisible();
+  await metaConnection.getByRole("button", { name: "Test saved key" }).click();
+  await expect(metaConnection.getByRole("status")).toContainText("test-meta-model");
+  assert.equal(meta.calls.length, 1); assert.equal(meta.calls[0].method, "GET");
+  await providers.getByRole("button", { name: "My organization’s Meta key", exact: false }).click();
+  await expect(providers.getByText("Meta bills your organization directly.", { exact: false }).last()).toBeVisible();
+  await providers.getByRole("button", { name: "Confirm", exact: true }).click();
+  await expect(providers.locator(".commercial-provider-choice.selected")).toContainText("Meta");
+  await page.screenshot({ path: path.join(artifacts, "03-meta-providers-light.png"), fullPage: true });
   await page.emulateMedia({ colorScheme: "dark" });
   await page.screenshot({ path: path.join(artifacts, "03-providers-dark.png"), fullPage: true });
-  await providers.getByRole("button", { name: "Remove key", exact: true }).click();
+  await metaConnection.getByRole("button", { name: "Remove key", exact: true }).click();
   await providers.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(providers.getByText("AI translations are paused", { exact: false })).toBeVisible();
+  await expect(geminiConnection.getByText("Connected · ••••1234")).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: path.join(artifacts, "04-providers-mobile.png"), fullPage: true });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -76,4 +96,4 @@ try {
   assert.equal(new URL(page.url()).hash, "#access/billing");
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ ok: true, artifacts, checks: ["billing", "spending confirmation", "key preview/edit/confirm", "provider switching", "removal without fallback", "trial upgrade", "desktop/mobile"] }));
-} finally { await browser?.close(); await app.close(); }
+} finally { await browser?.close(); await app.close(); await meta.close(); }

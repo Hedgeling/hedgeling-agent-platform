@@ -1,4 +1,5 @@
 import express from "express";
+import { metaTranslationConfiguration, validateMetaKey } from "./hackathon-engine/meta-translation.js";
 import { query, withTransaction } from "./db.js";
 import { requireOrganizationPermission } from "./authorization.js";
 import { effectiveOrganizationAccess } from "./entitlements.js";
@@ -27,25 +28,29 @@ async function byokAccess(organizationId) {
 }
 export async function organizationAiSettings(organizationId) {
   const [settings, credential, entitlement] = await Promise.all([
-    query("select translation_mode,revision from organization_ai_settings where organization_id=$1", [organizationId]),
+    query("select translation_mode,translation_provider,revision from organization_ai_settings where organization_id=$1", [organizationId]),
     query("select provider,last_four,validated_at,updated_at from organization_ai_credentials where organization_id=$1", [organizationId]),
     effectiveOrganizationAccess(organizationId, "ai_byok"),
   ]);
-  const saved = credential.rows[0];
-  return { translationMode: settings.rows[0]?.translation_mode || "managed", revision: settings.rows[0]?.revision || 0,
+  const mask = (saved) => saved ? { provider: saved.provider, maskedKey: `••••${saved.last_four}`, validatedAt: saved.validated_at, updatedAt: saved.updated_at } : null;
+  const credentials = Object.fromEntries(credential.rows.map(saved => [saved.provider, mask(saved)]));
+  let metaReady = false;
+  try { metaTranslationConfiguration(); metaReady = true; } catch { /* Expose readiness, never the server endpoint. */ }
+  return { translationProvider: settings.rows[0]?.translation_provider || "gemini", providers: { gemini: { ready: true }, meta: { ready: metaReady } }, credentials, translationMode: settings.rows[0]?.translation_mode || "managed", revision: settings.rows[0]?.revision || 0,
     chat: { mode: "managed", included: true }, eligible: entitlement.allowed, storageReady: vaultReady(),
-    credential: saved ? { provider: saved.provider, maskedKey: `••••${saved.last_four}`, validatedAt: saved.validated_at, updatedAt: saved.updated_at } : null };
+    credential: credentials.gemini || null };
 }
 
 // Used by every server-side translation adapter; never fall back to managed
 // credits when the organization explicitly selected its own provider account.
 export async function translationProvider(organizationId) {
-  const settings = (await query("select translation_mode from organization_ai_settings where organization_id=$1", [organizationId])).rows[0];
-  if (settings?.translation_mode !== "byok") return { mode: "managed", key: null };
+  const settings = (await query("select translation_mode,translation_provider from organization_ai_settings where organization_id=$1", [organizationId])).rows[0];
+  if (settings?.translation_mode !== "byok") return { mode: "managed", provider: "gemini", key: null };
   await byokAccess(organizationId);
-  const credential = (await query("select encrypted_secret from organization_ai_credentials where organization_id=$1", [organizationId])).rows[0];
+  const provider = settings.translation_provider;
+  const credential = (await query("select encrypted_secret from organization_ai_credentials where organization_id=$1 and provider=$2", [organizationId, provider])).rows[0];
   if (!credential) throw fail(409, "Connect an organization key or explicitly switch translation back to Hedgeling AI.", "byok_key_missing");
-  return { mode: "byok", key: decryptSecret(credential.encrypted_secret, organizationId) };
+  return { mode: "byok", provider, key: decryptSecret(credential.encrypted_secret, organizationId, provider) };
 }
 
 // Metadata-only validation: no generated content and no inference charge.
@@ -71,51 +76,60 @@ router.get(base, requireOrganizationPermission("ai_providers.view"), route(async
 router.post(`${base}/test`, requireOrganizationPermission("ai_providers.manage"), requireConsoleHuman, route(async (req, res) => {
   const org = req.authorizedOrganizationId;
   await byokAccess(org);
+  const provider = providerName(req.body?.provider);
   let key = req.body?.key;
   let savedEnvelope = null;
   if (key == null) {
-    const row = (await query("select encrypted_secret from organization_ai_credentials where organization_id=$1", [org])).rows[0];
-    if (!row) throw fail(404, "Connect a Gemini key first");
+    const row = (await query("select encrypted_secret from organization_ai_credentials where organization_id=$1 and provider=$2", [org, provider])).rows[0];
+    if (!row) throw fail(404, `Connect a ${providerLabel(provider)} key first`);
     savedEnvelope = row.encrypted_secret;
-    key = decryptSecret(savedEnvelope, org);
+    key = decryptSecret(savedEnvelope, org, provider);
   }
-  validateKeyInput(key);
+  validateKeyInput(key, provider);
   const access = await effectiveOrganizationAccess(org, "ai_revision");
-  const result = await validateGeminiKey(key, geminiModelForPlan(access.limits));
-  if (savedEnvelope) await query("update organization_ai_credentials set validated_at=$3 where organization_id=$1 and encrypted_secret=$2::jsonb", [org, JSON.stringify(savedEnvelope), result.checkedAt]);
+  const result = provider === "meta" ? await validateMetaKey(key) : await validateGeminiKey(key, geminiModelForPlan(access.limits));
+  if (savedEnvelope) await query("update organization_ai_credentials set validated_at=$3 where organization_id=$1 and encrypted_secret=$2::jsonb and provider=$4", [org, JSON.stringify(savedEnvelope), result.checkedAt, provider]);
   res.set("Cache-Control", "no-store").json(result);
 }));
-function validateKeyInput(key) {
-  if (typeof key !== "string" || key.length < 20 || key.length > 512 || !/^[A-Za-z0-9_-]+$/.test(key)) throw fail(400, "Enter a valid Gemini API key", "provider_key_invalid");
+function providerName(value = "gemini") {
+  if (!["gemini", "meta"].includes(value)) throw fail(400, "Choose Gemini or Meta", "provider_invalid");
+  return value;
+}
+const providerLabel = (provider) => provider === "meta" ? "Meta" : "Gemini";
+function validateKeyInput(key, provider) {
+  const valid = provider === "meta" ? /^[A-Za-z0-9._~+\/=-]+$/ : /^[A-Za-z0-9_-]+$/;
+  if (typeof key !== "string" || key.length < 20 || key.length > (provider === "meta" ? 4096 : 512) || !valid.test(key)) throw fail(400, `Enter a valid ${providerLabel(provider)} API key`, "provider_key_invalid");
 }
 router.post(`${base}/preview`, requireOrganizationPermission("ai_providers.manage"), requireConsoleHuman, route(async (req, res) => {
   const org = req.authorizedOrganizationId;
   const { action, key, mode } = req.body || {};
+  const provider = providerName(req.body?.provider);
   if (!["connect", "remove", "translation_mode"].includes(action)) throw fail(400, "Unknown provider setting");
   if (action !== "remove" && !(action === "translation_mode" && mode === "managed")) await byokAccess(org);
-  let payload = {};
-  if (action === "connect") { validateKeyInput(key); payload = { encryptedSecret: encryptSecret(key, org), lastFour: key.slice(-4) }; }
+  if (provider === "meta" && (action === "connect" || (action === "translation_mode" && mode === "byok"))) metaTranslationConfiguration();
+  let payload = { provider };
+  if (action === "connect") { validateKeyInput(key, provider); payload = { provider, encryptedSecret: encryptSecret(key, org, provider), lastFour: key.slice(-4) }; }
   if (action === "translation_mode") {
     if (!["managed", "byok"].includes(mode)) throw fail(400, "Choose a translation provider");
-    payload = { mode };
+    payload = { mode, provider };
   }
   const proposal = await withTransaction(async (client) => {
     await client.query("select pg_advisory_xact_lock(hashtext($1))", [`ai-settings:${org}`]);
     await expireAiProposals(client);
     const count = (await client.query("select count(*)::int as n from organization_ai_proposals where user_id=$1 and created_at>now()-interval '1 day'", [req.auth.user.id])).rows[0].n;
     if (count >= 100) throw fail(429, "Your daily provider-settings preview limit has been reached");
-    const settings = (await client.query("select translation_mode,revision from organization_ai_settings where organization_id=$1", [org])).rows[0];
+    const settings = (await client.query("select translation_mode,translation_provider,revision from organization_ai_settings where organization_id=$1", [org])).rows[0];
     const current = settings?.translation_mode || "managed";
-    const credential = (await client.query("select last_four from organization_ai_credentials where organization_id=$1", [org])).rows[0];
+    const credential = (await client.query("select last_four from organization_ai_credentials where organization_id=$1 and provider=$2", [org, provider])).rows[0];
     if (action === "remove" && !credential) throw fail(409, "There is no saved key to remove");
-    if (action === "translation_mode" && mode === "byok" && !credential) throw fail(409, "Connect your Gemini key first");
-    if (action === "translation_mode" && mode === current) throw fail(400, "This provider is already selected");
-    const preview = { action, title: action === "connect" ? `${credential ? "Replace" : "Connect"} Gemini key` : action === "remove" ? "Remove Gemini key" : "Change translation provider",
-      before: action === "translation_mode" ? current : credential ? `••••${credential.last_four}` : "No key connected",
-      after: action === "translation_mode" ? mode : action === "connect" ? `••••${payload.lastFour}` : "No key connected",
-      effect: action === "remove" && current === "byok" ? "New AI translations will stop until you connect a key or explicitly choose Hedgeling AI."
-        : action === "translation_mode" ? mode === "byok" ? "Google bills your organization directly. Hedgeling translation credits will not be charged." : "New AI translations use your Hedgeling credit allowance and approved spending cap."
-        : "The key is stored encrypted. Your translation provider stays unchanged. Test access after saving.",
+    if (action === "translation_mode" && mode === "byok" && !credential) throw fail(409, `Connect your ${providerLabel(provider)} key first`);
+    if (action === "translation_mode" && mode === current && (mode === "managed" || provider === settings?.translation_provider)) throw fail(400, "This provider is already selected");
+    const preview = { action, title: action === "connect" ? `${credential ? "Replace" : "Connect"} ${providerLabel(provider)} key` : action === "remove" ? `Remove ${providerLabel(provider)} key` : "Change translation provider",
+      before: action === "translation_mode" ? current === "managed" ? "Hedgeling AI" : `${providerLabel(settings.translation_provider)} · organization key` : credential ? `••••${credential.last_four}` : "No key connected",
+      after: action === "translation_mode" ? mode === "managed" ? "Hedgeling AI" : `${providerLabel(provider)} · organization key` : action === "connect" ? `••••${payload.lastFour}` : "No key connected",
+      effect: action === "remove" && current === "byok" && settings.translation_provider === provider ? "New AI translations will stop until you connect a key or explicitly choose Hedgeling AI."
+        : action === "translation_mode" ? mode === "byok" ? `${provider === "meta" ? "Meta" : "Google"} bills your organization directly. Hedgeling translation credits will not be charged.` : "New AI translations use your Hedgeling credit allowance and approved spending cap."
+        : action === "remove" ? "Only this provider’s key will be removed. Your translation provider stays unchanged." : "The key is stored encrypted. Your translation provider stays unchanged. Test access after saving.",
       chat: "Chat stays included with the platform and uses Hedgeling AI." };
     return (await client.query("insert into organization_ai_proposals(organization_id,user_id,action,expected_revision,payload,preview) values($1,$2,$3,$4,$5,$6) returning id,preview,expires_at as \"expiresAt\"", [org, req.auth.user.id, action, settings?.revision || 0, payload, preview])).rows[0];
   });
@@ -139,16 +153,17 @@ router.post(`${base}/proposals/:id/:decision`, requireOrganizationPermission("ai
     await client.query("insert into organization_ai_settings(organization_id) values($1) on conflict do nothing", [org]);
     const settings = (await client.query("select revision from organization_ai_settings where organization_id=$1 for update", [org])).rows[0];
     if (settings.revision !== p.expected_revision) throw fail(409, "Provider settings changed. Review a fresh preview before saving.");
+    const provider = providerName(p.payload.provider);
     if (p.action === "connect") {
       // Verify the wrapping key still exists; rewrap to the active key at commit.
-      const encrypted = encryptSecret(decryptSecret(p.payload.encryptedSecret, org), org);
+      const encrypted = encryptSecret(decryptSecret(p.payload.encryptedSecret, org, provider), org, provider);
       await client.query(`insert into organization_ai_credentials(organization_id,provider,encrypted_secret,last_four,created_by_user_id)
-        values($1,'gemini',$2,$3,$4) on conflict(organization_id) do update set encrypted_secret=$2,last_four=$3,created_by_user_id=$4,validated_at=null,updated_at=now()`, [org, encrypted, p.payload.lastFour, req.auth.user.id]);
-    } else if (p.action === "remove") await client.query("delete from organization_ai_credentials where organization_id=$1", [org]);
-    else await client.query("update organization_ai_settings set translation_mode=$2 where organization_id=$1", [org, p.payload.mode]);
+        values($1,$5,$2,$3,$4) on conflict(organization_id,provider) do update set encrypted_secret=$2,last_four=$3,created_by_user_id=$4,validated_at=null,updated_at=now()`, [org, encrypted, p.payload.lastFour, req.auth.user.id, provider]);
+    } else if (p.action === "remove") await client.query("delete from organization_ai_credentials where organization_id=$1 and provider=$2", [org, provider]);
+    else await client.query("update organization_ai_settings set translation_mode=$2,translation_provider=$3 where organization_id=$1", [org, p.payload.mode, provider]);
     await client.query("update organization_ai_settings set revision=revision+1,updated_at=now() where organization_id=$1", [org]);
     await client.query("update organization_ai_proposals set status='confirmed',payload='{}' where id=$1", [p.id]);
-    await auditRequest(client, req, { action: `ai_provider.${p.action}`, resourceType: "organization", resourceId: org, beforeState: { value: p.preview.before }, afterState: { value: p.preview.after } });
+    await auditRequest(client, req, { action: `ai_provider.${p.action}`, resourceType: "organization", resourceId: org, beforeState: { provider, value: p.preview.before }, afterState: { provider, value: p.preview.after } });
     return { confirmed: true };
   });
   res.set("Cache-Control", "no-store").json(outcome);

@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "e90590d294fb2360d4864a242bc46928bc830bff",
+  "revision": "4cfe2875f3c44015dfa6ed8069a327f00ab5bd6e",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -28,6 +28,11 @@
       "source": "src/engine-operations.js",
       "destination": "engine-operations.js",
       "sha256": "e67beb7829131db3ff65e077ad1af48a7127d78a48479036850adaefe6a52ee4"
+    },
+    {
+      "source": "src/meta-translation.js",
+      "destination": "meta-translation.js",
+      "sha256": "c41a28731105c203acecd14047f57a567206bff01e457ac22c7eeee9ff0d4a49"
     },
     {
       "source": "src/extraction-actions.js",
@@ -63,6 +68,11 @@
       "source": "contracts/202610271200_extraction_workflow.sql",
       "destination": "../../db/migrations/202610271200_extraction_workflow.sql",
       "sha256": "4a49ea48cd3f5e21db26d2573244659d05ed247143ef8cbb1b5d2fe1a578f0d7"
+    },
+    {
+      "source": "contracts/202610271600_meta_byok.sql",
+      "destination": "../../db/migrations/202610271600_meta_byok.sql",
+      "sha256": "762e176d8ec36eb5cdaa3b33c205fa65cccc9ebcd19b39e488403729c1d97ef5"
     },
     {
       "source": "ui/extraction.js",

@@ -3018,11 +3018,11 @@ async function rejectTranslation() {
   await loadDetail(selectedDetail.string.id);
 }
 
-async function askGemini() {
+async function reviseWithAi() {
   if (!selectedDetail) return;
   const button = $("reviseTranslation");
   button.disabled = true;
-  button.textContent = "Asking Gemini...";
+  button.textContent = "Revising with AI...";
   $("revisionResult").hidden = true;
   try {
     const result = await api(`/api/translations/${selectedDetail.string.id}/${selectedLocale}/revise`, {
@@ -3037,7 +3037,7 @@ async function askGemini() {
     $("revisionResult").hidden = false;
   } finally {
     button.disabled = false;
-    button.textContent = "Ask Gemini";
+    button.textContent = "Revise with AI";
   }
 }
 
@@ -3303,7 +3303,7 @@ function bindEvents() {
   $("approveTranslation").addEventListener("click", () => approveTranslation().catch((err) => toast(err.message, "bad")));
   $("rejectTranslation").addEventListener("click", () => rejectTranslation().catch((err) => toast(err.message, "bad")));
   $("reloadDetail").addEventListener("click", () => loadDetail().catch((err) => toast(err.message, "bad")));
-  $("reviseTranslation").addEventListener("click", () => askGemini().catch((err) => toast(err.message, "bad")));
+  $("reviseTranslation").addEventListener("click", () => reviseWithAi().catch((err) => toast(err.message, "bad")));
   $("promptCreate").addEventListener("submit", (event) => createPrompt(event).catch((err) => toast(err.message, "bad")));
   $("glossaryCreate").addEventListener("submit", (event) => createGlossary(event).catch((err) => toast(err.message, "bad")));
   $("formatPersona").addEventListener("click", formatPersona);

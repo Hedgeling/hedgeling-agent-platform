@@ -350,6 +350,7 @@ try {
       "202610241300_workspace_management.sql",
       "202610241500_console_commercial_foundation.sql",
       "202610271200_extraction_workflow.sql",
+      "202610271600_meta_byok.sql",
     ],
   );
   assert.equal(

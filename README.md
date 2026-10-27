@@ -33,7 +33,7 @@ Open the printed localhost login URL and paste the expiring token printed in you
 
 The default agent uses a deterministic fixture and the real platform API. **No AWS account, model key, production login, or paid inference is required.** This is a scripted demonstration, not a general language model. Select **Set up demo workspace** or type that phrase, then inspect and confirm each proposal. Existing integration/browser tests exercise the rest of the workflow with synthetic data.
 
-For real model chat, choose server-side Meta or Gemini configuration; see [demo hosting and Meta setup](docs/AWS-DEMO.md). The Meta Responses adapter supports tool calls, encrypted conversation replay, usage accounting, cancellation and bounded errors. **Meta BYOK, Meta translation and Bedrock remain planned.** Keep keys on the server and configure an accessible model explicitly. The example environment file documents available settings; the local launcher expects exported environment variables and does not load `.env` automatically.
+For real model chat, choose server-side Meta or Gemini configuration; see [demo hosting and Meta setup](docs/AWS-DEMO.md). The Meta Responses adapter supports tool calls, encrypted conversation replay, usage accounting, cancellation and bounded errors. **Organization Meta BYOK now supports contextual translation; chat remains managed. Bedrock and separate context-enrichment passes remain planned.** Keep keys on the server and configure an accessible model explicitly. The example environment file documents available settings; the local launcher expects exported environment variables and does not load `.env` automatically.
 
 ## MCP
 

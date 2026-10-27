@@ -19,20 +19,20 @@ function keyring() {
   }
 }
 export function vaultReady() { try { keyring(); return true; } catch { return false; } }
-export function encryptSecret(secret, organizationId) {
+export function encryptSecret(secret, organizationId, provider = "gemini") {
   const ring = keyring();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", ring.keys.get(ring.active), iv);
-  cipher.setAAD(Buffer.from(`hedgeling:gemini:${organizationId}`));
+  cipher.setAAD(Buffer.from(`hedgeling:${provider}:${organizationId}`));
   const ciphertext = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
   return { version: 1, keyId: ring.active, iv: iv.toString("base64"), tag: cipher.getAuthTag().toString("base64"), ciphertext: ciphertext.toString("base64") };
 }
-export function decryptSecret(envelope, organizationId) {
+export function decryptSecret(envelope, organizationId, provider = "gemini") {
   const ring = keyring();
   try {
     if (envelope.version !== 1 || !ring.keys.has(envelope.keyId)) throw new Error();
     const decipher = crypto.createDecipheriv("aes-256-gcm", ring.keys.get(envelope.keyId), Buffer.from(envelope.iv, "base64"));
-    decipher.setAAD(Buffer.from(`hedgeling:gemini:${organizationId}`));
+    decipher.setAAD(Buffer.from(`hedgeling:${provider}:${organizationId}`));
     decipher.setAuthTag(Buffer.from(envelope.tag, "base64"));
     return Buffer.concat([decipher.update(Buffer.from(envelope.ciphertext, "base64")), decipher.final()]).toString("utf8");
   } catch {
