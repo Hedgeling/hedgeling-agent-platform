@@ -1,4 +1,4 @@
-import { CONSOLE_ACTIONS, validateActionInput, ACTION_CONTRACT_VERSION } from "@hedgeling/api-contract";
+import { CONSOLE_ACTIONS, validateActionInput, normalizeLibraryToolInput, ACTION_CONTRACT_VERSION } from "@hedgeling/api-contract";
 import { consoleClientFromEnv } from "@hedgeling/platform-client";
 
 export const consoleTools = CONSOLE_ACTIONS.map((action) => ({
@@ -9,6 +9,7 @@ export const consoleTools = CONSOLE_ACTIONS.map((action) => ({
 export async function callConsoleTool(name: string, input: unknown) {
   const action = CONSOLE_ACTIONS.find((candidate) => candidate.toolName === name);
   if (!action) return null;
+  input = normalizeLibraryToolInput(action.toolName, input);
   const invalid = validateActionInput(action, input);
   if (invalid) return { isError: true, content: [{ type: "text" as const, text: invalid }] };
   try {

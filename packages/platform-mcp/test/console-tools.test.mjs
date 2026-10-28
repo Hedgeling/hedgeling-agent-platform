@@ -60,3 +60,31 @@ test("report tools forward typed filters and pagination without altering the sha
   const result = await callConsoleTool("console_report_jobs", input);
   assert.equal(JSON.parse(result.content[0].text).result.totals.jobs, 150);
 });
+
+test('Library MCP repairs quoted null while preserving version failures and strict validation', async t => {
+  const previous={origin:process.env.HEDGELING_CONSOLE_URL,token:process.env.HEDGELING_CONSOLE_TOKEN};
+  process.env.HEDGELING_CONSOLE_URL='https://console.example.com';
+  process.env.HEDGELING_CONSOLE_TOKEN='test-service-token';
+  t.after(()=>{
+    if(previous.origin===undefined)delete process.env.HEDGELING_CONSOLE_URL;else process.env.HEDGELING_CONSOLE_URL=previous.origin;
+    if(previous.token===undefined)delete process.env.HEDGELING_CONSOLE_TOKEN;else process.env.HEDGELING_CONSOLE_TOKEN=previous.token;
+  });
+  const input={projectSlug:'demo',locale:'fr-CA',body:{tone:'null'},active:true,expectedVersion:'null'};
+  t.mock.method(globalThis,'fetch',async(url,init)=>{
+    assert.equal(url,'https://console.example.com/api/actions/library.persona.save');
+    assert.deepEqual(JSON.parse(init.body),{...input,expectedVersion:null});
+    return Response.json({version:1,action:'library.persona.save',result:{proposal:{id:'preview-only'}}});
+  });
+  assert.equal((await callConsoleTool('console_propose_locale_persona',input)).isError,undefined);
+  assert.equal(input.expectedVersion,'null');
+  for(const expectedVersion of ['', 'NULL', ' null ', false, 0]){
+    assert.equal((await callConsoleTool('console_propose_locale_persona',{...input,expectedVersion})).isError,true);
+  }
+  const {expectedVersion,...missing}=input;
+  assert.equal((await callConsoleTool('console_propose_locale_persona',missing)).isError,true);
+  assert.equal(globalThis.fetch.mock.callCount(),1);
+  globalThis.fetch.mock.mockImplementation(async()=>Response.json({error:'The asset has changed',code:'proposal_stale'},{status:409}));
+  const stale=await callConsoleTool('console_propose_locale_persona',input);
+  assert.equal(stale.isError,true);
+  assert.match(stale.content[0].text,/409.*asset has changed/);
+});

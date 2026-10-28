@@ -10,7 +10,7 @@ test('Library API/MCP preserves approvals, versions, locale boundaries and revie
   const userId=(await request('/api/me')).body.auth.user.id;
   await database.query("update projects set source_locale='en' where id=$1",[p.id]);
   await database.query('delete from locales where project_id=$1',[p.id]);
-  await database.query("insert into locales(project_id,locale) values($1,'fr'),($1,'es-MX')",[p.id]);
+  await database.query("insert into locales(project_id,locale) values($1,'fr'),($1,'es-MX'),($1,'fr-CA')",[p.id]);
   const call=async(name,input)=>{const r=await request('/api/actions/'+name,{projectSlug:p.slug,...input});assert.equal(r.status,200,JSON.stringify(r.body));return r.body.result;};
   const confirm=proposal=>request(`/api/agent/proposals/${proposal.id}/confirm`,{fingerprint:proposal.fingerprint,controllerId});
   const save=async(kind,input)=>{const proposal=(await call(`library.${kind}.save`,input)).proposal;const r=await confirm(proposal);assert.equal(r.status,200,JSON.stringify(r.body));return {proposal,result:r.body.result};};
@@ -60,6 +60,20 @@ test('Library API/MCP preserves approvals, versions, locale boundaries and revie
   const pending=await eventually(()=>request(`/api/agent/runs/${run.id}`),r=>r.body.run?.status==='awaiting_confirmation',20000);
   assert.equal(pending.body.proposals[0].preview.action,'library.prompt.save');assert.equal((await get('prompt','chat-rules')),null);
   assert.equal((await confirm(pending.body.proposals[0])).status,200);
+
+  // Exercise the real in-process MCP transport with the quoted null observed
+  // from Meta. It must create an approval card, never save automatically.
+  const personaInput={projectSlug:p.slug,locale:'fr-CA',body:{tone:'Warm and direct',audience:'New customers'},active:true,expectedVersion:'null'};
+  assert.equal((await request('/api/actions/library.persona.save',personaInput)).status,400,'HTTP API retains strict JSON typing');
+  const personaRun=(await request('/api/agent/runs',{organizationId:p.org,controllerId})).body.run;
+  assert.equal((await request(`/api/agent/runs/${personaRun.id}/messages`,{controllerId,text:`Create persona "fr-CA" for project "${p.slug}".`})).status,200);
+  const personaPending=await eventually(()=>request(`/api/agent/runs/${personaRun.id}`),r=>r.body.run?.status==='awaiting_confirmation',20000);
+  assert.equal(personaPending.body.proposals[0].preview.action,'library.persona.save');
+  assert.equal(await get('persona','fr-CA'),null);
+  assert.equal((await confirm(personaPending.body.proposals[0])).status,200);
+  assert.deepEqual((await get('persona','fr-CA')).content.body,personaInput.body);
+  // Repaired null still cannot overwrite an existing persona.
+  assert.equal((await request('/api/actions/library.persona.save',{...personaInput,expectedVersion:null})).status,409);
 
   // Simulate changing human roles. Propose-only confirmations enqueue suggestions;
   // the same confirmed proposal cannot become an application after role promotion.
