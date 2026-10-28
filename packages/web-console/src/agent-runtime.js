@@ -1,3 +1,4 @@
+import { CHAT_LIMITS } from './hackathon-engine/chat-limits.js';
 import express from "express";
 import { query, withTransaction } from "./db.js";
 import { isUuid } from "./validation.js";
@@ -101,12 +102,12 @@ async function runTurn(auth, runId) {
     await guard();
     await event(runId, "configuration", { skills: agentSkills.map(({ id, version }) => ({ id, version })) });
     let history = run.model_history;
-    for (let step = 0; step < 8; step++) {
+    for (let step = 0; step < CHAT_LIMITS.stepsPerTurn; step++) {
       await guard();
       const content = await nextAgentTurn({ run, auth: delegated, history, tools: tools.tools, signal: controller.signal });
       await guard();
       const calls = content.parts.filter((p) => p.functionCall).map((p) => p.functionCall);
-      const answer = content.parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("\n").slice(0, 12000);
+      const answer = content.parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("\n").slice(0, CHAT_LIMITS.displayedReplyCharacters);
       history = [...history, content];
       if (!calls.length) {
         await checkpoint(run, history, "awaiting_input", [["message", { role: "assistant", text: answer || "I couldn't complete that request. Try rephrasing it or take over manually." }]]);
@@ -115,7 +116,7 @@ async function runTurn(auth, runId) {
       const parts = [];
       const events = [];
       if (answer) events.push(["message", { role: "assistant", text: answer }]);
-      if (calls.length > 8) throw fail(400, "The assistant requested too many tools in one step");
+      if (calls.length > CHAT_LIMITS.toolCallsPerStep) throw fail(400, "The assistant requested too many tools in one step");
       let proposal = null;
       for (const call of calls) {
         await guard();
@@ -186,7 +187,7 @@ router.get("/config", route(async (req, res) => {
   const organizations = await accessibleOrganizations(req.auth);
   const agentOrganizations = new Set((await accessibleOrganizations(delegatedAgentAuth(req.auth))).map((org) => org.id));
   res.set("Cache-Control", "no-store").json({ ready: config.ready, demo: config.fixture, organizationCreation: process.env.HEDGELING_AGENT_ORG_CREATION_ENABLED === "true",
-    unscopedChat: await chatAccess(null), organizations: await Promise.all(organizations.map(async (org) => ({ ...org,
+    limits: CHAT_LIMITS, unscopedChat: await chatAccess(null), organizations: await Promise.all(organizations.map(async (org) => ({ ...org,
       agentAccess: { allowed: agentOrganizations.has(org.id), ...(!agentOrganizations.has(org.id) ? { message: agentOrganizationAccessMessage } : {}) },
       chat: await chatAccess(org.id) }))) });
 }));
@@ -209,9 +210,12 @@ router.post("/runs", route(async (req, res) => {
 router.get("/runs/:id", route(async (req, res) => {
   let run = await loadRun(req.auth, req.params.id);
   if (running.includes(run.status) && new Date(run.lease_expires_at) <= new Date()) run = await pause(req.auth, run.id);
-  const events = (await query("select sequence,kind,data,created_at as \"createdAt\" from agent_events where run_id=$1 order by sequence limit 1000", [run.id])).rows;
+  const after = Number(req.query.after || 0);
+  if (!Number.isSafeInteger(after) || after < 0) throw fail(400, "Invalid event cursor");
+  const rows = (await query("select sequence,kind,data,created_at as \"createdAt\" from agent_events where run_id=$1 and sequence>$2 order by sequence limit $3", [run.id, after, CHAT_LIMITS.eventPageSize + 1])).rows;
+  const events = rows.slice(0, CHAT_LIMITS.eventPageSize);
   const proposals = (await query("select id,preview,fingerprint,status,expires_at as \"expiresAt\" from agent_proposals where run_id=$1 and status='pending' order by created_at", [run.id])).rows;
-  res.json({ run: safeRun(run), events, proposals });
+  res.json({ run: safeRun(run), events, proposals, eventsPage: { hasMore: rows.length > CHAT_LIMITS.eventPageSize, nextAfter: rows.length > CHAT_LIMITS.eventPageSize ? Number(events.at(-1).sequence) : null } });
 }));
 router.post("/runs/:id/heartbeat", route(async (req, res) => {
   const run = await loadRun(req.auth, req.params.id);
@@ -224,12 +228,12 @@ router.post("/runs/:id/messages", route(async (req, res) => {
   await requireChatAccess(run.organization_id);
   const controllerId = controller(req);
   const text = req.body?.text;
-  if (typeof text !== "string" || !text.trim() || text.length > 6000) throw fail(400, "Write a message of up to 6,000 characters");
+  if (typeof text !== "string" || !text.trim() || text.length > CHAT_LIMITS.messageCharacters) throw fail(400, "Write a message of up to 24,000 characters", "agent_message_limit");
   if (!providerConfiguration().ready) throw fail(503, "The assistant is unavailable. You can continue manually.");
   await withTransaction(async (client) => {
     const row = (await client.query("select * from agent_runs where id=$1 for update", [run.id])).rows[0];
     if (!["awaiting_input", "completed"].includes(row.status)) throw fail(409, "Finish or pause the current step before sending another message");
-    if (row.model_history.length >= 100) throw fail(400, "This conversation is full. Start a new chat to continue.");
+    if (row.model_history.length >= CHAT_LIMITS.historyEntries) throw fail(400, "This conversation reached its 1,000-entry history limit, including tool activity. Start a new conversation; your saved work is still available.", "agent_history_limit");
     if (row.controller_id && row.controller_id !== controllerId && new Date(row.lease_expires_at) > new Date()) throw fail(409, "Another tab controls this conversation");
     const history = [...row.model_history, { role: "user", parts: [{ text: text.trim() }] }];
     await client.query("update agent_runs set model_history=$2,status='planning',generation=generation+1,controller_id=$3,lease_expires_at=now()+interval '30 seconds',updated_at=now() where id=$1", [run.id, JSON.stringify(history), controllerId]);

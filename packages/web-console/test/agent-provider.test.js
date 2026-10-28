@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { generateGeminiResponse, providerConfiguration, nextAgentTurn } from "../src/agent-provider.js";
 import { pool } from "../src/db.js";
 import { validateActionInput, WORKSPACE_ACTIONS } from "@hedgeling/api-contract";
+import { CHAT_LIMITS } from '../src/hackathon-engine/chat-limits.js';
 
 const config = { model: "configured-test-model", key: "test-only-placeholder" };
 test("Gemini adapter keeps credentials in headers and preserves structured model state", async () => {
@@ -134,4 +135,34 @@ test("explicit chat allowance grants admit usage above the default but retain fi
     await assert.rejects(turn({ dailyUserTokens }), (error) => error.code === "agent_allowance_invalid");
   }
   assert.equal(dispatched, 1); assert.equal(reservations, 1);
+});
+
+test('long Gemini and Meta conversations retain history and reserve output headroom before dispatch', async t => {
+  const keys = ['HEDGELING_AGENT_PROVIDER','HEDGELING_AGENT_GEMINI_MODEL','HEDGELING_GEMINI_API_KEY','HEDGELING_AGENT_META_MODEL','HEDGELING_META_API_KEY'];
+  const previous = Object.fromEntries(keys.map(k => [k,process.env[k]]));
+  t.after(() => { for(const [k,v] of Object.entries(previous)) { if(v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  Object.assign(process.env,{HEDGELING_AGENT_GEMINI_MODEL:config.model,HEDGELING_GEMINI_API_KEY:config.key,HEDGELING_AGENT_META_MODEL:config.model,HEDGELING_META_API_KEY:config.key});
+  const reserved = [], bodies = [];
+  t.mock.method(pool,'connect',async()=>({release(){},async query(sql,args){
+    if(sql.includes(' as tokens from agent_model_usage'))return {rows:[{tokens:0}]};
+    if(sql.startsWith('insert into agent_model_usage')){reserved.push(args[4]);return {rows:[{id:'long-test'}]};}
+    return {rows:[]};
+  }}));
+  t.mock.method(pool,'query',async()=>({rows:[]}));
+  t.mock.method(globalThis,'fetch',async(_url,init)=>{bodies.push(init.body);return Response.json(process.env.HEDGELING_AGENT_PROVIDER==='meta'
+    ? {status:'completed',output:[{type:'message',role:'assistant',content:[{type:'output_text',text:'ok'}]}],usage:{input_tokens:20,output_tokens:3,total_tokens:23}}
+    : {candidates:[{content:{role:'model',parts:[{text:'ok'}]}}],usageMetadata:{totalTokenCount:23}});});
+  const history=[{role:'user',parts:[{text:'older context '+ 'x'.repeat(180000)}]},{role:'user',parts:[{text:'Continue'}]}];
+  const input={run:{id:'test',organization_id:null},auth:{user:{id:'test'}},history,tools:[],signal:new AbortController().signal};
+  const access={checkAccess:async()=>({allowed:true,limits:{dailyUserTokens:10000000}})};
+  for(const provider of ['gemini','meta']){
+    process.env.HEDGELING_AGENT_PROVIDER=provider;
+    assert.equal((await nextAgentTurn(input,access)).parts[0].text,'ok');
+    const serialized=bodies.at(-1),body=JSON.parse(serialized);
+    assert(serialized.includes(history[0].parts[0].text));
+    assert.equal(provider==='meta'?body.max_output_tokens:body.generationConfig.maxOutputTokens,4096);
+    assert.equal(reserved.at(-1),Buffer.byteLength(serialized)+CHAT_LIMITS.outputTokens);
+    await assert.rejects(nextAgentTurn({...input,history:[{role:'user',parts:[{text:'x'.repeat(750000)}]}]},access),e=>e.code==='agent_context_limit');
+  }
+  assert.equal(bodies.length,2);assert.equal(reserved.length,2);
 });

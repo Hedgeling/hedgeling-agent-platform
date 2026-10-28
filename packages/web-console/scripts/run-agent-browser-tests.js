@@ -9,7 +9,7 @@ import { buildBrand } from "../../design-system/build.mjs";
 const app = await localConsole(process.env.TEST_DATABASE_URL || process.argv[2]);
 const artifacts = process.env.HEDGELING_AGENT_BROWSER_ARTIFACTS || await fs.mkdtemp(path.join(os.tmpdir(), "hedgeling-agent-browser-"));
 await fs.mkdir(artifacts, { recursive: true });
-let browser;
+let browser, debugPage;
 try {
   const executablePath = process.env.HEDGELING_E2E_CHROMIUM_EXECUTABLE || process.argv[3];
   browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
@@ -17,9 +17,11 @@ try {
   const separator = app.cookie.indexOf("=");
   await context.addCookies([{ name: app.cookie.slice(0, separator), value: app.cookie.slice(separator + 1), url: app.origin, httpOnly: true, sameSite: "Strict" }]);
   const page = await context.newPage(); page.setDefaultTimeout(15000);
+  debugPage = page;
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(app.origin);
   const shell = page.locator("#hedgelingAgent");
+  await expect(shell.locator('#agentInput')).toHaveAttribute('maxlength', '24000');
   await expect(shell).toBeVisible();
   await expect(shell).toHaveAttribute("data-mode", "overlay");
   assert.equal(await page.locator("body > main").evaluate((node) => node.inert), true);
@@ -135,11 +137,19 @@ try {
   await shell.locator("[data-theme-preference]").selectOption("light");
   await page.screenshot({ path: path.join(artifacts, "05-mobile-light.png") });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  // A long transcript must replay through REST pagination before reconnecting
+  // SSE; historical approvals/activity must never be treated as new work.
+  await app.database.query("insert into agent_events(run_id,kind,data) select $1,'configuration','{}'::jsonb from generate_series(1,1100)",[runId]);
+  await app.database.query("insert into agent_events(run_id,kind,data) values($1,'message',$2)",[runId,{role:'assistant',text:'Long conversation history restored.'}]);
+  const replayPages=[];
+  page.on('request',request=>{const url=new URL(request.url());if(url.pathname===`/api/agent/runs/${runId}`&&url.searchParams.has('after'))replayPages.push(url.searchParams.get('after'));});
   await page.reload();
   await expect(shell).toBeVisible();
   await expect(shell.getByText("Website launch is ready as a draft.", { exact: true })).toBeVisible();
   await expect(page.locator("[data-agent-attention]")).toHaveCount(0);
   await expect(bold).toBeVisible();
+  await expect(shell.getByText('Long conversation history restored.', {exact:true})).toBeVisible();
+  assert.ok(replayPages.length>=4,'Reload must read every stored event page before live updates');
   if (await shell.locator("#agentTakeControl").isVisible()) await shell.locator("#agentTakeControl").click();
   else await shell.locator("#agentInput").click();
   await expect(shell.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
@@ -296,4 +306,8 @@ try {
   await page.screenshot({ path: path.join(artifacts, "11-workspace-management.png"), fullPage: true });
   assert.deepEqual(errors, []);
   console.log(`Agent browser checks passed: creation and edit confirmations, semantic highlights, manual override, Markdown and contrast, click/keyboard resume, explicit tab ownership, zero-write card examples, focus, mobile, replay, second brand, onboarding launcher, and inventory/job pagination beyond 100. Screenshots: ${artifacts}`);
+} catch (error) {
+  await debugPage?.screenshot({ path: path.join(artifacts, 'failure.png'), fullPage: true });
+  console.error('Visible errors:', await debugPage?.locator('.agent-error, .toast').allTextContents());
+  throw error;
 } finally { console.log(`Browser artifacts: ${artifacts}`); await browser?.close(); await app.close(); }

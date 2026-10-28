@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "cc3c33e3575c1b43a395594e295b27b114a8372c",
+  "revision": "031bd9f386d0afce0c88987a7d56609bb86126b0",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -28,6 +28,11 @@
       "source": "src/engine-operations.js",
       "destination": "engine-operations.js",
       "sha256": "fff2809790af2f17ab54076bf5290299bc9465026fc92167ca1c0e82d6d8b7f7"
+    },
+    {
+      "source": "src/chat-limits.js",
+      "destination": "chat-limits.js",
+      "sha256": "4ec2ba1ee739bda5c6b92555b79bbbae18a33520b0e9875a474d6bc299784c6d"
     },
     {
       "source": "src/library.js",
@@ -83,6 +88,11 @@
       "source": "NOTICE",
       "destination": "NOTICE",
       "sha256": "91424905df6ef3e602591ed759c25d56369ea5f2549ca2fa10a3e16ac7dfb18f"
+    },
+    {
+      "source": "src/chat-limits.js",
+      "destination": "../public/chat-limits.js",
+      "sha256": "4ec2ba1ee739bda5c6b92555b79bbbae18a33520b0e9875a474d6bc299784c6d"
     },
     {
       "source": "src/library-actions.js",

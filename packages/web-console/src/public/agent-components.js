@@ -1,3 +1,4 @@
+import { CHAT_LIMITS } from './chat-limits.js';
 import { projectLanguages } from './project-locales.js';
 import { extractionPanel } from './extraction.js';
 export async function request(path, body) {
@@ -134,7 +135,7 @@ export function answerCard({ title, description, fields, submitLabel = "Send ans
 
 export const typewriterComposer = `
   <form id="agentComposer" class="agent-typewriter">
-    <div class="agent-input-paper"><label class="sr-only" for="agentInput">Message the assistant</label><textarea id="agentInput" rows="2" maxlength="6000" placeholder="Type your next idea…" required></textarea><button class="typewriter-return" type="submit" aria-label="Send message" title="Send message (Enter)">Send <span aria-hidden="true">↵</span></button></div>
+    <div class="agent-input-paper"><label class="sr-only" for="agentInput">Message the assistant</label><textarea id="agentInput" rows="2" maxlength="${CHAT_LIMITS.messageCharacters}" placeholder="Type your next idea…" required></textarea><button class="typewriter-return" type="submit" aria-label="Send message" title="Send message (Enter)">Send <span aria-hidden="true">↵</span></button></div>
   </form>`;
 
 async function readWorkspacePages(organizationId) {
