@@ -2,7 +2,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { CONSOLE_ACTIONS } from "@hedgeling/api-contract";
+import { CONSOLE_ACTIONS, normalizeLibraryToolInput } from "@hedgeling/api-contract";
 import { invokeConsoleAction } from "./actions.js";
 
 // One process-local MCP session per turn. It carries trusted delegated
@@ -20,7 +20,8 @@ export async function connectAgentTools(auth, context, guard) {
     const action = actions.find((a) => a.toolName === request.params.name);
     if (!action) return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: "This tool is unavailable in the current scope", code: "tool_unavailable" }) }] };
     try {
-      const result = await invokeConsoleAction(action.name, request.params.arguments || {}, auth, context);
+      const input = normalizeLibraryToolInput(action.toolName, request.params.arguments || {});
+      const result = await invokeConsoleAction(action.name, input, auth, context);
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
     } catch (error) {
       return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: error.status && error.status < 500 ? error.message : "The action could not be completed", code: error.code || "action_failed" }) }] };

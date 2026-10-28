@@ -8,3 +8,4 @@ export const CONSOLE_ACTIONS: readonly ConsoleAction[];
 export const REPORT_ACTIONS: readonly ConsoleAction[];
 export const WORKSPACE_ACTIONS: readonly ConsoleAction[];
 export function validateActionInput(action: ConsoleAction, input: unknown): string | null;
+export function normalizeLibraryToolInput(toolName: string, input: unknown): unknown;

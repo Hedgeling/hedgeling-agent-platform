@@ -3,6 +3,7 @@
 // each invocation using its authenticated principal and resolved resource.
 import Ajv from "ajv";
 import { LIBRARY_ACTIONS } from './library-actions.js';
+export { normalizeLibraryToolInput } from './library-actions.js';
 import { PROJECT_LOCALE_ACTIONS } from './project-locales-actions.js';
 import { EXTRACTION_ACTIONS } from './extraction-actions.js';
 export const ACTION_CONTRACT_VERSION = 1;

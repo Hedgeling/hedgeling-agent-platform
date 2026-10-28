@@ -44,6 +44,12 @@ function fixtureTurn(history, organizationId) {
   // Explicit synthetic prompts for local browser/MCP tests. Production Meta
   // follows the extraction skill using these same authenticated tools.
   const lastUser = history.findLast(item => item.role === 'user' && !item.confirmation && item.parts?.some(p => p.text));
+  const personaPrompt = /^Create persona "([^"]+)" for project "([^"]+)"\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  if (personaPrompt && !confirmation) {
+    if (!response) return part('console_get_library_asset', { projectSlug: personaPrompt[2], kind: 'persona', key: personaPrompt[1] });
+    // Deliberately reproduce a real provider's quoted-null creation argument.
+    if (response.name === 'console_get_library_asset' && !response.response.error) return part('console_propose_locale_persona', { projectSlug: personaPrompt[2], locale: personaPrompt[1], body: { tone: 'Warm and direct', audience: 'New customers' }, active: true, expectedVersion: response.response.asset?.version || 'null' });
+  }
   const libraryPrompt = /^Create translation instructions "([^"]+)" for project "([^"]+)"\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
   if (libraryPrompt && !confirmation) {
     if (!response) return part('console_get_library_asset', { projectSlug: libraryPrompt[2], kind: 'prompt', key: libraryPrompt[1] });
