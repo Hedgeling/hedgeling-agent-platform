@@ -1,0 +1,9 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+.translation-job-controls { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.translation-job-controls > div, .translation-job-controls > section, .translation-job-controls > .agent-error { flex: 1 0 100%; min-width: 0; }
+.translation-job-progress { margin: 16px 0; padding: 18px; border: 1px solid var(--line-soft); border-radius: 12px; color: var(--text-main); background: var(--background-pane); overflow-wrap: anywhere; }
+.translation-job-progress h4 { margin: 0 0 8px; font-size: 17px; }
+.translation-job-progress p { line-height: 1.5; }
+.translation-job-progress button, .translation-job-progress a { margin: 8px 8px 0 0; min-height: 44px; }
+.translation-job-progress a { display: inline-flex; align-items: center; color: var(--text-accent); }
+.translation-job-progress [hidden] { display: none; }

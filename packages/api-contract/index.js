@@ -2,6 +2,7 @@
 // These describe behavior, not authorization grants. The server reauthorizes
 // each invocation using its authenticated principal and resolved resource.
 import Ajv from "ajv";
+import { TRANSLATION_JOB_ACTIONS } from './translation-job-actions.js';
 import { LIBRARY_ACTIONS } from './library-actions.js';
 export { normalizeLibraryToolInput } from './library-actions.js';
 import { PROJECT_LOCALE_ACTIONS } from './project-locales-actions.js';
@@ -14,13 +15,14 @@ const action = (name, toolName, description, permission, inputSchema, readOnly =
 const paging = { limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "string", minLength: 1, maxLength: 4096 } };
 const search = { type: "string", minLength: 1, maxLength: 200 };
 const date = { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$" };
-const jobFilters = { search, status: { type: "string", enum: ["draft"] }, targetLocale: text, createdFrom: date, createdBefore: date, businessUnitId: id };
+const jobFilters = { search, status: { type: "string", enum: ["draft", "queued", "running", "awaiting_review", "needs_attention", "canceled"] }, targetLocale: text, createdFrom: date, createdBefore: date, businessUnitId: id };
 const jobChanges = { name: text, targetLocales: { type: "array", items: text, minItems: 1, maxItems: 30, uniqueItems: true }, steps: { type: "array", items: { type: "string", enum: ["machine_translation", "human_translation", "review", "qa"] }, minItems: 1, maxItems: 4, uniqueItems: true } };
 export const REPORT_ACTIONS = [
-  { ...action("reports.workspace.summary", "console_report_workspace", "Get a complete permission-scoped organization overview: project and business-unit counts plus localization-job totals. Prefer this to enumerating projects for counts. Metrics describe stored job drafts and states, not translation progress.", "organization.view", schema({ organizationId: id })), scope: "reporting" },
+  { ...action("reports.workspace.summary", "console_report_workspace", "Get a complete permission-scoped organization overview: project and business-unit counts plus localization-job totals. Prefer this to enumerating projects for counts. Metrics describe stored jobs and states, not translation progress.", "organization.view", schema({ organizationId: id })), scope: "reporting" },
   { ...action("reports.jobs.summary", "console_report_jobs", "Aggregate ALL matching permitted localization jobs in one organization, grouped by status, project, business unit or target locale. Totals cover every matching job, independent of group pagination. Follow page.nextCursor for remaining groups. Locale groups overlap for multilingual jobs.", "jobs.view", schema({ organizationId: id, projectSlug: text, ...jobFilters, groupBy: { type: "string", enum: ["status", "project", "business_unit", "target_locale"] }, ...paging }, ["organizationId"])), scope: "reporting" },
 ];
 export const WORKSPACE_ACTIONS = [
+  ...TRANSLATION_JOB_ACTIONS,
   ...LIBRARY_ACTIONS,
   ...EXTRACTION_ACTIONS,
   ...PROJECT_LOCALE_ACTIONS,

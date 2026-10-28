@@ -1,6 +1,9 @@
 // Only semantic destinations owned by the console are addressable. Tool/model
 // text never becomes a selector, script, URL, or click instruction.
 const toolActions = Object.freeze({
+  console_propose_translation_job_start: 'localization_job.start',
+  console_propose_translation_job_cancel: 'localization_job.cancel',
+  console_get_translation_job_status: 'localization_job.status',
   console_list_library: 'library.read', console_get_library_asset: 'library.read', console_read_library_sources: 'library.read', console_get_library_history: 'library.read',
   console_propose_translation_instructions: 'library.prompt.save', console_propose_locale_persona: 'library.persona.save', console_propose_glossary_term: 'library.glossary.save',
   console_propose_library_restore: 'library.restore', console_list_library_reviews: 'library.read', console_propose_library_review: 'library.review',

@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import { registerJobTranslation, translationJobs } from './translation-jobs-integration.js';
+import { TRANSLATION_JOB_LIMITS } from './hackathon-engine/translation-jobs.js';
+import { fingerprint } from './workspace-actions.js';
 import actionsRouter from "./actions.js";
 import { engineStatus } from "./hackathon-engine/engine-status.js";
 import { registerExtractionImport } from './extraction-integration.js';
@@ -45,7 +48,7 @@ import {
   securityHeaders,
   validateHttpSecurityConfiguration,
 } from "./http-security.js";
-import { requireProjectEntitlement } from "./entitlements.js";
+import { effectiveOrganizationAccess, requireProjectEntitlement } from "./entitlements.js";
 import { migrateDatabase } from "./migrations.js";
 import {
   listAccessibleProjects,
@@ -1806,13 +1809,9 @@ app.post("/api/translations/:sourceId/:locale/reject", requireProjectPermission(
   res.json({ translation: result.rows[0] });
 }));
 
-app.post(
-  "/api/translations/:sourceId/:locale/revise",
-  requireProjectPermission("translations.edit", { sourceParam: "sourceId" }),
-  requireProjectEntitlement("ai_revision"),
-  asyncRoute(async (req, res) => {
+async function prepareTranslationRevision(req, database = { query }) {
   const instruction = typeof req.body?.instruction === "string" ? req.body.instruction.trim() : "";
-  const sourceResult = await query(
+  const sourceResult = await database.query(
     `select
        s.id,
        s.source_hash as "sourceHash",
@@ -1829,11 +1828,11 @@ app.post(
     [req.params.sourceId],
   );
   const source = sourceResult.rows[0];
-  if (!source) return res.status(404).json({ error: "Source string not found" });
+  if (!source) throw fail(404, "Source string not found");
 
   const [translationResult, contextResult, passResult, promptResult, personaResult, glossaryResult] = await Promise.all([
-    query("select id, text from translations where source_string_id = $1 and locale = $2", [source.id, req.params.locale]),
-    query(
+    database.query("select id, text from translations where source_string_id = $1 and locale = $2", [source.id, req.params.locale]),
+    database.query(
       `select
          shape,
          purpose,
@@ -1848,21 +1847,21 @@ app.post(
        order by created_at`,
       [source.id],
     ),
-    query(
+    database.query(
       `select pass_name as "passName", status, prompt_version as "promptVersion", data, warning
        from analysis_passes
        where source_string_id = $1`,
       [source.id],
     ),
-    query(
+    database.query(
       "select id, key, label, body, updated_at as \"updatedAt\" from prompts where project_id = $1 and active = true order by key",
       [source.projectId],
     ),
-    query(
+    database.query(
       "select id, body, updated_at as \"updatedAt\" from personas where project_id = $1 and locale = $2 and active = true",
       [source.projectId, req.params.locale],
     ),
-    query(
+    database.query(
       `select id, term, locale, translation, description, do_not_translate as "doNotTranslate", updated_at as "updatedAt"
        from glossary_terms
        where project_id = $1 and active = true and (locale is null or locale = $2)
@@ -1890,21 +1889,9 @@ app.post(
     persona: personaResult.rows.map(r => ({ id: r.id, locale: req.params.locale, updatedAt: r.updatedAt, contentHash: assetVersion(r) })),
     glossary: glossaryResult.rows.map(r => ({ id: r.id, updatedAt: r.updatedAt, contentHash: assetVersion(r) })),
   };
-  const usageRequest = usageIdentity(req, "ai_translation_revision", {
-    sourceId: source.id,
-    locale: req.params.locale,
-    instruction,
-  });
-  const usageScope = {
-    organizationId: req.authorizedProject.organizationId,
-    businessUnitId: req.authorizedProject.businessUnitId,
-    projectId: source.projectId,
-    actor: usageActor(req.auth),
-    ...usageRequest,
-  };
   const sourceMeasurement = measureText(source.sourceText, null);
   const maximumOutputTokens = Number(
-    process.env.HEDGELING_REVISION_MAX_OUTPUT_TOKENS || 2048,
+    req.translationJob ? TRANSLATION_JOB_LIMITS.outputTokens : process.env.HEDGELING_REVISION_MAX_OUTPUT_TOKENS || 2048,
   );
   if (
     !Number.isSafeInteger(maximumOutputTokens)
@@ -1916,7 +1903,7 @@ app.post(
       { status: 503, code: "ai_output_limit_invalid" },
     );
   }
-  const provider = await translationProvider(usageScope.organizationId);
+  const provider = await translationProvider(req.authorizedProject.organizationId);
   const configuredModel = provider.provider === "meta" ? metaTranslationConfiguration().model : geminiModelForPlan(req.commercialAccess?.limits);
   const providerLabel = provider.provider === "meta" ? "Meta" : "Gemini";
   const translationSource = provider.provider === "meta" ? "mt" : "gemini";
@@ -1934,9 +1921,31 @@ app.post(
     maxOutputTokens: maximumOutputTokens,
   }) : { quantity: 0 };
   const creditLimits = await effectiveAiCreditPlanLimits(
-    usageScope.organizationId,
+    req.authorizedProject.organizationId,
     req.commercialAccess?.limits,
   );
+  const providerVersion = (await database.query(`select s.revision,c.updated_at as "credentialUpdatedAt" from organization_ai_settings s
+    left join organization_ai_credentials c on c.organization_id=s.organization_id and c.provider=s.translation_provider where s.organization_id=$1`, [req.authorizedProject.organizationId])).rows[0] || null;
+  return { instruction, source, existingTranslation, glossary: glossaryResult.rows, prompt, sourceMeasurement, maximumOutputTokens,
+    provider, configuredModel, providerLabel, translationSource, managed, creditRate, creditReservation, creditLimits, providerVersion };
+}
+
+async function reviseTranslation(req, res, jobExecution = null) {
+  const prepared = jobExecution?.plan.prepared || await prepareTranslationRevision(req);
+  const { instruction, source, existingTranslation, glossary, prompt, sourceMeasurement, maximumOutputTokens,
+    provider, configuredModel, providerLabel, translationSource, managed, creditRate, creditReservation, creditLimits } = prepared;
+  const usageRequest = usageIdentity(req, "ai_translation_revision", {
+    sourceId: source.id,
+    locale: req.params.locale,
+    instruction,
+  });
+  const usageScope = {
+    organizationId: req.authorizedProject.organizationId,
+    businessUnitId: req.authorizedProject.businessUnitId,
+    projectId: source.projectId,
+    actor: usageActor(req.auth),
+    ...usageRequest,
+  };
   const reservation = await reserveUsage({
     organizationId: usageScope.organizationId,
     businessUnitId: usageScope.businessUnitId,
@@ -1992,6 +2001,7 @@ app.post(
         geminiBillableTokenUsage(providerResult.raw?.usageMetadata),
       )
       : { quantity: 0, components: {} };
+    if (jobExecution && billedCredits.quantity > jobExecution.creditCeiling) billedCredits.quantity = jobExecution.creditCeiling;
     return recordUsageEvent({
       client,
       ...usageScope,
@@ -2031,6 +2041,7 @@ app.post(
         outputCharacters: outputMeasurement.characters,
       }],
       metadata: {
+        ...(jobExecution ? { localizationJobId: jobExecution.jobId, localizationJobItemId: jobExecution.itemId } : {}),
         billingCategory: managed ? "managed_translation" : "organization_provider",
         attempts: providerAttempts.map((attempt, index) => ({
           attempt: index + 1,
@@ -2066,6 +2077,7 @@ app.post(
       ? `\n\nPrevious output was rejected because: ${validationError}. Produce a corrected final string only.`
       : "";
     try {
+      if (jobExecution) await jobExecution.beforeCall();
       providerResult = await (provider.provider === "meta" ? generateMetaText : callGeminiText)({
         system: prompt.system,
         user: `${prompt.user}${retryNote}`,
@@ -2089,7 +2101,7 @@ app.post(
       validationError = `character limit exceeded: ${revised.length}/${source.limitChars}`;
     }
     else {
-      const glossaryMismatch = glossaryViolation(source.sourceText, revised, req.params.locale, glossaryResult.rows);
+      const glossaryMismatch = glossaryViolation(source.sourceText, revised, req.params.locale, glossary);
       if (glossaryMismatch) validationError = `glossary mismatch: ${glossaryMismatch}`;
     }
     if (!validationError) break;
@@ -2103,6 +2115,7 @@ app.post(
   let responseBody;
   try {
     responseBody = await withTransaction(async (client) => {
+      if (jobExecution) await jobExecution.beforeSave(client);
       const upserted = await client.query(
       `insert into translations(source_string_id, locale, text, mt_status, human_status, source, provider, model)
        values($1, $2, $3, 'ready', 'pending', $4, $5, $6)
@@ -2112,9 +2125,11 @@ app.post(
            human_status = 'pending',
            source = excluded.source, provider = excluded.provider, model = excluded.model, confidence = null, review_note = null,
            updated_at = now()
+       where not $7::boolean
        returning id, locale, text, mt_status as "mtStatus", human_status as "humanStatus", source, provider, model, updated_at as "updatedAt"`,
-      [source.id, req.params.locale, revised, translationSource, provider.provider, providerResult.model],
+      [source.id, req.params.locale, revised, translationSource, provider.provider, providerResult.model, Boolean(jobExecution)],
     );
+      if (!upserted.rows.length) throw fail(409, "A translation was saved while the job was working; it has been preserved.", "job_inputs_changed");
       const revision = await client.query(
       `insert into translation_revisions(translation_id, source_string_id, locale, previous_text, next_text, revision_source, instruction, prompt_snapshot)
        values($1, $2, $3, $4, $5, $8, $6, $7)
@@ -2128,6 +2143,7 @@ app.post(
         instruction || null,
         JSON.stringify({
           ...prompt.promptSnapshot,
+          ...(jobExecution ? { localizationJobId: jobExecution.jobId, localizationJobItemId: jobExecution.itemId } : {}),
           provider: provider.provider,
           model: providerResult.model,
           apiVersion: providerResult.apiVersion,
@@ -2142,10 +2158,10 @@ app.post(
         translation: upserted.rows[0],
         usageWarnings: reservation.warnings,
         billingCategory: managed ? "managed_translation" : "organization_provider",
-        aiCredits: managed ? calculateAiCredits(
+        aiCredits: managed ? Math.min(jobExecution?.creditCeiling ?? Infinity, calculateAiCredits(
           creditRate,
           geminiBillableTokenUsage(providerResult.raw?.usageMetadata),
-        ).quantity : 0,
+        ).quantity) : 0,
       };
       await recordRevisionUsage({
         client,
@@ -2154,16 +2170,52 @@ app.post(
         responseStatus: 200,
         responseBody: successfulResponse,
       });
+      if (jobExecution) await jobExecution.afterSave(client);
       return successfulResponse;
     });
   } catch (error) {
-    await releaseUsageReservation(reservation.id).catch(() => {});
+    await recordRevisionUsage({ outcome: "failed", providerError: error }).catch(() => releaseUsageReservation(reservation.id).catch(() => {}));
     throw error;
   }
 
   res.json(responseBody);
-  }),
-);
+}
+
+async function jobRevisionRequest({ sourceId, locale, p, auth, itemId }) {
+  const commercialAccess = await effectiveOrganizationAccess(p.organizationId, 'ai_revision');
+  if (!commercialAccess.allowed) throw fail(402, 'This workspace needs translation access on its platform plan.', 'job_entitlement_required');
+  const enabled = (await query('select 1 from locales where project_id=$1 and locale=$2 and enabled=true', [p.id, locale])).rowCount;
+  if (!enabled || locale === p.sourceLocale) throw fail(409, 'This job’s target language is no longer enabled.', 'job_inputs_changed');
+  return { params: { sourceId, locale }, body: { instruction: 'Translate this source string for the target locale using the active Library guidance. Save a draft for human review.' },
+    auth, authorizedProject: p, commercialAccess, translationJob: true,
+    get: name => name.toLowerCase() === 'idempotency-key' ? `translation-job-${itemId}` : undefined };
+}
+registerJobTranslation({
+  inspect: async options => {
+    const req = await jobRevisionRequest(options);
+    const prepared = await prepareTranslationRevision(req, options.db);
+    if (prepared.source.projectId !== options.p.id) throw fail(403, 'Source is outside this project.', 'job_access_denied');
+    if (prepared.existingTranslation) throw fail(409, 'A translation already exists; it will be preserved.', 'job_inputs_changed');
+    if (prepared.provider.provider === 'gemini' && !prepared.provider.key && !geminiApiKey() && !geminiClientOverride) throw fail(503, 'Configure the translation provider in AI providers & keys before starting.', 'job_provider_unconfigured');
+    const safe = { source: prepared.source, prompt: prepared.prompt, providerVersion: prepared.providerVersion,
+      project: { id: options.p.id, sourceLocale: options.p.sourceLocale, organizationId: options.p.organizationId, businessUnitId: options.p.businessUnitId },
+      mode: prepared.provider.mode, provider: prepared.provider.provider, model: prepared.configuredModel, creditRate: prepared.creditRate,
+      outputTokens: prepared.maximumOutputTokens };
+    return { prepared, fingerprint: fingerprint(safe), provider: safe.provider, model: safe.model, mode: safe.mode,
+      promptBytes: Buffer.byteLength(prepared.prompt.system + prepared.prompt.user, 'utf8'), creditCeiling: prepared.creditReservation.quantity };
+  },
+  execute: async options => {
+    const req = await jobRevisionRequest(options);
+    let status = 200;
+    const res = { set() { return this; }, status(value) { status = value; return this; }, json(body) {
+      if (status !== 200) throw fail(status, 'Translation did not finish. Check its constraints and provider settings.', body.code);
+      return body;
+    } };
+    return reviseTranslation(req, res, options);
+  },
+});
+app.post('/api/translations/:sourceId/:locale/revise', requireProjectPermission('translations.edit', { sourceParam: 'sourceId' }),
+  requireProjectEntitlement('ai_revision'), asyncRoute((req, res) => reviseTranslation(req, res)));
 
 app.use((err, req, res, _next) => {
   logRequestError(err, req.correlationId);
@@ -2189,6 +2241,7 @@ if (isEntrypoint) {
   await runStartupMigration();
   // Bound retention of abandoned encrypted key previews even without traffic.
   await expireAiProposals();
+  if (process.env.HEDGELING_AGENT_ENABLED === "true") translationJobs.startWorker();
   setInterval(() => { void expireAiProposals().catch(() => console.error("Expired AI-key preview cleanup failed")); }, 60000).unref();
   app.listen(port, process.env.HEDGELING_AUTH_MODE === "local" ? "127.0.0.1" : "0.0.0.0", () => {
     console.log(`Hedgeling web console listening on :${port}`);
