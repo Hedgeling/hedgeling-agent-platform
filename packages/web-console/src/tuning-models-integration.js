@@ -37,7 +37,7 @@ async function inspect(auth, p) {
   const model = selected.provider === 'meta' ? metaTranslationConfiguration().model : geminiModelForPlan(access.limits);
   const version = (await query(`select s.revision,c.updated_at as "credentialUpdatedAt" from organization_ai_settings s
     join organization_ai_credentials c on c.organization_id=s.organization_id and c.provider=s.translation_provider where s.organization_id=$1`, [p.organizationId])).rows[0];
-  return { mode: 'byok', provider: selected.provider, model, version: fingerprint(version) };
+  return { organizationId: p.organizationId, mode: 'byok', provider: selected.provider, model, version: fingerprint(version) };
 }
 export const tuningModels = createTuningModels({ database: { query }, transaction: withTransaction, fingerprint,
   engine: () => engineOperations({ url: process.env.HEDGELING_ENGINE_URL, token: process.env.HEDGELING_ENGINE_TOKEN }), inspect,
