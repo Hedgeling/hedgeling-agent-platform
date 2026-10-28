@@ -142,6 +142,14 @@ export async function readJobs(auth, input, context = {}) {
   for (const job of jobs) {
     const project = scope.projects.find((p) => p.slug === job.projectSlug);
     job.canEdit = job.status === "draft";
+    job.canStart = job.status === 'draft' && job.steps[0] === 'machine_translation' && !job.steps.includes('human_translation');
+    job.canStop = ['queued', 'running'].includes(job.status);
+    for (const locale of job.targetLocales) {
+      const delegated = { ...auth, executionType: 'agent', platformAdmin: false, user: { ...auth.user, platformStaff: false } };
+      const permissions = await projectPermissions(delegated, project, { locale });
+      const allowed = ['jobs.view', 'jobs.update', 'strings.view', 'translations.edit'].every(p => permissions.includes(p));
+      job.canStart &&= allowed; job.canStop &&= allowed;
+    }
     for (const locale of job.targetLocales.length ? job.targetLocales : [null]) {
       const key = JSON.stringify([project.id, locale]);
       if (!editPermissions.has(key)) editPermissions.set(key, (await projectPermissions(auth, project, { locale })).includes("jobs.update"));

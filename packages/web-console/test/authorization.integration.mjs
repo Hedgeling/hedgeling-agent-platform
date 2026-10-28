@@ -353,6 +353,7 @@ try {
       "202610271600_meta_byok.sql",
       "202610272100_extraction_tuning.sql",
       "202610272300_library_workflow.sql",
+      "202610281800_translation_jobs.sql",
     ],
   );
   assert.equal(

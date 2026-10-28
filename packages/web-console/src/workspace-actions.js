@@ -1,3 +1,4 @@
+import { translationJobs } from './translation-jobs-integration.js';
 import crypto from "node:crypto";
 import { WORKSPACE_ACTIONS, validateActionInput } from "@hedgeling/api-contract";
 import { query, withTransaction } from "./db.js";
@@ -116,6 +117,7 @@ async function creationLimits(client, organizationId, action, input) {
 }
 async function prepare(action, input, auth, context = {}, database = db) {
   const userId = await activeUser(auth, database);
+  if (['localization_job.start', 'localization_job.cancel'].includes(action.name)) return translationJobs.prepare(action.name, input, auth, context, database, database !== db);
   if (action.name.startsWith('library.')) return library.prepare(action.name, input, auth, context, database, database !== db);
   if (action.name === 'project.locales.add') return projectLocales.prepare(input, auth, context, database, database !== db);
   if (action.name.startsWith('extraction.')) return extractionWorkflow.prepare(action.name, input, auth, context, database, database !== db);
@@ -166,6 +168,7 @@ export async function executeWorkspaceAction(name, input, auth, context = {}) {
   if (name.startsWith('library.') && action.readOnly) { const result = await library.read(name, input, auth, context); return { ...result, uiTarget: { view: 'library', projectSlug: input.projectSlug, kind: input.kind || null, action: 'library.read' } }; }
   if (name === 'project.locales.get') return projectLocales.read(input, auth, context);
   if (name.startsWith('extraction.') && action.readOnly) return extractionWorkflow.read(name, input, auth, context);
+  if (name === 'localization_job.status') return translationJobs.read(input, auth, context);
   if (name === "organizations.list") {
     let organizations = (await accessibleOrganizations(auth)).filter((o) => !Object.hasOwn(context, "organizationId") || context.organizationId === null || o.id === context.organizationId);
     if (input.search) organizations = organizations.filter((o) => `${o.name} ${o.slug}`.toLowerCase().includes(input.search.toLowerCase()));
@@ -199,7 +202,8 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     if (expectedFingerprint !== proposal.fingerprint) throw fail(409, "The displayed proposal has changed");
     if (proposal.status === "confirmed") {
       await assertRunScope(auth, proposal.organization_id);
-      if (proposal.action.startsWith('library.')) await library.replay(proposal.input, auth, {}, client, proposal.result);
+      if (['localization_job.start', 'localization_job.cancel'].includes(proposal.action)) await translationJobs.replay(proposal.input, auth, {}, client);
+      else if (proposal.action.startsWith('library.')) await library.replay(proposal.input, auth, {}, client, proposal.result);
       else if (proposal.action === 'project.locales.add') await projectLocales.replay(proposal.input, auth, {}, client);
       else if (proposal.action.startsWith('extraction.')) await extractionWorkflow.replay(proposal.input, auth, {}, client);
       else if (isWorkspaceUpdate(proposal.action)) await prepareWorkspaceUpdate(WORKSPACE_ACTIONS.find((a) => a.name === proposal.action), proposal.input, auth, {}, client, false, true);
@@ -219,7 +223,9 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     const input = proposal.input;
     let result;
     let organizationId = prepared.organizationId;
-    if (action.name.startsWith('library.')) {
+    if (['localization_job.start', 'localization_job.cancel'].includes(action.name)) {
+      result = await translationJobs.apply(action.name, prepared, proposal, auth, client);
+    } else if (action.name.startsWith('library.')) {
       result = await library.apply(prepared, proposal, auth, client);
     } else if (action.name === 'project.locales.add') {
       result = await projectLocales.apply(prepared, client);

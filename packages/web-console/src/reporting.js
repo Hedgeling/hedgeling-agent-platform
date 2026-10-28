@@ -47,7 +47,7 @@ async function workspaceSummary(auth, input, context) {
   return { coverage: { ...scope.coverage, projectScope: "projects_with_strings_view", businessUnitScope: "permitted_active_business_units" },
     metrics: { projects: workspace.projects.length, businessUnits: workspace.businessUnits.length, jobs: jobs.totals.jobs, projectsWithJobs: jobs.totals.projectsWithJobs, jobSourceStrings: jobs.totals.sourceStrings },
     jobsByStatus: jobs.groups,
-    definitions: { jobSourceStrings: "Sum of source strings stored in job snapshots; repeated content across jobs counts more than once.", jobs: "Stored localization jobs. Job execution is not implemented; current jobs are drafts." } };
+    definitions: { jobSourceStrings: "Sum of source strings stored in job snapshots; repeated content across jobs counts more than once.", jobs: "Stored localization jobs by current state. Awaiting review means draft generation finished, not human approval or publication." } };
 }
 async function jobsSummary(auth, input, context) {
   const scope = await jobQueryScope(auth, input, context);

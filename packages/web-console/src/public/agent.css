@@ -1,3 +1,4 @@
+@import url("/translation-jobs.css");
 @font-face { font-family: "Courier Prime"; src: url("/design-system/assets/courier-prime-regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "Courier Prime"; src: url("/design-system/assets/courier-prime-bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
 .agent-shell, .agent-launcher, .workspace-view { font-family: var(--font-ui); }

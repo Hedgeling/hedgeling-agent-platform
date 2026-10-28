@@ -1,3 +1,4 @@
+import { translationJobProgress } from './translation-jobs.js';
 import { renderChatMarkdown } from "./chat-markdown.js";
 import { request, element, proposalCard, Workspace, typewriterComposer } from "./agent-components.js";
 import { extractionProgress } from './extraction.js';
@@ -188,7 +189,15 @@ function receive(item, { replay = false } = {}) {
     if (card) card.replaceChildren(element("p", "agent-receipt", "✓ Change confirmed"));
     const resource = data.organization || data.businessUnit || data.project || data.job;
     if (data.library) message('assistant', data.library.status === 'submitted' ? `${data.library.label} was submitted for review. Active guidance is unchanged.` : data.library.status === 'rejected' ? `${data.library.label}: suggestion rejected.` : `${data.library.label} saved${data.library.active ? ' and active for future revisions' : ' as inactive guidance'}.`, { replay });
-    if (resource) message("assistant", data.addedLocales ? `Added ${data.addedLocales.join(", ")} to ${resource.name}.` : data.uiTarget?.action?.endsWith(".update") ? `${resource.name} has been updated.` : `${resource.name} is ready${data.job ? " as a draft" : ""}.`, { replay });
+    if (data.job && data.job.status !== 'draft') {
+      message('assistant', data.job.status === 'canceled' ? `${data.job.name} is stopping. Saved drafts remain for review.` : `${data.job.name} is queued for translation. I’ll show its progress below; generated drafts still need your review.`, { replay });
+      $('agentMessages').append(translationJobProgress({ jobId: data.job.id, request,
+        onStop: async jobId => {
+          if (run?.status !== 'awaiting_input') throw new Error('Finish the current chat turn before requesting a job stop, or use Stop job in Projects.');
+          await request(`/api/agent/runs/${run.id}/messages`, { controllerId, text: `Preview stopping translation job ${jobId}.` });
+        } }));
+    }
+    else if (resource) message("assistant", data.addedLocales ? `Added ${data.addedLocales.join(", ")} to ${resource.name}.` : data.uiTarget?.action?.endsWith(".update") ? `${resource.name} has been updated.` : `${resource.name} is ready${data.job ? " as a draft" : ""}.`, { replay });
     if (data.extraction) $("agentMessages").append(extractionProgress({ projectSlug: data.extraction.projectSlug, extractionId: data.extraction.id, request,
       onTuneApply: async ({ projectSlug, extractionId }) => {
         if (run?.status !== 'awaiting_input') throw new Error('Click the chat field and finish any pending approval first.');

@@ -29,6 +29,7 @@ function fixtureTurn(history, organizationId) {
   const part = (name, args) => ({ role: "model", parts: [{ functionCall: { name, args } }] });
   if (confirmation) {
     const result = JSON.parse(confirmation.text.slice("Confirmed result: ".length));
+    if (result.job && result.job.status !== 'draft') return { role: 'model', parts: [{ text: `Translation job ${result.job.status}. Generated drafts require human review.` }] };
     if (result.library) return { role: 'model', parts: [{ text: result.library.status === 'saved' ? `${result.library.label} saved after confirmation. Existing translations are unchanged.` : 'Your Library suggestion was submitted for review.' }] };
     if (result.addedLocales) return { role: 'model', parts: [{ text: `Added ${result.addedLocales.join(', ')} to your project after confirmation. Choose a translation action when you’re ready.` }] };
     if (result.extraction) return part('console_get_extraction', { projectSlug: result.extraction.projectSlug, extractionId: result.extraction.id });
@@ -49,6 +50,13 @@ function fixtureTurn(history, organizationId) {
     if (!response) return part('console_get_library_asset', { projectSlug: personaPrompt[2], kind: 'persona', key: personaPrompt[1] });
     // Deliberately reproduce a real provider's quoted-null creation argument.
     if (response.name === 'console_get_library_asset' && !response.response.error) return part('console_propose_locale_persona', { projectSlug: personaPrompt[2], locale: personaPrompt[1], body: { tone: 'Warm and direct', audience: 'New customers' }, active: true, expectedVersion: response.response.asset?.version || 'null' });
+  }
+  const startJob = /^Start translation job "([^"]+)"\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  const stopJob = /^Preview stopping translation job ([a-f0-9-]{36})\./.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  if (stopJob && !confirmation && !response) return part('console_propose_translation_job_cancel', { jobId: stopJob[1] });
+  if (startJob && !confirmation) {
+    if (!response) return part('console_list_localization_jobs', { organizationId, search: startJob[1] });
+    if (response.name === 'console_list_localization_jobs' && response.response.jobs?.length === 1) return part('console_propose_translation_job_start', { jobId: response.response.jobs[0].id });
   }
   const libraryPrompt = /^Create translation instructions "([^"]+)" for project "([^"]+)"\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
   if (libraryPrompt && !confirmation) {
@@ -82,9 +90,9 @@ function fixtureTurn(history, organizationId) {
   if (!response && !confirmation && importPrompt) return part('console_propose_extraction_import', { projectSlug: importPrompt[2], extractionId: importPrompt[1] });
   if (response?.name === "console_report_workspace" && response.response.metrics) {
     const m = response.response.metrics;
-    return { role: "model", parts: [{ text: `Across the projects you can access: ${m.projects} projects, ${m.businessUnits} business units, and ${m.jobs} localization-job drafts. These totals cover all permitted matches, not just the first page. Translation execution is not included.` }] };
+    return { role: "model", parts: [{ text: `Across the projects you can access: ${m.projects} projects, ${m.businessUnits} business units, and ${m.jobs} localization jobs. These totals cover all permitted matches, not just the first page. Use job status for translation progress.` }] };
   }
-  if (response?.name === "console_report_jobs" && response.response.totals) return { role: "model", parts: [{ text: `There are ${response.response.totals.jobs} matching job drafts across ${response.response.totals.projectsWithJobs} projects you can access. ${response.response.page.hasMore ? "More breakdown groups are available." : "This breakdown includes all groups."}` }] };
+  if (response?.name === "console_report_jobs" && response.response.totals) return { role: "model", parts: [{ text: `There are ${response.response.totals.jobs} matching jobs across ${response.response.totals.projectsWithJobs} projects you can access. ${response.response.page.hasMore ? "More breakdown groups are available." : "This breakdown includes all groups."}` }] };
   if (response) return { role: "model", parts: [{ text: response.response?.error ? response.response.error : "Here is the current workspace information. Use the workspace page to inspect it." }] };
   const message = last?.parts?.map((p) => p.text || "").join(" ") || "";
   if (organizationId && /(?:report|summary|overview|how many)/i.test(message)) return /jobs?/i.test(message)
