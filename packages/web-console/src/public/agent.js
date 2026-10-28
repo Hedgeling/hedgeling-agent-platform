@@ -26,18 +26,19 @@ shell.innerHTML = `
   <header class="agent-header">
     <div class="agent-identity"><img class="agent-avatar" alt=""><div><strong data-agent-name>Hedgeling</strong><span id="agentStatus" role="status" aria-live="polite">Ready when you are</span></div></div>
     <div class="agent-window-controls" role="group" aria-label="Chat layout">
-      <button type="button" data-mode="overlay" aria-label="Full-screen chat" title="Expand chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg><span>Full screen</span></button>
-      <button type="button" data-mode="panel" aria-label="Side panel" title="Dock chat beside your workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></svg><span>Side panel</span></button>
-      <button type="button" data-mode="minimized" aria-label="Minimize chat" title="Minimize chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18h14"/></svg><span>Minimize</span></button>
+      <button type="button" data-mode="overlay" aria-label="Full-screen chat" title="Full-screen chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button>
+      <button type="button" data-mode="panel" aria-label="Side panel" title="Dock chat beside your workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></svg></button>
+      <button type="button" data-mode="minimized" aria-label="Minimize chat" title="Minimize chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18h14"/></svg></button>
     </div>
   </header>
   <div class="agent-context"><label><span>Working in</span><select id="agentScope" aria-label="Conversation organization" disabled></select></label><button type="button" id="agentNew" disabled>New chat</button></div>
   <div id="agentPlanNotice" class="agent-plan-notice" hidden><p id="agentPlanMessage"></p><button type="button" id="agentUpgrade">View plans</button></div>
   <div class="agent-scroll"><div class="agent-paper"><div id="agentWelcome" class="agent-welcome"><img class="agent-hero" alt=""><span class="agent-eyebrow">YOUR LOCALIZATION COPILOT</span><h1>What shall we work on?</h1><p>Build a workspace. Find the right words.<br>Keep every language moving.</p><div id="agentSuggestions" class="agent-suggestions"></div></div><div id="agentMessages" role="log" aria-label="Conversation"></div><div class="agent-paper-end" aria-hidden="true">— to be continued —</div></div></div>
   <div id="agentError" class="agent-error" role="alert"></div>
-  <footer class="agent-footer"><div class="agent-run-controls"><button type="button" id="agentPause">Pause</button><button type="button" id="agentTakeover">Take over</button><button type="button" id="agentTakeControl" hidden>Take control</button><button type="button" id="agentCancel">Cancel task</button><label><input type="checkbox" id="agentFollow" checked> Follow along</label></div>
+  <footer class="agent-footer">
   <p id="agentComposerHint" class="agent-composer-hint" role="status" aria-live="polite" hidden></p>
   ${typewriterComposer}
+  <div class="agent-run-controls"><button type="button" id="agentTakeControl" hidden>Take control</button><button type="button" id="agentPause">Pause</button><button type="button" id="agentTakeover">Take over</button><button type="button" id="agentCancel">Cancel task</button><label><input type="checkbox" id="agentFollow" checked> Follow along</label></div>
   <div class="agent-footnote"><span id="agentProviderLabel">You confirm every change.</span><a id="agentCardExamples" href="/agent-preview.html" target="_blank" rel="noopener" hidden>Try card examples ↗</a><label class="agent-theme">Theme <select data-theme-preference><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><button type="button" id="agentOpaque" aria-pressed="false">Hide workspace edges</button><label class="agent-resize">Width <input id="agentWidth" type="range" min="360" max="640" value="480" aria-label="Side panel width"></label></div></footer>`;
 const launcher = element("button", "agent-launcher"); launcher.type = "button"; launcher.setAttribute("aria-label", "Open Hedgeling assistant");
 launcher.innerHTML = '<img alt=""><span>Ask Hedgeling</span><i aria-hidden="true"></i>';
@@ -116,7 +117,7 @@ function updateState(status) {
   $("agentComposerHint").textContent = hint;
   $("agentComposerHint").hidden = !hint;
   $("agentInput").setAttribute("aria-describedby", "agentComposerHint");
-  $("agentInput").placeholder = otherController ? "Select Take control above…" : paused ? "Click here to continue chatting…" : "Type your next idea…";
+  $("agentInput").placeholder = otherController ? "Select Take control below…" : paused ? "Click here to continue chatting…" : "Type your next idea…";
   $("agentComposer").querySelector("button").disabled = $("agentInput").disabled || paused || Boolean(activation);
   $("agentPause").disabled = !run; $("agentCancel").disabled = !run || status === "cancelled";
   for (const button of shell.querySelectorAll(".agent-proposal button")) button.disabled = switching || !chat.allowed || otherController || status !== "awaiting_confirmation";

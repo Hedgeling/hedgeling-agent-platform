@@ -12,11 +12,12 @@ body[data-agent-mode="overlay"] > main, body[data-agent-mode="overlay"] > .topba
 .agent-shell[data-mode="panel"] { top: 12px; right: 12px; bottom: 12px; width: calc(var(--agent-panel-width) - 24px); border-radius: var(--radius-panel); }
 body[data-agent-mode="panel"] { padding-right: var(--agent-panel-width); }
 .agent-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 20px 24px; background: var(--agent-surface); }
-.agent-identity { display: flex; align-items: center; gap: 12px; }
+.agent-identity { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+.agent-identity > div { min-width: 0; overflow-wrap: anywhere; }
 .agent-identity strong { display: block; font-size: 18px; letter-spacing: -.4px; }
 .agent-identity span { display: block; color: var(--text-muted); font-size: 12px; margin-top: 3px; }
-.agent-avatar { width: 44px; height: 44px; object-fit: cover; border-radius: 12px; }
-.agent-window-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.agent-avatar { width: 44px; height: 44px; flex-shrink: 0; object-fit: cover; border-radius: 12px; }
+.agent-window-controls { display: flex; gap: 4px; flex-shrink: 0; }
 .agent-shell button { border: 1px solid var(--agent-control-line); border-radius: var(--radius-sm); padding: 10px 14px; min-height: 44px; background: var(--background-pane); color: var(--text-main); box-shadow: none; cursor: pointer; font: inherit; font-size: 13px; }
 .agent-shell button:hover:not(:disabled) { border-color: var(--text-accent); background: var(--background-input-focus); }
 .agent-shell button.primary { background: var(--surface-accent); color: var(--text-inverse); border-color: transparent; font-weight: var(--weight-bold); }
@@ -46,9 +47,9 @@ body[data-agent-mode="panel"] { padding-right: var(--agent-panel-width); }
 .agent-effects { margin: 16px 0; padding-left: 18px; font-size: 12px; line-height: 1.7; color: var(--text-muted); }
 .agent-card-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .agent-footer { padding: 10px 24px 20px; }
-.agent-run-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-.agent-run-controls button { font-size: 13px; padding: 8px 12px; }
-.agent-run-controls label { display: flex; flex-direction: row; align-items: center; gap: 5px; margin-left: auto; font-size: 13px; color: var(--text-muted); }
+.agent-run-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.agent-run-controls button { font-size: 13px; padding: 8px; }
+.agent-run-controls label { display: flex; flex-direction: row; align-items: center; gap: 5px; min-height: 44px; margin-left: auto; font-size: 13px; color: var(--text-muted); }
 .agent-run-controls input { width: auto; }
 .agent-footnote { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
 .agent-footnote button { font-size: 12px; padding: 6px 8px; }
@@ -187,14 +188,13 @@ body[data-agent-mode="panel"] { padding-right: var(--agent-panel-width); }
 .agent-choice small { display: block; font-size: 12px; color: var(--agent-paper-muted); line-height: 1.5; margin-top: 6px; }
 .agent-answer-form > button { justify-self: start; }
 .agent-footer { padding: 10px 20px 12px; }
-.agent-run-controls { margin-bottom: 8px; }
-.agent-shell #agentTakeControl { order: -1; padding: 7px 12px; font-size: 13px; font-weight: 700; background: var(--agent-mark); color: var(--agent-mark-ink); border-color: var(--agent-stamp); box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent-mark) 30%, transparent); }
+.agent-shell #agentTakeControl { padding: 7px 12px; font-size: 13px; font-weight: 700; background: var(--agent-mark); color: var(--agent-mark-ink); border-color: var(--agent-stamp); box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent-mark) 30%, transparent); }
 .agent-shell #agentTakeControl:hover { background: var(--agent-mark); color: var(--agent-mark-ink); border-color: var(--agent-stamp); }
 .agent-composer-hint { margin: 8px 0; padding: 8px 10px; border-left: 3px solid var(--agent-stamp); border-radius: 3px; background: var(--agent-paper); color: var(--agent-ink); font: 12px/1.5 var(--font-agent); }
 #agentComposer { display: block; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; font-family: var(--font-agent); }
-.agent-input-paper { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; margin: 0; padding: 12px 14px; background: var(--agent-paper); border: 1px solid var(--agent-control-line); border-radius: 4px; }
+.agent-input-paper { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; margin: 0; padding: 6px 10px; background: var(--agent-paper); border: 1px solid var(--agent-control-line); border-radius: 4px; }
 .agent-input-paper:focus-within { box-shadow: inset 3px 0 var(--agent-stamp); }
-#agentInput { display: block; box-sizing: border-box; width: 100%; min-height: 46px; max-height: 100px; resize: vertical; margin: 0; padding: 0; font: 15px/1.5 var(--font-agent); background: transparent; color: var(--agent-ink); border: 0; border-radius: 0; box-shadow: none; }
+#agentInput { display: block; box-sizing: border-box; width: 100%; min-height: 24px; max-height: 100px; resize: vertical; margin: 0; padding: 0; font: 15px/1.5 var(--font-agent); background: transparent; color: var(--agent-ink); border: 0; border-radius: 0; box-shadow: none; }
 #agentInput::placeholder { color: var(--agent-paper-muted); opacity: 1; }
 #agentInput:focus-visible { outline: 0; }
 /* One small return key keeps the typewriter feel without a keyboard illustration. */
@@ -232,15 +232,12 @@ body[data-agent-mode="panel"] { padding-right: var(--agent-panel-width); }
 .agent-plan-notice p { margin:0 0 10px; line-height:1.5; }
 .agent-plan-notice[hidden] { display:none; }
 
-/* Shared sign-in colors, an opaque reading surface, and named layout controls. */
-.agent-shell .agent-window-controls button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 104px; min-height: 48px; border: 2px solid var(--agent-control-line); font-size: 14px; font-weight: 700; }
+/* Icon-only layout controls retain accessible names and generous hit areas. */
+.agent-shell .agent-window-controls button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 9px; border: 2px solid var(--agent-control-line); flex: 0 0 44px; }
 .agent-window-controls svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 .agent-shell .agent-window-controls button[aria-pressed="true"] { background: var(--accent-green); color: var(--text-inverse); border-color: var(--accent-green-deep); }
 .agent-shell button { transition: border-color var(--agent-motion); }
 .agent-shell button:hover:not(:disabled) { transform: none; }
-.agent-shell[data-mode="panel"] .agent-header { flex-wrap: wrap; }
-.agent-shell[data-mode="panel"] .agent-window-controls { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.agent-shell[data-mode="panel"] .agent-window-controls button { min-width: 0; gap: 5px; font-size: 13px; padding: 8px; }
 .agent-shell[data-mode="overlay"] :is(.agent-scroll, .agent-footer) { padding-left: clamp(16px, 4vw, 64px); padding-right: clamp(16px, 4vw, 64px); }
 .agent-shell[data-mode="overlay"] .agent-paper { border: 0; padding: 24px 0; box-shadow: none; }
 .agent-shell .agent-footer { border-top: 1px solid var(--line-soft); background: var(--background-pane); }
@@ -251,9 +248,6 @@ body[data-agent-mode="panel"] { padding-right: var(--agent-panel-width); }
 .agent-shell .agent-fields { font-size: 14px; }
 @media (max-width: 760px) {
   .agent-shell[data-mode="overlay"] { inset: 0; border: 0; border-radius: 0; }
-  .agent-shell .agent-header { flex-wrap: wrap; }
-  .agent-window-controls { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .agent-shell .agent-window-controls button { min-width: 0; padding: 8px 6px; font-size: 12px; gap: 5px; }
   .agent-shell[data-mode="overlay"] :is(.agent-scroll, .agent-footer) { padding-left: 12px; padding-right: 12px; }
   .agent-shell .agent-paper { padding: 12px; }
 }

@@ -36,7 +36,7 @@ try {
   const column = await shell.locator(".agent-scroll").boundingBox(); assert.ok(column.width > 1300);
   for (const button of await shell.locator(".agent-window-controls button").all()) {
     const box = await button.boundingBox(); assert.ok(box.width >= 44 && box.height >= 44);
-    assert.ok((await button.innerText()).trim().length > 1);
+    assert.ok((await button.getAttribute("aria-label")).trim().length > 1);
   }
   // Real event/replay rendering, including hostile provider text, in both themes.
   const runId = await page.evaluate(() => sessionStorage.getItem(Object.keys(sessionStorage).find(key => key.startsWith("hedgeling.agent.run."))));
@@ -130,8 +130,8 @@ try {
   await expect(shell.locator("#agentInput")).toBeEnabled();
   await shell.locator("#agentPause").click();
   await expect(shell.locator("#agentStatus")).toContainText("Paused");
-  await shell.locator("#agentFollow").focus();
-  await page.keyboard.press("Tab");
+  await shell.locator("#agentTakeover").focus();
+  await page.keyboard.press("Shift+Tab");
   await expect(shell.locator("#agentInput")).toBeFocused();
   await expect(shell.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
   await shell.locator("#agentPause").click();
