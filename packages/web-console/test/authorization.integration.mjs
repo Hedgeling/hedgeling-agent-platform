@@ -352,6 +352,7 @@ try {
       "202610271200_extraction_workflow.sql",
       "202610271600_meta_byok.sql",
       "202610272100_extraction_tuning.sql",
+      "202610272300_library_workflow.sql",
     ],
   );
   assert.equal(
@@ -7684,6 +7685,11 @@ try {
        returning id`,
       [createdBody.workspace.organizationId],
     ).then((result) => result.rows[0]);
+    for (const table of ['library_revisions', 'library_suggestions']) {
+      await pool.query(`insert into ${table}(project_id,kind,asset_key,after_state)
+        values($1,'prompt','private-guidance','{"body":"Customer Library content"}')`,
+      [createdBody.workspace.projectId]);
+    }
     await pool.query(
       `insert into npm_provisioning_outbox(
          seat_assignment_id, operation, idempotency_key, status,
@@ -8008,6 +8014,10 @@ try {
         await scalar("select source_text from source_strings where id = $1", [source.id]),
         "[customer content purged]",
       );
+      for (const table of ['library_revisions', 'library_suggestions']) {
+        assert.equal(await scalar(`select count(*)::int from ${table} where project_id=$1`,
+          [createdBody.workspace.projectId]), 0);
+      }
       assert.equal(
         await scalar("select status from service_accounts where id = $1", [
           createdBody.workspace.serviceAccountId,

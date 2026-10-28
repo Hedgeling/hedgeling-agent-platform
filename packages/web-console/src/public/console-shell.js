@@ -4,7 +4,7 @@
   const library = [
     ["glossary", "Glossary", "Shared terminology, approved words, and do-not-translate rules."],
     ["personas", "Personas", "Voice and tone that feel right in every language."],
-    ["prompts", "Prompts", "Reusable instructions for consistent AI translations."],
+    ["prompts", "Translation instructions", "Reusable instructions for consistent AI translations."],
   ];
   const admin = [["people", "People & access"], ["structure", "Organization"], ["identity", "Identity & API"], ["billing", "Billing & usage"], ["providers", "AI providers & keys"], ["agencies", "Agencies"], ["usage", "Usage & budgets"], ["payments", "Payments"], ["audit", "Audit history"]];
   let state = { projects: [], organizations: [], assignments: [], permissions: [], view: "home" };
@@ -64,7 +64,7 @@
     $("homeWork").innerHTML = pending.slice(0, 3).map((a) => `<button type="button" class="home-assignment-card" data-open-assignment="${html(a.id)}"><strong>${html(a.title)}</strong><small>${html(a.projectName)} · ${html(a.targetLocale)} · ${html(a.workOrderStatus.replaceAll("_", " "))}</small></button>`).join("") || '<p class="shell-empty">Nothing assigned to you yet.<br>When work is assigned, you’ll find it here.</p>';
     $("workCount").textContent = pending.length;
     $("workCount").hidden = !pending.length;
-    $("libraryCards").innerHTML = library.filter(([key]) => state.permissions.includes(`${key}.view`)).map(([key, label, description], i) => `<button type="button" class="library-card" data-view="${key}"><span>0${i + 1} ↗</span><strong>${label}</strong><p>${description}</p></button>`).join("");
+    $("libraryCards").innerHTML = library.filter(([key]) => ["view","propose","approve","manage"].some(action => state.permissions.includes(`${key}.${action}`))).map(([key, label, description], i) => `<button type="button" class="library-card" data-view="${key}"><span>0${i + 1} ↗</span><strong>${label}</strong><p>${description}</p></button>`).join("");
   }
   function renderSections() {
     let items = [];
@@ -73,7 +73,7 @@
     if (["work", "review"].includes(state.view)) {
       items = [["work", "Assignments"], ...(state.permissions.includes("strings.view") ? [["review", "Review"]] : [])];
     } else if (["library", "glossary", "personas", "prompts"].includes(state.view)) {
-      items = [["library", "Overview"], ...library.filter(([key]) => state.permissions.includes(`${key}.view`))];
+      items = [["library", "Overview"], ...library.filter(([key]) => ["view","propose","approve","manage"].some(action => state.permissions.includes(`${key}.${action}`)))];
     } else if (["access", "operations"].includes(state.view)) {
       const permissions = state.organizations.find((o) => o.id === $("accessOrganization").value)?.permissions || [];
       const required = { identity: ["identity.manage", "api_credentials.manage", "provisioning.manage"], billing: ["billing.view"], providers: ["ai_providers.view"], agencies: ["vendors.view"], usage: ["usage.view"], audit: ["audit.view"] };
@@ -91,7 +91,7 @@
   }
   function update(next) {
     state = next;
-    $("libraryTab").hidden = !library.some(([key]) => state.permissions.includes(`${key}.view`));
+    $("libraryTab").hidden = !library.some(([key]) => ["view","propose","approve","manage"].some(action => state.permissions.includes(`${key}.${action}`)));
     $("adminTab").hidden = !state.organizations.length && !state.canOperate;
     $("adminTab").dataset.view = state.organizations.length ? "access" : "operations";
     const section = ["review", "work"].includes(state.view) ? "work" : ["library", "glossary", "personas", "prompts"].includes(state.view) ? "library" : ["access", "operations"].includes(state.view) ? $("adminTab").dataset.view : state.view;

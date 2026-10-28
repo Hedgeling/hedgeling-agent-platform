@@ -28,6 +28,7 @@ function fixtureTurn(history, organizationId) {
   const part = (name, args) => ({ role: "model", parts: [{ functionCall: { name, args } }] });
   if (confirmation) {
     const result = JSON.parse(confirmation.text.slice("Confirmed result: ".length));
+    if (result.library) return { role: 'model', parts: [{ text: result.library.status === 'saved' ? `${result.library.label} saved after confirmation. Existing translations are unchanged.` : 'Your Library suggestion was submitted for review.' }] };
     if (result.addedLocales) return { role: 'model', parts: [{ text: `Added ${result.addedLocales.join(', ')} to your project after confirmation. Choose a translation action when you’re ready.` }] };
     if (result.extraction) return part('console_get_extraction', { projectSlug: result.extraction.projectSlug, extractionId: result.extraction.id });
     if (result.import) return { role: 'model', parts: [{ text: 'Your source strings were imported after confirmation. Existing translations were preserved.' }] };
@@ -42,6 +43,11 @@ function fixtureTurn(history, organizationId) {
   // Explicit synthetic prompts for local browser/MCP tests. Production Meta
   // follows the extraction skill using these same authenticated tools.
   const lastUser = history.findLast(item => item.role === 'user' && !item.confirmation && item.parts?.some(p => p.text));
+  const libraryPrompt = /^Create translation instructions "([^"]+)" for project "([^"]+)"\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  if (libraryPrompt && !confirmation) {
+    if (!response) return part('console_get_library_asset', { projectSlug: libraryPrompt[2], kind: 'prompt', key: libraryPrompt[1] });
+    if (response.name === 'console_get_library_asset' && !response.response.error) return part('console_propose_translation_instructions', { projectSlug: libraryPrompt[2], key: libraryPrompt[1], label: 'Clear product voice', body: 'Use clear, friendly language. Preserve placeholders and product names.', active: true, expectedVersion: response.response.asset?.version || null });
+  }
   const tuningPrompt = /^Tune extraction for project "([^"]+)" at "([^"]+)" in "([^"]+)"\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
   if (tuningPrompt && !confirmation) {
     if (!response) return part('console_list_source_connections', { projectSlug: tuningPrompt[1] });

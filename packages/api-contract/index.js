@@ -2,6 +2,7 @@
 // These describe behavior, not authorization grants. The server reauthorizes
 // each invocation using its authenticated principal and resolved resource.
 import Ajv from "ajv";
+import { LIBRARY_ACTIONS } from './library-actions.js';
 import { PROJECT_LOCALE_ACTIONS } from './project-locales-actions.js';
 import { EXTRACTION_ACTIONS } from './extraction-actions.js';
 export const ACTION_CONTRACT_VERSION = 1;
@@ -19,6 +20,7 @@ export const REPORT_ACTIONS = [
   { ...action("reports.jobs.summary", "console_report_jobs", "Aggregate ALL matching permitted localization jobs in one organization, grouped by status, project, business unit or target locale. Totals cover every matching job, independent of group pagination. Follow page.nextCursor for remaining groups. Locale groups overlap for multilingual jobs.", "jobs.view", schema({ organizationId: id, projectSlug: text, ...jobFilters, groupBy: { type: "string", enum: ["status", "project", "business_unit", "target_locale"] }, ...paging }, ["organizationId"])), scope: "reporting" },
 ];
 export const WORKSPACE_ACTIONS = [
+  ...LIBRARY_ACTIONS,
   ...EXTRACTION_ACTIONS,
   ...PROJECT_LOCALE_ACTIONS,
   action("organizations.list", "console_list_organizations", "List permitted organizations in pages. Follow page.nextCursor until hasMore is false; never treat one page as the full account list.", "organization.view", schema({ search, ...paging }, [])),

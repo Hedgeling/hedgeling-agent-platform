@@ -530,6 +530,8 @@ async function redactProjectAudit(client, organizationId, projectId, requestId, 
        union select id from prompts where project_id = $2
        union select id from personas where project_id = $2
        union select id from glossary_terms where project_id = $2
+       union select id from library_revisions where project_id = $2
+       union select id from library_suggestions where project_id = $2
        union select id from pipeline_runs where project_id = $2
        union select id from gemini_calls where project_id = $2
        union select id from locales where project_id = $2
@@ -656,6 +658,8 @@ async function purgeProjectContent(client, {
   await client.query("delete from agent_runs where organization_id = $1", [organizationId]);
   await client.query("delete from agent_proposals where organization_id = $1", [organizationId]);
   await client.query("delete from pipeline_runs where project_id = $1", [projectId]);
+  await client.query("delete from library_suggestions where project_id = $1", [projectId]);
+  await client.query("delete from library_revisions where project_id = $1", [projectId]);
   await client.query("delete from prompts where project_id = $1", [projectId]);
   await client.query("delete from personas where project_id = $1", [projectId]);
   await client.query("delete from glossary_terms where project_id = $1", [projectId]);

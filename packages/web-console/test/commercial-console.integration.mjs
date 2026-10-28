@@ -130,6 +130,9 @@ test("Meta and Gemini keys coexist; confirmed Meta routing uses context and reco
   await change({ action: "translation_mode", mode: "byok", provider: "meta" });
   const project = (await database.query("select id from projects where slug='hedgeling-local'")).rows[0].id;
   const source = (await database.query("insert into source_strings(project_id,source_hash,source_text,purpose) values($1,'meta-source','Hello {name}','Warm greeting on the welcome screen') returning id", [project])).rows[0].id;
+  await database.query("insert into prompts(project_id,key,label,body,active) values($1,'library-active','Voice','Use warm library guidance',true),($1,'library-inactive','Unused','INACTIVE_PROMPT_MARKER',false)", [project]);
+  await database.query("insert into personas(project_id,locale,body) values($1,'fr','{\"tone\":\"Library voice in French\"}')", [project]);
+  await database.query("insert into glossary_terms(project_id,term,locale,translation,active) values($1,'Hello','fr','Bonjour',true),($1,'Hello','fr','INACTIVE_TERM_MARKER',false)", [project]);
   const revise = `/api/translations/${source}/fr/revise`;
   const result = await request(revise, { instruction: "Keep it welcoming" }, { "idempotency-key": "meta-byok-revision-0001" });
   assert.equal(result.status, 200, JSON.stringify(result.body));
@@ -138,10 +141,18 @@ test("Meta and Gemini keys coexist; confirmed Meta routing uses context and reco
   assert.equal(result.body.aiCredits, 0); assert.equal(result.body.billingCategory, "organization_provider");
   assert.equal(meta.calls[1].authorization, `Bearer ${metaKey}`); assert.equal(meta.calls[1].body.store, false);
   assert.ok(meta.calls[1].body.input.includes("Warm greeting"));
+  assert.ok(meta.calls[1].body.input.includes("Use warm library guidance"));
+  assert.ok(meta.calls[1].body.input.includes("Library voice in French"));
+  assert.ok(!meta.calls[1].body.input.includes("INACTIVE_PROMPT_MARKER"));
+  assert.ok(!meta.calls[1].body.input.includes("INACTIVE_TERM_MARKER"));
   const usage = (await database.query("select provider,metadata from usage_events where operation='ai_translation_revision' and outcome='succeeded'")).rows[0];
   assert.equal(usage.provider, "meta"); assert.equal(usage.metadata.aiCredits.quantity, 0);
   const revision = (await database.query("select revision_source,prompt_snapshot from translation_revisions where source_string_id=$1", [source])).rows[0];
   assert.equal(revision.revision_source, "mt"); assert.equal(revision.prompt_snapshot.provider, "meta");
+  assert.equal(revision.prompt_snapshot.libraryVersions.prompts.length, 1);
+  assert.equal(revision.prompt_snapshot.libraryVersions.persona.length, 1);
+  assert.equal(revision.prompt_snapshot.libraryVersions.glossary.length, 1);
+  assert.match(revision.prompt_snapshot.libraryVersions.glossary[0].contentHash, /^[a-f0-9]{64}$/);
   meta.control.fail = true;
   const failed = await request(revise, { instruction: "Try again" });
   assert.equal(failed.status, 502); assert.ok(!JSON.stringify(failed.body).includes("private upstream detail"));

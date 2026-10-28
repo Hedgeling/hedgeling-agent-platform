@@ -12,6 +12,16 @@ const route = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(ne
 const active = new Map();
 const running = ["planning", "reading", "executing"];
 const activityLabels = {
+  console_list_library: 'Searching the Library',
+  console_get_library_asset: 'Reading translation guidance',
+  console_read_library_sources: 'Reading source examples for the Library',
+  console_get_library_history: 'Checking Library history',
+  console_propose_translation_instructions: 'Preparing translation instructions',
+  console_propose_locale_persona: 'Preparing a locale persona',
+  console_propose_glossary_term: 'Preparing a glossary term',
+  console_propose_library_restore: 'Preparing a Library restore',
+  console_list_library_reviews: 'Checking Library suggestions',
+  console_propose_library_review: 'Preparing a Library review',
   console_get_project_locales: 'Checking the project’s languages',
   console_propose_project_locales: 'Preparing new target languages',
   console_get_extraction_config: 'Reading extraction configuration',
@@ -117,7 +127,7 @@ async function runTurn(auth, runId) {
           const reply = await tools.client.callTool({ name: call.name, arguments: call.args || {} });
           result = JSON.parse(reply.content?.find((c) => c.type === "text")?.text || "{}");
           if (result.proposal) { proposal = result.proposal; events.push(["proposal", { ...proposal, uiTarget: result.uiTarget }]); }
-          else events.push(["activity", { tool, label: result.error || "Workspace information loaded", status: result.error ? "failed" : "complete" }]);
+          else events.push(["activity", { tool, label: result.error || "Workspace information loaded", status: result.error ? "failed" : "complete", ...(result.uiTarget ? { uiTarget: result.uiTarget } : {}) }]);
         }
         parts.push({ functionResponse: { name: call.name, ...(call.id ? { id: call.id } : {}), response: result } });
       }

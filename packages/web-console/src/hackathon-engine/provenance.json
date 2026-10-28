@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "0f05d7cc641acd4da3c27601aedd5b9f57dba5d0",
+  "revision": "cc3c33e3575c1b43a395594e295b27b114a8372c",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -28,6 +28,16 @@
       "source": "src/engine-operations.js",
       "destination": "engine-operations.js",
       "sha256": "fff2809790af2f17ab54076bf5290299bc9465026fc92167ca1c0e82d6d8b7f7"
+    },
+    {
+      "source": "src/library.js",
+      "destination": "library.js",
+      "sha256": "6567d5d8fa2dda5df95b866f43b7b2bb12c0347be09f3fcf9677381cc86ef5b9"
+    },
+    {
+      "source": "src/library-actions.js",
+      "destination": "library-actions.js",
+      "sha256": "9c810e8a6264ed7791f7ea3758f64905eb48d34c05000010c6cb8db772bd1fb1"
     },
     {
       "source": "src/tuning-config.js",
@@ -73,6 +83,26 @@
       "source": "NOTICE",
       "destination": "NOTICE",
       "sha256": "91424905df6ef3e602591ed759c25d56369ea5f2549ca2fa10a3e16ac7dfb18f"
+    },
+    {
+      "source": "src/library-actions.js",
+      "destination": "../../../api-contract/library-actions.js",
+      "sha256": "9c810e8a6264ed7791f7ea3758f64905eb48d34c05000010c6cb8db772bd1fb1"
+    },
+    {
+      "source": "contracts/202610272300_library_workflow.sql",
+      "destination": "../../db/migrations/202610272300_library_workflow.sql",
+      "sha256": "d33a5af52d84960f914cd5ab6628208050c7b64dbf8b2cb0601de7e704ad79f6"
+    },
+    {
+      "source": "ui/library.js",
+      "destination": "../public/library.js",
+      "sha256": "8a7a05e13180b9c96c3691d4cd1c6de103e028c7777aab1ec92cbe58858f03da"
+    },
+    {
+      "source": "ui/library.css",
+      "destination": "../public/library.css",
+      "sha256": "4fed40252a8611f4aed734cc17114c695242b0d798a9f9d32cd16604e6d69ad0"
     },
     {
       "source": "src/project-locales-actions.js",

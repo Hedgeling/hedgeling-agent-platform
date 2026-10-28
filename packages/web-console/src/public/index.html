@@ -163,56 +163,11 @@
         </section>
       </section>
 
-      <section id="view-prompts" class="view admin-view">
-        <div class="admin-header">
-          <h1>Prompts</h1>
-          <form id="promptCreate" class="inline-form">
-            <input id="promptKey" placeholder="prompt-key" required>
-            <input id="promptLabel" placeholder="Label">
-            <button class="primary" type="submit">Add</button>
-          </form>
-        </div>
-        <div id="promptList" class="editor-list"></div>
-      </section>
+      <section id="view-prompts" class="view admin-view"><div id="libraryPromptRoot"></div></section>
 
-      <section id="view-glossary" class="view admin-view">
-        <div class="admin-header">
-          <h1>Glossary</h1>
-        </div>
-        <form id="glossaryCreate" class="glossary-form">
-          <input id="glossaryTerm" placeholder="Term" required>
-          <input id="glossaryTranslation" placeholder="Translation">
-          <input id="glossaryDescription" placeholder="Description">
-          <label class="check-field">
-            <input id="glossaryDnt" type="checkbox">
-            <span>DNT</span>
-          </label>
-          <button class="primary" type="submit">Add term</button>
-        </form>
-        <div id="glossaryList" class="table-list"></div>
-      </section>
+      <section id="view-glossary" class="view admin-view"><div id="libraryGlossaryRoot"></div></section>
 
-      <section id="view-personas" class="view admin-view">
-        <div class="admin-header">
-          <h1>Personas</h1>
-          <label class="compact-field">
-            <span>Locale</span>
-            <select id="personaLocale"></select>
-          </label>
-        </div>
-        <div class="persona-editor">
-          <label class="check-field">
-            <input id="personaActive" type="checkbox" checked>
-            <span>Active</span>
-          </label>
-          <textarea id="personaBody" spellcheck="false"></textarea>
-          <div class="actions">
-            <button id="savePersona" class="primary">Save persona</button>
-            <button id="formatPersona">Format JSON</button>
-          </div>
-          <p id="personaMessage" class="inline-message" hidden></p>
-        </div>
-      </section>
+      <section id="view-personas" class="view admin-view"><div id="libraryPersonaRoot"></div></section>
 
       <section id="view-work" class="view work-view">
         <aside class="work-assignment-sidebar">

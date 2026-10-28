@@ -1,6 +1,9 @@
 // Only semantic destinations owned by the console are addressable. Tool/model
 // text never becomes a selector, script, URL, or click instruction.
 const toolActions = Object.freeze({
+  console_list_library: 'library.read', console_get_library_asset: 'library.read', console_read_library_sources: 'library.read', console_get_library_history: 'library.read',
+  console_propose_translation_instructions: 'library.prompt.save', console_propose_locale_persona: 'library.persona.save', console_propose_glossary_term: 'library.glossary.save',
+  console_propose_library_restore: 'library.restore', console_list_library_reviews: 'library.read', console_propose_library_review: 'library.review',
   console_get_project_locales: 'read',
   console_propose_project_locales: 'project.locales.add',
   console_list_source_connections: 'read',
@@ -53,10 +56,11 @@ export class AgentAttention {
   show({ action, resource, label, phase = "working", card } = {}) {
     if (!actions.has(action)) return;
     this.clear();
-    const nav = document.getElementById("workspaceTab");
+    const nav = document.getElementById(action.startsWith("library.") ? "libraryTab" : "workspaceTab");
     this.mark(nav, label, phase, 0);
     let target;
-    if (resource && ["organization", "business_unit", "project", "job"].includes(resource.type)) {
+    if (action.startsWith('library.')) target = [...document.querySelectorAll('[data-library-kind]')].find(node => node.getClientRects().length)?.querySelector('.library-editor:not(:empty), .library-heading') || document.getElementById('libraryCards');
+    if (!action.startsWith("library.") && resource && ["organization", "business_unit", "project", "job"].includes(resource.type)) {
       target = [...document.querySelectorAll("#workspaceRoot [data-resource-id]")].find((node) => node.dataset.resourceType === resource.type && node.dataset.resourceId === resource.id);
     }
     if (action === 'project.locales.add' && resource?.type === 'project') {
