@@ -61,6 +61,13 @@ function appendProposalDetails(card, preview) {
       element('dt', '', 'Billing'), element('dd', '', batch.mode === 'byok' ? 'Organization key' : 'Hedgeling AI credits'),
       element('dt', '', 'This batch'), element('dd', '', `${batch.pairs} translations`));
   }
+  if (resources.modelPlan) {
+    const plan = resources.modelPlan;
+    fields.append(element('dt', '', 'Tuning method'), element('dd', '', 'LLM-assisted'),
+      element('dt', '', 'Provider'), element('dd', '', `${plan.provider === 'meta' ? 'Meta' : 'Gemini'} · ${plan.model}`),
+      element('dt', '', 'Billing'), element('dd', '', 'Organization key'),
+      element('dt', '', 'Candidate limit'), element('dd', '', `${plan.limits.items} texts · one round`));
+  }
   if (preview.library) {
     fields.append(element('dt','','Library asset'),element('dd','',preview.library.label),element('dt','','Language'),element('dd','',preview.library.locale || 'Project-wide'),element('dt','','On confirmation'),element('dd','',preview.library.disposition === 'submit' ? 'Submit for review; keep active guidance unchanged' : preview.library.disposition === 'reject' ? 'Reject this suggestion' : 'Save this guidance'));
   }

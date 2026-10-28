@@ -1,0 +1,67 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import { localConsole, eventually } from '../test-support/local-console.mjs';
+import { extractionEngine, seedExtractionProject } from '../test-support/extraction-engine.mjs';
+import { metaProvider } from '../test-support/meta-provider.mjs';
+
+test('LLM tuning needs approval, uses selected BYOK, meters once and stops on stale access or uncertain inference', {skip:process.env.HEDGELING_REQUIRE_AGENT_TEST_DATABASE!=='true'}, async t => {
+  const engine=await extractionEngine();t.after(engine.close);
+  const meta=await metaProvider();t.after(meta.close);
+  fs.appendFileSync(engine.env.NODE_EXTRA_CA_CERTS,fs.readFileSync(meta.env.NODE_EXTRA_CA_CERTS));
+  const app=await localConsole(process.env.TEST_DATABASE_URL,{...meta.env,...engine.env,HEDGELING_AI_KEY_ID:'test',HEDGELING_AI_KEYRING:JSON.stringify({test:crypto.randomBytes(32).toString('base64')})});t.after(app.close);
+  const {request,database}=app,p=await seedExtractionProject(database),controllerId=crypto.randomUUID();
+  const input={projectSlug:p.slug,connectionId:'test-source',ref:'main',scanRoots:['src'],configPath:'.hedgeling/extract.config.json',mode:'llm'};
+  const call=async(name,input)=>{const r=await request('/api/actions/'+name,input);assert.equal(r.status,200,JSON.stringify(r.body));return r.body.result;};
+  const confirm=proposal=>request(`/api/agent/proposals/${proposal.id}/confirm`,{controllerId,fingerprint:proposal.fingerprint});
+  const modelCalls=()=>meta.calls.filter(c=>c.method==='POST');
+  const connect=async payload=>{const base=`/api/access/organizations/${p.org}/ai-providers`;const preview=await request(base+'/preview',payload);assert.equal(preview.status,200,JSON.stringify(preview.body));assert.equal((await request(`${base}/proposals/${preview.body.proposal.id}/confirm`,{})).status,200);};
+  assert.equal((await request('/api/actions/extraction.tune',input)).status,409);
+  await connect({action:'connect',provider:'meta',key:'synthetic.tuning.key-1234'});
+  await connect({action:'translation_mode',mode:'byok',provider:'meta'});
+  const stale=(await call('extraction.tune',input)).proposal;
+  await database.query('update organization_ai_settings set revision=revision+1 where organization_id=$1',[p.org]);
+  assert.equal((await confirm(stale)).status,409);assert.equal(engine.jobs.size,0);
+  const run=(await request('/api/agent/runs',{organizationId:p.org,controllerId})).body.run;
+  await request(`/api/agent/runs/${run.id}/messages`,{controllerId,text:`Tune extraction for project "${p.slug}" at "main" in "src" with LLM.`});
+  const ready=await eventually(()=>request(`/api/agent/runs/${run.id}`),r=>r.body.run?.status==='awaiting_confirmation',20000);
+  const plan=ready.body.proposals[0];
+  assert.equal(plan.preview.fields.provider,'meta');assert.equal(plan.preview.fields.limits.calls,4);
+  assert.equal(modelCalls().length,0);assert.equal(engine.jobs.size,0);
+  assert(!JSON.stringify(plan).includes('synthetic.tuning.key'));
+  engine.control.loseModelAck=true;meta.control.text='{"classifications":{"s1":"ambiguous"},"edits":[]}';
+  const starts=await Promise.all([confirm(plan),confirm(plan)]);
+  for(const r of starts)assert.equal(r.status,200,JSON.stringify(r.body));
+  assert.equal(starts.filter(r=>r.body.replayed).length,1);
+  const id=starts[0].body.result.extraction.id,selection={projectSlug:p.slug,extractionId:id};
+  const result=await eventually(()=>call('extraction.get',selection),r=>r.extraction.status==='succeeded',20000);
+  assert.equal(result.tuning.mode,'llm');assert.equal(result.tuning.classifiedCount,1);assert.equal(modelCalls().length,1);
+  assert.equal(modelCalls()[0].authorization,'Bearer synthetic.tuning.key-1234');
+  assert.equal(result.modelUsage.totalTokens,130);
+  assert.equal((await database.query("select count(*)::int n from usage_events where operation='llm_extraction_tuning'")).rows[0].n,1);
+  assert.equal((await database.query('select count(*)::int n from extraction_settings')).rows[0].n,0);
+  assert.equal((await database.query('select count(*)::int n from source_strings')).rows[0].n,0);
+  assert.equal((await request('/api/actions/extraction.import',selection)).status,409);
+  engine.control.complete=true;
+  const save=(await call('extraction.tuning.apply',selection)).proposal;
+  assert.equal((await confirm(save)).status,200);assert.equal(modelCalls().length,1);
+  assert.equal((await database.query('select count(*)::int n from extraction_settings')).rows[0].n,1);
+  // Engine requests are independently bounded; provider text never grants authority.
+  engine.control.invalidModel=true;
+  const invalid=await confirm((await call('extraction.tune',input)).proposal);assert.equal(invalid.status,200);
+  await eventually(()=>database.query('select status from extraction_model_runs where extraction_id=$1',[invalid.body.result.extraction.id]),r=>r.rows[0].status==='failed',10000);
+  assert.equal(modelCalls().length,1);engine.control.invalidModel=false;
+  // Unknown provider outcomes are not retried; reserve and record conservative usage.
+  meta.control.fail=true;
+  const failed=await confirm((await call('extraction.tune',input)).proposal);assert.equal(failed.status,200);
+  await eventually(()=>database.query('select status from extraction_model_runs where extraction_id=$1',[failed.body.result.extraction.id]),r=>r.rows[0].status==='failed',10000);
+  assert.equal(modelCalls().length,2);meta.control.fail=false;
+  // Revoking membership before model dispatch prevents sending source to a provider.
+  engine.control.holdModels=true;
+  const revoked=await confirm((await call('extraction.tune',input)).proposal);assert.equal(revoked.status,200);
+  const user=(await request('/api/me')).body.auth.user.id;
+  await database.query('update role_assignments set revoked_at=now() where principal_id=$1',[user]);
+  await eventually(()=>database.query('select status from extraction_model_runs where extraction_id=$1',[revoked.body.result.extraction.id]),r=>r.rows[0].status==='failed',10000);
+  assert.equal(modelCalls().length,2);
+});

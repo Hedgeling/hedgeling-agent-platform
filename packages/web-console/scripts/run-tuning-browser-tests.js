@@ -2,13 +2,17 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import { metaProvider } from '../test-support/meta-provider.mjs';
 import { chromium, expect } from '@playwright/test';
 import { localConsole } from '../test-support/local-console.mjs';
 import { extractionEngine, seedExtractionProject } from '../test-support/extraction-engine.mjs';
-const upstream=await extractionEngine();let app,browser;
+const upstream=await extractionEngine(),meta=await metaProvider();let app,browser;
 const artifacts=await fs.mkdtemp(path.join(os.tmpdir(),'hedgeling-tuning-browser-'));
 try {
-  app=await localConsole(process.env.TEST_DATABASE_URL,upstream.env);await seedExtractionProject(app.database);
+  await fs.appendFile(upstream.env.NODE_EXTRA_CA_CERTS,await fs.readFile(meta.env.NODE_EXTRA_CA_CERTS));
+  app=await localConsole(process.env.TEST_DATABASE_URL,{...meta.env,...upstream.env,HEDGELING_AI_KEY_ID:'test',HEDGELING_AI_KEYRING:JSON.stringify({test:crypto.randomBytes(32).toString('base64')})});const p=await seedExtractionProject(app.database);
+  for(const payload of [{action:'connect',provider:'meta',key:'synthetic.browser.tuning-key'},{action:'translation_mode',mode:'byok',provider:'meta'}]) {const base=`/api/access/organizations/${p.org}/ai-providers`,plan=(await app.request(base+'/preview',payload)).body.proposal;assert.equal((await app.request(`${base}/proposals/${plan.id}/confirm`,{})).status,200);}
   browser=await chromium.launch({headless:true,...(process.env.HEDGELING_E2E_CHROMIUM_EXECUTABLE?{executablePath:process.env.HEDGELING_E2E_CHROMIUM_EXECUTABLE}:{})});
   const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'});
   const split=app.cookie.indexOf('=');await context.addCookies([{name:app.cookie.slice(0,split),value:app.cookie.slice(split+1),url:app.origin,httpOnly:true,sameSite:'Strict'}]);
@@ -36,10 +40,14 @@ try {
   await panel.getByRole('button',{name:'View extraction config',exact:true}).click();await expect(panel.locator('.extraction-config')).toContainText('trackDebug');
   const downloadPromise=page.waitForEvent('download');await panel.getByRole('button',{name:'Download saved config',exact:true}).click();const download=await downloadPromise;
   assert.equal(download.suggestedFilename(),'extract.config.json');const config=JSON.parse(await fs.readFile(await download.path(),'utf8'));assert.deepEqual(config.excludeCallees,['trackDebug']);assert.deepEqual(config.scanRoots,['src']);
+  await panel.getByLabel('Tuning method').selectOption('llm');
   await panel.getByRole('button',{name:'Review tuning run',exact:true}).click();
   await expect(panel.locator('.workspace-confirmation')).toContainText('telemetryLabel');await expect(panel.locator('.workspace-confirmation')).not.toContainText('tell me');
+  await expect(panel.locator('.workspace-confirmation')).toContainText('test-meta-model');
+  await expect(panel.locator('.workspace-confirmation')).toContainText('4 model requests');
+  assert.equal(meta.calls.filter(c=>c.method==='POST').length,0);
   await page.setViewportSize({width:390,height:844});await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:path.join(artifacts,'02-mobile-tuning.png'),fullPage:true});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
   await panel.locator('.workspace-confirmation').getByRole('button',{name:'Cancel',exact:true}).click();assert.deepEqual(errors,[]);
   console.log('Tuning browser checks passed: config display/download, agent confirmations, re-extraction, manual preview, mobile. Screenshots: '+artifacts);
-} finally {await browser?.close();await app?.close();await upstream.close();}
+} finally {await browser?.close();await app?.close();await upstream.close();await meta.close();}
