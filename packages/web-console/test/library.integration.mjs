@@ -66,9 +66,18 @@ test('Library API/MCP preserves approvals, versions, locale boundaries and revie
   const personaInput={projectSlug:p.slug,locale:'fr-CA',body:{tone:'Warm and direct',audience:'New customers'},active:true,expectedVersion:'null'};
   assert.equal((await request('/api/actions/library.persona.save',personaInput)).status,400,'HTTP API retains strict JSON typing');
   const personaRun=(await request('/api/agent/runs',{organizationId:p.org,controllerId})).body.run;
+  const rejectedHistory=[
+    {role:'user',parts:[{text:`Create persona "fr-CA" for project "${p.slug}".`}]},
+    {role:'model',parts:[{functionCall:{name:'console_propose_locale_persona',args:personaInput}}]},
+    {role:'user',parts:[{functionResponse:{name:'console_propose_locale_persona',response:{error:'Invalid action input: data/expectedVersion must match pattern',code:'action_input_invalid'}}}]},
+    {role:'model',parts:[{text:'The creation preview failed validation. Please create it manually.'}]},
+  ];
+  await database.query('update agent_runs set model_history=$2 where id=$1',[personaRun.id,JSON.stringify(rejectedHistory)]);
   assert.equal((await request(`/api/agent/runs/${personaRun.id}/messages`,{controllerId,text:`Create persona "fr-CA" for project "${p.slug}".`})).status,200);
   const personaPending=await eventually(()=>request(`/api/agent/runs/${personaRun.id}`),r=>r.body.run?.status==='awaiting_confirmation',20000);
   assert.equal(personaPending.body.proposals[0].preview.action,'library.persona.save');
+  const resumedHistory=(await database.query('select model_history from agent_runs where id=$1',[personaRun.id])).rows[0].model_history;
+  assert.deepEqual(resumedHistory.slice(0,rejectedHistory.length),rejectedHistory,'Retry preserves historical tool errors instead of rewriting them');
   assert.equal(await get('persona','fr-CA'),null);
   assert.equal((await confirm(personaPending.body.proposals[0])).status,200);
   assert.deepEqual((await get('persona','fr-CA')).content.body,personaInput.body);
