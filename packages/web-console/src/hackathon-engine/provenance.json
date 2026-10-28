@@ -1,9 +1,14 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "364726cbc7e6a3d6c99cb0a73a30e578b399757c",
+  "revision": "bf937c93c8f6ff0dea602d982fdb2f5bd619df50",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
+    {
+      "source": "src/agent-scope.js",
+      "destination": "agent-scope.js",
+      "sha256": "10c47098b90e2dbc86239058cb0d3af102cb2362f618fa32a9bcf91224cbcb3e"
+    },
     {
       "source": "src/errors.js",
       "destination": "errors.js",
