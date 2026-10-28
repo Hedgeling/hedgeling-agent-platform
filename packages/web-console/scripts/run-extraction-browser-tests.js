@@ -34,6 +34,9 @@ try {
   upstream.control.complete = true;
   await chat.locator('.extraction-progress').getByRole('button', { name: 'Refresh status' }).click();
   await expect(chat.locator('.extraction-progress')).toContainText('Your strings are ready to review');
+  // Status-card refresh can finish before the post-confirmation agent turn.
+  // Wait for server readiness as well as the composer before sending a new turn.
+  await expect.poll(async () => (await app.database.query('select status from agent_runs order by created_at desc limit 1')).rows[0]?.status, { timeout: 15000 }).toBe('awaiting_input');
   await expect(chat.locator('#agentInput')).toBeEnabled({ timeout: 15000 });
   await chat.locator('.extraction-progress').getByRole('button', { name: 'Review import' }).click();
   await expect(chat.locator('.agent-proposal').getByRole('button', { name: 'Import source strings', exact: true })).toBeEnabled({ timeout: 15000 });
