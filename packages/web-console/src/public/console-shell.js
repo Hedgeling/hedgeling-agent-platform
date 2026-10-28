@@ -184,7 +184,9 @@
     organizationContext() {
       if (state.view === "workspace") return workspaceOrganizationId;
       if (["review", "library", "glossary", "personas", "prompts"].includes(state.view)) return state.projects.find((p) => p.slug === state.projectSlug)?.organizationId;
-      return null;
+      if (state.view === "access") return $("accessOrganization").value || undefined;
+      // Global pages have no selected organization; keep the current chat there.
+      return undefined;
     },
     workspaceChanged(id) { workspaceOrganizationId = id; renderContext(); },
     agentAvailable(config, brand) {

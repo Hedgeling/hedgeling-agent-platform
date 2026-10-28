@@ -19,6 +19,8 @@ const inertBeforeOverlay = new Map();
 const attention = new AgentAttention();
 let attentionGeneration = 0;
 let activation = null;
+let conversationChange = Promise.resolve();
+const drafts = new Map();
 const shell = element("section", "agent-shell"); shell.id = "hedgelingAgent"; shell.tabIndex = -1;
 shell.innerHTML = `
   <header class="agent-header">
@@ -117,7 +119,7 @@ function updateState(status) {
   $("agentInput").placeholder = otherController ? "Select Take control above…" : paused ? "Click here to continue chatting…" : "Type your next idea…";
   $("agentComposer").querySelector("button").disabled = $("agentInput").disabled || paused || Boolean(activation);
   $("agentPause").disabled = !run; $("agentCancel").disabled = !run || status === "cancelled";
-  for (const button of shell.querySelectorAll(".agent-proposal button")) button.disabled = !chat.allowed || otherController || status !== "awaiting_confirmation";
+  for (const button of shell.querySelectorAll(".agent-proposal button")) button.disabled = switching || !chat.allowed || otherController || status !== "awaiting_confirmation";
 }
 function message(role, text, { replay = false } = {}) {
   $("agentWelcome").hidden = true;
@@ -162,7 +164,7 @@ function receive(item, { replay = false } = {}) {
     if (!replay && data.status === 'complete' && data.uiTarget?.view === 'library') void follow(data.uiTarget, { label: data.label }).catch(showError);
     if (!replay && data.status === "failed") { attentionGeneration++; attention.clear(); }
   }
-  if (kind === "state") { if (run && Object.hasOwn(data, "controllerId")) run.controllerId = data.controllerId; if (data.organizationId) { scope = data.organizationId; if (run) run.organizationId = scope; void refreshScopes(); } updateState(data.status); }
+  if (kind === "state") { if (run && Object.hasOwn(data, "controllerId")) run.controllerId = data.controllerId; if (data.organizationId) { scope = data.organizationId; if (run) run.organizationId = scope; if (!replay) rememberConversation(); void refreshScopes(); } updateState(data.status); }
   if (kind === "proposal" && !confirmed.has(data.id) && !shell.querySelector(`[data-proposal-id="${data.id}"]`)) {
     $("agentWelcome").hidden = true;
     $("agentMessages").append(proposalCard(data, async (proposal) => {
@@ -216,11 +218,13 @@ function receive(item, { replay = false } = {}) {
 function connect() {
   if (!run) return;
   stream?.close(); clearInterval(heartbeat);
-  stream = new EventSource(`/api/agent/runs/${run.id}/events?after=${cursor}&controllerId=${controllerId}`);
-  stream.onmessage = (event) => { try { receive(JSON.parse(event.data)); } catch { showError(new Error("Could not read an activity update. Reload the conversation.")); } };
-  stream.addEventListener("access_changed", () => { stream.close(); clearInterval(heartbeat); showError(new Error("Your access changed. Start a new conversation.")); updateState("paused"); });
-  stream.onerror = () => { $("agentStatus").textContent = "Connection interrupted · Reconnecting"; };
-  heartbeat = setInterval(() => { if (run?.controllerId === controllerId && run.status !== "paused") void request(`/api/agent/runs/${run.id}/heartbeat`, { controllerId }).catch((error) => { updateState("paused"); showError(error); }); }, 8000);
+  const connectedRun = run.id;
+  const source = stream = new EventSource(`/api/agent/runs/${connectedRun}/events?after=${cursor}&controllerId=${controllerId}`);
+  const current = () => stream === source && run?.id === connectedRun;
+  source.onmessage = (event) => { if (!current()) return; try { receive(JSON.parse(event.data)); } catch { showError(new Error("Could not read an activity update. Reload the conversation.")); } };
+  source.addEventListener("access_changed", () => { if (!current()) return; source.close(); clearInterval(heartbeat); showError(new Error("Your access changed. Start a new conversation.")); updateState("paused"); });
+  source.onerror = () => { if (current()) $("agentStatus").textContent = "Connection interrupted · Reconnecting"; };
+  heartbeat = setInterval(() => { if (current() && run.controllerId === controllerId && run.status !== "paused") void request(`/api/agent/runs/${connectedRun}/heartbeat`, { controllerId }).catch((error) => { if (current()) { updateState("paused"); showError(error); } }); }, 8000);
 }
 async function refreshScopes() {
   config = await request("/api/agent/config");
@@ -230,23 +234,76 @@ async function refreshScopes() {
   select.value = scope || "";
   updateState(run?.status || "awaiting_input");
 }
-async function startConversation(organizationId = scope) {
-  if (switching) return; switching = true;
+const scopeKey = () => `hedgeling.agent.scope.${userId}`;
+const runKey = (id) => `hedgeling.agent.workspace-run.${userId}.${id || "new"}`;
+function rememberConversation() {
+  sessionStorage.setItem(scopeKey(), scope || "");
+  const legacyKey = `hedgeling.agent.run.${userId}`;
+  if (run) {
+    sessionStorage.setItem(legacyKey, run.id);
+    sessionStorage.setItem(runKey(scope), run.id);
+    // Creating an organization binds its formerly unscoped conversation.
+    if (scope && sessionStorage.getItem(runKey(null)) === run.id) sessionStorage.removeItem(runKey(null));
+  } else sessionStorage.removeItem(legacyKey);
+}
+async function restoreConversation(id, expectedScope) {
+  let restored = await request(`/api/agent/runs/${id}`);
+  if (expectedScope !== undefined && restored.run.organizationId !== expectedScope) return false;
+  const events = [...restored.events];
+  while (restored.eventsPage?.hasMore) {
+    restored = await request(`/api/agent/runs/${id}?after=${restored.eventsPage.nextAfter}`);
+    events.push(...restored.events);
+  }
+  if (expectedScope !== undefined && restored.run.organizationId !== expectedScope) return false;
+  run = { ...restored.run }; scope = run.organizationId;
+  for (const item of events) if (item.kind === "result") confirmed.add(item.data.proposalId);
+  for (const item of events) receive(item, { replay: true });
+  run = restored.run;
+  return true;
+}
+function startConversation(organizationId = scope, options = {}) {
+  // Serialize clicks so a slower request cannot replace a later workspace choice.
+  const next = conversationChange.then(() => changeConversation(organizationId, options));
+  conversationChange = next.catch(() => {});
+  return next;
+}
+async function changeConversation(organizationId, { restore = false, refreshWorkspace = true } = {}) {
+  if (restore && organizationId === scope && run) { await refreshScopes(); return; }
+  switching = true;
   updateState(run?.status || "awaiting_input");
   $("agentScope").disabled = $("agentNew").disabled = true;
   try {
-    if (run && !["paused", "cancelled"].includes(run.status)) {
+    if (activation) await activation;
+    if (run?.controllerId === controllerId && !["paused", "cancelled"].includes(run.status)) {
       try { await pauseRun(); } catch (error) { if (![403, 404].includes(error.status)) throw error; }
     }
-    stream?.close(); clearInterval(heartbeat); scope = organizationId;
-    run = null; await refreshScopes();
-    run = config.ready && scopeChat().allowed ? (await request("/api/agent/runs", { organizationId: scope, controllerId })).run : null;
-    if (run) sessionStorage.setItem(`hedgeling.agent.run.${userId}`, run.id);
-    else sessionStorage.removeItem(`hedgeling.agent.run.${userId}`);
+    drafts.set(scope, $("agentInput").value);
+    stream?.close(); stream = null; clearInterval(heartbeat); scope = organizationId;
+    run = null;
     attentionGeneration++; attention.clear();
     cursor = 0; seen.clear(); confirmed.clear(); $("agentMessages").replaceChildren(); $("agentWelcome").hidden = false; $("agentError").textContent = "";
-    await refreshScopes(); await workspace.refresh(scope); updateState(run?.status || "awaiting_input"); connect();
+    $("agentInput").value = restore ? drafts.get(scope) || "" : "";
+    const saved = restore && sessionStorage.getItem(runKey(scope));
+    if (saved) {
+      try { await restoreConversation(saved, scope); }
+      catch (error) { if (![403, 404].includes(error.status)) throw error; }
+      if (!run) sessionStorage.removeItem(runKey(scope));
+    }
+    await refreshScopes();
+    if (!run && config.ready && scopeChat().allowed) run = (await request("/api/agent/runs", { organizationId: scope, controllerId })).run;
+    rememberConversation();
+    if (refreshWorkspace) await workspace.refresh(scope);
+    updateState(run?.status || "awaiting_input"); connect();
   } finally { switching = false; $("agentScope").disabled = $("agentNew").disabled = false; updateState(run?.status || "awaiting_input"); }
+}
+async function openConversation() {
+  try {
+    await initialized;
+    const organizationId = window.HedgelingShell?.organizationContext();
+    if (organizationId !== undefined) await startConversation(organizationId, { restore: true, refreshWorkspace: false });
+    else { await conversationChange; await refreshScopes(); }
+    setMode("panel");
+  } catch (error) { showError(error); setMode("panel", false); }
 }
 async function pauseRun() {
   if (!run) return;
@@ -290,7 +347,7 @@ async function initialize() {
   if (!config.ready) showError(new Error("The assistant is currently unavailable. You can use the workspace manually."));
   workspace = new Workspace(document.getElementById("workspaceRoot"), controllerId, async (id, jobId) => { await refreshScopes(); await workspace.refresh(id, jobId); });
   window.HedgelingAgent = {
-    open() { setMode("panel"); },
+    open: openConversation,
     async browseWorkspace(id) { await initialized; await workspace.refresh(id); },
     async showProjects() { await initialized; await workspace.refresh(workspace.organizationId || config.organizations[0]?.id || null); },
   };
@@ -308,9 +365,9 @@ async function initialize() {
   document.addEventListener("hedgeling:manual-navigation", () => { $("agentFollow").checked = false; attentionGeneration++; attention.clear(); });
   $("agentFollow").addEventListener("change", () => { if (!$("agentFollow").checked) { attentionGeneration++; attention.clear(); } });
   for (const button of shell.querySelectorAll("[data-mode]")) button.addEventListener("click", () => setMode(button.dataset.mode));
-  launcher.addEventListener("click", () => setMode("panel"));
+  launcher.addEventListener("click", openConversation);
   $("agentNew").addEventListener("click", () => startConversation().catch(showError));
-  $("agentScope").addEventListener("change", () => startConversation($("agentScope").value || null).catch(showError));
+  $("agentScope").addEventListener("change", () => startConversation($("agentScope").value || null, { restore: true }).catch(showError));
   $("agentUpgrade").addEventListener("click", async () => {
     setMode("minimized");
     try { await window.HedgelingConsole?.openOrganization(scope); window.HedgelingConsole?.navigate("access", { manual: true, adminSection: "billing" }); }
@@ -345,7 +402,7 @@ async function initialize() {
   $("agentWidth").addEventListener("input", (event) => document.documentElement.style.setProperty("--agent-panel-width", `${Number(event.target.value)}px`));
   document.addEventListener("input", (event) => { if (event.target.closest("main") && !event.target.closest(".project-languages, .library-workbench") && (event.target.matches("textarea:not([readonly])") || event.target.closest("form"))) dirty = true; });
   document.addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "Space") { event.preventDefault(); setMode(mode === "minimized" ? "panel" : "minimized"); }
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "Space") { event.preventDefault(); if (mode === "minimized") void openConversation(); else setMode("minimized"); }
     if (event.key === "Escape" && mode === "overlay") { event.preventDefault(); setMode("minimized"); }
     if (event.key === "Tab" && mode === "overlay") {
       const focusable = [...shell.querySelectorAll("a[href],button,input,select,textarea,[tabindex]")].filter((node) => !node.disabled && !node.hidden && node.getClientRects().length);
@@ -356,22 +413,22 @@ async function initialize() {
   });
   matchMedia("(max-width: 760px)").addEventListener("change", (event) => { setMode(event.matches && mode === "panel" ? "overlay" : mode, false); });
   const saved = sessionStorage.getItem(`hedgeling.agent.run.${userId}`);
-  if (saved) {
+  const savedScope = sessionStorage.getItem(scopeKey());
+  if (saved && savedScope === null) {
     try {
-      let restored = await request(`/api/agent/runs/${saved}`);
-      const events = [...restored.events];
-      while (restored.eventsPage?.hasMore) {
-        restored = await request(`/api/agent/runs/${saved}?after=${restored.eventsPage.nextAfter}`);
-        events.push(...restored.events);
-      }
-      run = { ...restored.run }; scope = run.organizationId;
-      for (const item of events) if (item.kind === "result") confirmed.add(item.data.proposalId);
-      for (const item of events) receive(item, { replay: true });
-      run = restored.run; updateState(run.status); await refreshScopes(); await workspace.refresh(scope); connect();
+      await restoreConversation(saved); rememberConversation();
+      await refreshScopes(); await workspace.refresh(scope); updateState(run.status); connect();
       $("agentScope").disabled = $("agentNew").disabled = false;
     } catch { run = null; sessionStorage.removeItem(`hedgeling.agent.run.${userId}`); }
   }
-  if (!run) await startConversation(scope || (config.demo ? null : config.organizations[0]?.id || null));
+  if (!run) {
+    // Explicit choices remain explicit, including organizations without a plan.
+    // Only a fresh session chooses a chat-eligible default instead of list order.
+    const eligible = config.organizations.find(org => org.agentAccess?.allowed !== false && org.chat?.allowed);
+    const preferred = savedScope !== null && (!savedScope || config.organizations.some(org => org.id === savedScope))
+      ? savedScope || null : config.demo ? null : eligible?.id || config.organizations[0]?.id || null;
+    await startConversation(preferred, { restore: true });
+  }
   if (hasWorkspace && new URLSearchParams(location.search).has("workspace")) window.HedgelingConsole?.openWorkspace();
   setMode(["overlay", "panel", "minimized"].includes(mode) ? mode : "overlay", false);
 }
