@@ -29,7 +29,8 @@ export function createTuningModels({ database, transaction, engine, inspect, aut
     const calls = (await database.query('select status,usage from extraction_model_calls where extraction_id=$1', [id])).rows;
     return { provider: run.provider_plan.provider, model: run.provider_plan.model, status: run.status, errorCode: run.error_code,
       calls: calls.length, completedCalls: calls.filter(c => c.status === 'succeeded').length,
-      totalTokens: calls.reduce((n,c) => n + (c.usage?.totalTokens || 0), 0), limits: run.provider_plan.limits };
+      totalTokens: calls.some(c => !c.usage) ? null : calls.reduce((n,c) => n + c.usage.totalTokens, 0),
+      usageEstimated: calls.some(c => c.usage?.estimated), limits: run.provider_plan.limits };
   }
   async function guard(run) {
     const current = (await database.query('select status from extraction_model_runs where extraction_id=$1', [run.extraction_id])).rows[0];

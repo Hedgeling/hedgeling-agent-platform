@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "9e5d30b8c4cb1f6f05b3344dab2a851543e36579",
+  "revision": "90ace1f9bc587c1d39ceec45cfafb42be5022e1e",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -12,7 +12,7 @@
     {
       "source": "src/tuning-models.js",
       "destination": "tuning-models.js",
-      "sha256": "c010294e8ad8f0bc6dad55c21d71e5b3b07ec2059bfd5c3e08e7b82a11ea40d8"
+      "sha256": "05ca30fbdfdcc42977f935e6d0ae32150aafce3715a52deb7c7ac8d61cbf4bb5"
     },
     {
       "source": "src/agent-scope.js",
@@ -207,7 +207,7 @@
     {
       "source": "ui/extraction.js",
       "destination": "../public/extraction.js",
-      "sha256": "a2194476df232d0c51fdd2b932756469e4200deb73afaccc37fa7a7b0730d689"
+      "sha256": "57d7887305279e78c8ab056e509537f81b1bdd6a87c4c86ec5eeac9db1660cb9"
     },
     {
       "source": "ui/extraction.css",

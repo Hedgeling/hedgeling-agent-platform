@@ -36,7 +36,7 @@ export function extractionProgress({ projectSlug, extractionId, request, onImpor
       details.replaceChildren();
       if (job.message) details.append(node('p', job.message));
       if (job.commitSha) details.append(node('p', 'Source commit: ' + job.commitSha, 'extraction-commit'));
-      if (result.modelUsage) { const m = result.modelUsage; details.append(node('p', `${m.provider} · ${m.model} · ${m.calls} of ${m.limits.calls} possible model requests · ${m.totalTokens} recorded tokens`)); }
+      if (result.modelUsage) { const m = result.modelUsage; details.append(node('p', `${m.provider} · ${m.model} · ${m.calls} of ${m.limits.calls} possible model requests · ${m.totalTokens == null ? 'Token usage pending or unavailable; see Billing & usage' : `${m.usageEstimated ? 'Estimated ' : ''}${m.totalTokens} tokens`}`)); }
       if (result.tuning) {
         const t = result.tuning;
         if (t.mode === 'llm') details.append(node('p', `${t.classifiedCount} candidate texts classified (up to ${t.maximumItems}); ${t.llmCalls} model requests. This is a bounded sample, not a full catalog review.`));
