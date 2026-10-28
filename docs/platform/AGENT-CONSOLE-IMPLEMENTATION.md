@@ -285,15 +285,21 @@ onboarding and operator pages; sign-in pages do not expose chat.
 
 ## Limits and operational boundaries
 
-- Eight model steps and at most eight tool calls per step; calls are serial
+- Sixteen model steps and at most eight tool calls per step; calls are serial
   and the first write proposal stops further business changes.
-- A 45-second provider timeout, 2,048 output-token setting, a request guard of serialized JSON bytes
-  plus 2,048 not exceeding 100,000 (not a native model context-token limit) and 512 KiB provider-response limit.
+- A 90-second provider timeout, 4,096 output-token setting, and 750,000-byte
+  serialized request guard (including tools and opaque replay state; not a native
+  context-token limit). Usage reserves those bytes plus output headroom and
+  reconciles provider usage. Provider responses remain bounded to 512 KiB.
+- User messages allow 24,000 characters. Conversation replay follows 250-event
+  pages before reconnecting live updates, preserving old approvals as history.
 - A 500,000-token daily user allowance, a 2,000,000-token organization allowance
   through existing usage accounting, and existing organization budget checks.
+  Server-granted demo allowances are 10 million daily user tokens and 50 million
+  tokens per organization usage period; plan defaults are unchanged.
   Unknown dispatched outcomes retain a conservative reservation charge.
 - Up to 100 conversations and 200 proposals per user per rolling day, five
-  organization creations per day, 100 model-history entries per conversation,
+  organization creations per day, a 1,000-entry model-history admission cap,
   and 15-minute proposal expiry.
 - Drafts snapshot at most 10,000 source strings and 30 target locales.
   Creation enforces initial organization bounds of 100 BUs/250 projects;

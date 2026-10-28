@@ -358,9 +358,15 @@ async function initialize() {
   const saved = sessionStorage.getItem(`hedgeling.agent.run.${userId}`);
   if (saved) {
     try {
-      const restored = await request(`/api/agent/runs/${saved}`); run = { ...restored.run }; scope = run.organizationId;
-      for (const item of restored.events) if (item.kind === "result") confirmed.add(item.data.proposalId);
-      for (const item of restored.events) receive(item, { replay: true });
+      let restored = await request(`/api/agent/runs/${saved}`);
+      const events = [...restored.events];
+      while (restored.eventsPage?.hasMore) {
+        restored = await request(`/api/agent/runs/${saved}?after=${restored.eventsPage.nextAfter}`);
+        events.push(...restored.events);
+      }
+      run = { ...restored.run }; scope = run.organizationId;
+      for (const item of events) if (item.kind === "result") confirmed.add(item.data.proposalId);
+      for (const item of events) receive(item, { replay: true });
       run = restored.run; updateState(run.status); await refreshScopes(); await workspace.refresh(scope); connect();
       $("agentScope").disabled = $("agentNew").disabled = false;
     } catch { run = null; sessionStorage.removeItem(`hedgeling.agent.run.${userId}`); }

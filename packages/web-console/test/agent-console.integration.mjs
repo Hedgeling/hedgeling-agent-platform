@@ -2,6 +2,28 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { localConsole, eventually } from "../test-support/local-console.mjs";
+import { CHAT_LIMITS } from '../src/hackathon-engine/chat-limits.js';
+
+test('long conversations accept larger messages, retain history, and replay every event page', { skip: process.env.HEDGELING_REQUIRE_AGENT_TEST_DATABASE !== 'true' }, async t => {
+  const app=await localConsole(process.env.TEST_DATABASE_URL);t.after(app.close);
+  const {request,database}=app,controllerId=crypto.randomUUID();
+  const run=(await request('/api/agent/runs',{controllerId})).body.run;
+  const history=Array.from({length:120},(_,i)=>({role:i%2?'model':'user',parts:[{text:`Earlier turn ${i}`}]}));
+  await database.query('update agent_runs set model_history=$2 where id=$1',[run.id,JSON.stringify(history)]);
+  assert.equal((await request(`/api/agent/runs/${run.id}/messages`,{controllerId,text:'x'.repeat(24001)})).body.code,'agent_message_limit');
+  assert.equal((await request(`/api/agent/runs/${run.id}/messages`,{controllerId,text:'x'.repeat(24000)})).status,200);
+  await eventually(()=>request(`/api/agent/runs/${run.id}`),r=>r.body.run?.status==='awaiting_input');
+  const stored=(await database.query('select model_history from agent_runs where id=$1',[run.id])).rows[0].model_history;
+  assert.deepEqual(stored.slice(0,120),history);assert.equal(stored[120].parts[0].text.length,24000);
+  await database.query("insert into agent_events(run_id,kind,data) select $1,'message',jsonb_build_object('role','assistant','text','Saved message '||n) from generate_series(1,1100) n",[run.id]);
+  let after=0,events=[],page;
+  do { const response=await request(`/api/agent/runs/${run.id}?after=${after}`);assert.equal(response.status,200);page=response.body.eventsPage;assert(response.body.events.length<=CHAT_LIMITS.eventPageSize);events.push(...response.body.events);after=page.nextAfter; }while(page.hasMore);
+  assert.equal(new Set(events.map(e=>e.sequence)).size,events.length);assert.equal(events.at(-1).data.text,'Saved message 1100');
+  assert.equal(events.length,(await database.query('select count(*)::int n from agent_events where run_id=$1',[run.id])).rows[0].n);
+  assert.equal((await request(`/api/agent/runs/${run.id}?after=-1`)).status,400);
+  await database.query('update agent_runs set model_history=$2 where id=$1',[run.id,JSON.stringify(Array.from({length:1000},()=>history[0]))]);
+  assert.equal((await request(`/api/agent/runs/${run.id}/messages`,{controllerId,text:'Continue'})).body.code,'agent_history_limit');
+});
 
 test("agent creates a hierarchy only through individually confirmed, scoped, idempotent proposals", { skip: process.env.HEDGELING_REQUIRE_AGENT_TEST_DATABASE !== "true" }, async (t) => {
   const app = await localConsole(process.env.TEST_DATABASE_URL);

@@ -1,3 +1,4 @@
+import { CHAT_LIMITS, chatRequestBudget } from './hackathon-engine/chat-limits.js';
 import { query, withTransaction } from "./db.js";
 import { fail, fingerprint } from "./workspace-actions.js";
 import { agentInstructions } from "./agent-skills.js";
@@ -123,11 +124,9 @@ export async function nextAgentTurn({ run, auth, history, tools, signal }, { che
     // Strip the server-side confirmation marker; it is not part of the API.
     contents: history.map(({ role, parts }) => ({ role, parts })),
     tools: [{ functionDeclarations: tools.map((tool) => ({ name: tool.name, description: tool.description, parametersJsonSchema: tool.inputSchema })) }],
-    generationConfig: { maxOutputTokens: 2048 },
+    generationConfig: { maxOutputTokens: CHAT_LIMITS.outputTokens },
   };
-  const serialized = JSON.stringify(body);
-  const estimate = Buffer.byteLength(serialized) + 2048;
-  if (estimate > 100000) throw fail(400, "This conversation is full. Start a new conversation to continue.");
+  const { reservedTokens: estimate } = chatRequestBudget(body);
   // Entitlements are server-managed. Keep the default plan allowance while
   // supporting explicit higher grants, bounded by a finite platform ceiling.
   const configuredDailyLimit = chat.limits?.dailyUserTokens ?? 500000;
@@ -179,7 +178,7 @@ export async function generateGeminiResponse({ config, body, signal, fetchImpl =
   signal.throwIfAborted();
   const response = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, {
     method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": config.key }, body: JSON.stringify(body),
-    signal: AbortSignal.any([signal, AbortSignal.timeout(45000)]), redirect: "error",
+    signal: AbortSignal.any([signal, AbortSignal.timeout(CHAT_LIMITS.providerTimeoutMs)]), redirect: "error",
   });
   if (!response.ok) throw fail(502, `The model service could not complete this turn (${response.status}). Try again.`, "agent_provider_failed");
   const reader = response.body.getReader();
@@ -189,7 +188,7 @@ export async function generateGeminiResponse({ config, body, signal, fetchImpl =
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > 524288) { await reader.cancel(); throw fail(502, "The model response exceeded its size limit"); }
+    if (size > CHAT_LIMITS.providerResponseBytes) { await reader.cancel(); throw fail(502, "The model response exceeded its size limit"); }
     chunks.push(value);
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));

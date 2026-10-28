@@ -1,3 +1,4 @@
+import { CHAT_LIMITS } from './hackathon-engine/chat-limits.js';
 import { fail } from "./workspace-actions.js";
 
 // The stored conversation envelope is shared with the existing runtime. Meta's
@@ -34,7 +35,7 @@ export function metaRequest({ model, history, tools, instructions }) {
   return {
     model, instructions, input, store: false,
     include: ["reasoning.encrypted_content"], reasoning: { effort: "low" },
-    max_output_tokens: 2048,
+    max_output_tokens: CHAT_LIMITS.outputTokens,
     tools: tools.map((tool) => ({ type: "function", name: tool.name, description: tool.description, parameters: tool.inputSchema, strict: false })),
     parallel_tool_calls: false,
   };
@@ -82,7 +83,7 @@ export async function generateMetaResponse({ config, body, signal, fetchImpl = f
   signal.throwIfAborted();
   const response = await fetchImpl("https://api.meta.ai/v1/responses", {
     method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${config.key}` },
-    body: JSON.stringify(body), signal: AbortSignal.any([signal, AbortSignal.timeout(45000)]), redirect: "error",
+    body: JSON.stringify(body), signal: AbortSignal.any([signal, AbortSignal.timeout(CHAT_LIMITS.providerTimeoutMs)]), redirect: "error",
   });
   if (!response.ok) throw fail(502, `The model service could not complete this turn (${response.status}). Try again.`, "agent_provider_failed");
   const reader = response.body.getReader();
@@ -92,7 +93,7 @@ export async function generateMetaResponse({ config, body, signal, fetchImpl = f
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > 524288) { await reader.cancel(); throw fail(502, "The model response exceeded its size limit"); }
+    if (size > CHAT_LIMITS.providerResponseBytes) { await reader.cancel(); throw fail(502, "The model response exceeded its size limit"); }
     chunks.push(value);
   }
   let raw;
