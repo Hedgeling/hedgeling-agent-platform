@@ -5,11 +5,25 @@ import os from "node:os";
 import { chromium, expect } from "@playwright/test";
 import { localConsole } from "../test-support/local-console.mjs";
 
-const app = await localConsole(process.env.TEST_DATABASE_URL || process.argv[2]);
+// Provider readiness without fixture billing exceptions. These navigation checks
+// never send a model turn; the browser rejects any accidental message request.
+const app = await localConsole(process.env.TEST_DATABASE_URL || process.argv[2], {
+  HEDGELING_AGENT_PROVIDER: "meta", HEDGELING_AGENT_META_MODEL: "test-meta-model", HEDGELING_META_API_KEY: "synthetic-navigation-key" });
 const artifacts = process.env.HEDGELING_NAVIGATION_BROWSER_ARTIFACTS || await fs.mkdtemp(path.join(os.tmpdir(), "hedgeling-navigation-"));
 await fs.mkdir(artifacts, { recursive: true });
 let browser;
 try {
+  const organizationId = (await app.request("/api/agent/config")).body.organizations[0].id;
+  const billingAccount = (await app.database.query("insert into billing_accounts(organization_id) values($1) returning id", [organizationId])).rows[0].id;
+  await app.database.query("insert into subscriptions(billing_account_id,plan_id,state,current_period_start,current_period_end) select $1,id,'active',now(),now()+interval '1 month' from product_plans where key='business-v1'", [billingAccount]);
+  const { id: fixtureUserId } = (await app.database.query("select id from users where email='developer@hedgeling.example'")).rows[0];
+  const testingId = (await app.database.query("insert into organizations(slug,name) values('testing','A testing workspace') returning id")).rows[0].id;
+  await app.database.query("insert into organization_memberships(organization_id,user_id,status,activated_at) values($1,$2,'active',now())", [testingId, fixtureUserId]);
+  await app.database.query("insert into role_assignments(principal_type,principal_id,role_id,scope_type,scope_id,inherit_to_children) select 'user',$1,id,'organization',$2,true from roles where key='organization_owner' and organization_id is null", [fixtureUserId, testingId]);
+  const initialConfig = (await app.request("/api/agent/config")).body;
+  assert.equal(initialConfig.demo, false);
+  assert.equal(initialConfig.organizations[0].id, testingId);
+  assert.equal(initialConfig.organizations[0].chat.reason, "subscription_missing");
   const executablePath = process.env.HEDGELING_E2E_CHROMIUM_EXECUTABLE || process.argv[3];
   browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, colorScheme: "light" });
@@ -18,11 +32,15 @@ try {
   await context.addInitScript(() => { localStorage.setItem("hedgeling.agent.mode", "minimized"); });
   const page = await context.newPage();
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
+  const turns = [];
+  await page.route("**/api/agent/runs/*/messages", route => { turns.push(route.request().url()); return route.abort(); });
   await page.goto(app.origin);
   await expect(page.locator("#adminTab")).toBeVisible();
   await expect(page.locator("#view-home")).toBeVisible();
   await expect(page.locator("#homeProjects")).toContainText("Local project");
   await expect(page.locator("#askAgent")).toBeEnabled();
+  await expect(page.locator("#agentScope")).toBeEnabled();
+  await expect(page.locator("#agentScope")).toHaveValue(organizationId);
   const sidebar = page.getByRole("navigation", { name: "Console views", exact: true });
   await page.screenshot({ path: path.join(artifacts, "01-home-light.png") });
   await page.getByRole("button", { name: /Browse projects/ }).click();
@@ -86,6 +104,81 @@ try {
   await expect(page.locator("#consoleSidebar")).toBeHidden();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: path.join(artifacts, "05-mobile.png") });
+  // Reproduce a new, unfunded workspace sorting ahead of the active one.
+  // Each entry point must follow manual context and restore the same conversation.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.evaluate(() => sessionStorage.clear());
+  await page.reload();
+  await expect(page.locator("#agentScope")).toBeEnabled();
+  await expect(page.locator("#agentScope")).toHaveValue(organizationId);
+  const currentRun = () => page.evaluate(() => sessionStorage.getItem(Object.keys(sessionStorage).find(key => key.startsWith("hedgeling.agent.run."))));
+  const originalRun = await currentRun();
+  await app.database.query("insert into agent_events(run_id,kind,data) values($1,'message',$2)", [originalRun, { role: "assistant", text: "Only the active workspace conversation." }]);
+  const pickWorkspace = async id => {
+    await page.locator("#workspacePicker summary").click();
+    await page.locator("#workspaceSearch").fill("");
+    await page.locator(`[data-browse-org="${id}"]`).click();
+    await expect(page.getByRole("combobox", { name: "Workspace organization", exact: true })).toHaveValue(id);
+    await expect.poll(() => page.evaluate(() => window.HedgelingShell.organizationContext())).toBe(id);
+  };
+  await pickWorkspace(organizationId);
+  await page.locator("#askAgent").click();
+  await expect(page.locator("#agentScope")).toHaveValue(organizationId);
+  await page.locator("#agentInput").fill("Keep this workspace draft");
+  await page.getByRole("button", { name: "Minimize chat", exact: true }).click();
+  await pickWorkspace(testingId);
+  await page.locator("#askAgent").click();
+  await expect(page.locator("#agentScope")).toHaveValue(testingId);
+  await expect(page.locator("#agentPlanMessage")).toContainText("An active platform plan is needed");
+  await expect(page.locator("#agentInput")).toBeDisabled();
+  await expect(page.locator("#agentInput")).toHaveValue("");
+  await expect(page.locator("#agentMessages")).not.toContainText("Only the active workspace conversation.");
+  assert.equal((await app.database.query("select count(*)::int as n from agent_runs where organization_id=$1", [testingId])).rows[0].n, 0);
+  for (const entry of ["launcher", "keyboard", "chat selector"]) {
+    if (entry === "chat selector") await page.locator("#agentScope").selectOption(organizationId);
+    else {
+      await page.getByRole("button", { name: "Minimize chat", exact: true }).click();
+      await pickWorkspace(organizationId);
+      if (entry === "launcher") await page.locator(".agent-launcher").click();
+      else await page.keyboard.press("Control+k");
+    }
+    await expect(page.locator("#agentScope")).toHaveValue(organizationId);
+    await expect(page.locator("#agentMessages")).toContainText("Only the active workspace conversation.");
+    await expect(page.locator("#agentInput")).toHaveValue("Keep this workspace draft");
+    await expect(page.locator("#agentPlanNotice")).toBeHidden();
+    await expect(page.locator("#agentScope")).toBeEnabled();
+    assert.equal(await currentRun(), originalRun);
+    await page.locator("#agentScope").selectOption(testingId);
+    await expect(page.locator("#agentScope")).toBeEnabled();
+    await expect(page.locator("#agentInput")).toBeDisabled();
+  }
+  // A reload preserves an explicit blocked choice instead of silently switching tenants.
+  await page.reload();
+  await expect(page.locator("#agentScope")).toBeEnabled();
+  await expect(page.locator("#agentScope")).toHaveValue(testingId);
+  await expect(page.locator("#agentInput")).toBeDisabled();
+  await expect(page.locator(".agent-launcher")).toBeVisible();
+  await page.locator("#workspacePicker summary").click();
+  await page.locator("#workspaceOptions").getByRole("button", { name: "Local project", exact: true }).click();
+  await expect(page.locator("#view-review")).toBeVisible();
+  await expect(page.locator("#workspaceContextLabel")).toHaveText("Local troubleshooting / Default");
+  await page.locator("#askAgent").click();
+  await expect(page.locator("#agentScope")).toHaveValue(organizationId);
+  await expect(page.locator("#agentMessages")).toContainText("Only the active workspace conversation.");
+  await expect(page.locator("#agentScope")).toBeEnabled();
+  assert.equal(await currentRun(), originalRun);
+  await expect(page.locator("#agentStatus")).toContainText("Paused");
+  await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Minimize chat", exact: true }).click();
+  await page.locator("#adminTab").click();
+  await page.locator("#workspacePicker summary").click();
+  await page.locator(`[data-browse-org="${testingId}"]`).click();
+  await expect(page.locator("#accessOrganization")).toHaveValue(testingId);
+  await expect.poll(() => page.evaluate(() => window.HedgelingShell.organizationContext())).toBe(testingId);
+  await page.locator("#askAgent").click();
+  await expect(page.locator("#agentScope")).toHaveValue(testingId);
+  assert.equal((await app.database.query("select organization_id from agent_runs where id=$1", [originalRun])).rows[0].organization_id, organizationId);
+  assert.deepEqual(turns, [], "Switching conversations must not invoke the model or send a draft");
   // An organization can be visible manually but unavailable to delegated chat.
   // Explain the missing role without suggesting a billing upgrade or sending a turn.
   const blockedConfig = (await app.request("/api/agent/config")).body;
@@ -95,7 +188,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.reload();
   await expect(page.locator("#agentScope")).toBeEnabled();
-  const chatOrganization = (await app.request("/api/agent/config")).body.organizations[0].id;
+  const chatOrganization = organizationId;
   const beforeRuns = (await app.database.query("select count(*)::int as n from agent_runs")).rows[0].n;
   await page.locator("#askAgent").click();
   await page.locator("#agentScope").selectOption(chatOrganization);

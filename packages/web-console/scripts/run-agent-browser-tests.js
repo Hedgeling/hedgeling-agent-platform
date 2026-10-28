@@ -85,6 +85,22 @@ try {
       await expect(shell.locator("#agentInput")).toBeDisabled();
       assert.equal((await app.database.query("select count(*)::int as n from organizations where name='Demo organization'")).rows[0].n, 0);
     }
+    if (index === 1) {
+      // Leaving a pending approval pauses it; returning restores the same card
+      // and requires explicit composer activation before it can be confirmed.
+      const pendingScope = await shell.locator("#agentScope").inputValue();
+      const localScope = (await app.database.query("select id from organizations where slug='hedgeling-local'")).rows[0].id;
+      await shell.locator("#agentScope").selectOption(localScope);
+      await expect(shell.locator("#agentMessages")).not.toContainText("Create business unit");
+      await expect(shell.locator("#agentScope")).toBeEnabled();
+      await shell.locator("#agentScope").selectOption(pendingScope);
+      await expect(button).toBeVisible();
+      await expect(button).toBeDisabled();
+      await expect(shell.locator("#agentScope")).toBeEnabled();
+      await shell.locator("#agentInput").click();
+      await expect(button).toBeEnabled();
+      assert.equal(await page.evaluate(() => sessionStorage.getItem(Object.keys(sessionStorage).find(key => key.startsWith("hedgeling.agent.run.")))), runId);
+    }
     await button.click();
   }
   await expect(shell.getByText("Your organization, Product business unit, Website project and localization-job draft are ready.", { exact: false })).toBeVisible({ timeout: 15000 });
@@ -119,6 +135,7 @@ try {
   await expect(shell.locator("#agentInput")).toBeFocused();
   await expect(shell.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
   await shell.locator("#agentPause").click();
+  await expect(shell.locator("#agentStatus")).toContainText("Paused");
   await page.route("**/api/agent/runs/*/resume", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Synthetic connection interruption" }) }), { times: 1 });
   await shell.locator("#agentInput").click();
   await expect(shell.locator("#agentError")).toContainText("Synthetic connection interruption");
@@ -143,6 +160,8 @@ try {
   await app.database.query("insert into agent_events(run_id,kind,data) values($1,'message',$2)",[runId,{role:'assistant',text:'Long conversation history restored.'}]);
   const replayPages=[];
   page.on('request',request=>{const url=new URL(request.url());if(url.pathname===`/api/agent/runs/${runId}`&&url.searchParams.has('after'))replayPages.push(url.searchParams.get('after'));});
+  // Also cover upgrading a tab from the earlier single-conversation storage.
+  await page.evaluate(() => { for (const key of Object.keys(sessionStorage)) if (key.startsWith('hedgeling.agent.scope.') || key.startsWith('hedgeling.agent.workspace-run.')) sessionStorage.removeItem(key); });
   await page.reload();
   await expect(shell).toBeVisible();
   await expect(shell.getByText("Website launch is ready as a draft.", { exact: true })).toBeVisible();
@@ -286,7 +305,7 @@ try {
     await expect(details.locator(".agent-change-after")).toHaveText(edit.value);
     await details.getByRole("button", { name: edit.save, exact: true }).click();
     if (edit.action === "organization.update") await expect(page.getByRole("combobox", { name: "Workspace organization", exact: true }).locator("option:checked")).toHaveText(edit.value);
-    else await expect(page.getByText(`${edit.action === "project.update" ? "Edit project" : "Edit business unit"}: ${edit.value}`, { exact: true })).toBeVisible();
+    else await expect(page.getByText(`${edit.action === "project.update" ? "Edit project" : "Edit business unit"}: ${edit.value}`, { exact: true })).toBeVisible({ timeout: 15000 });
   }
   const projectCreate = page.locator('details[data-workspace-action="project.create"]');
   await projectCreate.locator("summary").click();
