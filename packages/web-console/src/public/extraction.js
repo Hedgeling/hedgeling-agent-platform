@@ -22,7 +22,7 @@ export function extractionProgress({ projectSlug, extractionId, request, onImpor
   const title = node('h4', 'Checking progress…'); const status = node('p'); status.setAttribute('role', 'status');
   const details = node('div'); const error = node('p', null, 'agent-error'); error.setAttribute('role', 'alert');
   const retry = button('Refresh status');
-  const phases = { queued: 'Waiting for the engine', resolving_commit: 'Pinning the source revision', fetching_source: 'Reading selected source files', processing: 'Extracting strings' };
+  const phases = { queued: 'Waiting for the engine', resolving_commit: 'Pinning the source revision', fetching_source: 'Reading selected source files', processing: 'Processing source', awaiting_model: 'Classifying candidate strings with your selected provider' };
   let timer, busy = false, polls = 0;
   async function update() {
     if (!card.isConnected || busy) return;
@@ -31,16 +31,18 @@ export function extractionProgress({ projectSlug, extractionId, request, onImpor
       const result = await action(request, 'extraction.get', { projectSlug, extractionId });
       if (!card.isConnected) return;
       const job = result.extraction;
-      title.textContent = job.operation === 'tune' ? (job.status === 'succeeded' ? 'Your tuning preview is ready' : 'Hedgeling is checking extraction settings') : job.importedAt ? 'Source strings imported' : job.status === 'succeeded' ? 'Your strings are ready to review' : ['failed', 'cancelled'].includes(job.status) ? 'Extraction stopped' : 'Hedgeling is reading your source';
+      title.textContent = ['tune', 'tune-llm'].includes(job.operation) ? (job.status === 'succeeded' ? 'Your tuning preview is ready' : 'Hedgeling is checking extraction settings') : job.importedAt ? 'Source strings imported' : job.status === 'succeeded' ? 'Your strings are ready to review' : ['failed', 'cancelled'].includes(job.status) ? 'Extraction stopped' : 'Hedgeling is reading your source';
       status.textContent = phases[job.phase] || ({ succeeded: 'Extraction complete', failed: 'Extraction failed', cancelled: 'Extraction cancelled' }[job.status]) || 'Processing';
       details.replaceChildren();
       if (job.message) details.append(node('p', job.message));
       if (job.commitSha) details.append(node('p', 'Source commit: ' + job.commitSha, 'extraction-commit'));
+      if (result.modelUsage) { const m = result.modelUsage; details.append(node('p', `${m.provider} · ${m.model} · ${m.calls} of ${m.limits.calls} possible model requests · ${m.totalTokens} recorded tokens`)); }
       if (result.tuning) {
         const t = result.tuning;
+        if (t.mode === 'llm') details.append(node('p', `${t.classifiedCount} candidate texts classified (up to ${t.maximumItems}); ${t.llmCalls} model requests. This is a bounded sample, not a full catalog review.`));
         status.textContent = 'Tuning preview complete · project settings unchanged';
         details.append(node('p', `${t.before.strings} → ${t.after.strings} strings · ${t.before.diagnostics} → ${t.after.diagnostics} diagnostics`));
-        details.append(node('p', t.acceptedEdits.length ? `${t.acceptedEdits.length} accepted setting changes. Review them before saving.` : 'The deterministic tuner found no safe automatic changes. You can still save this configuration for the project.', 'extraction-note'));
+        details.append(node('p', t.acceptedEdits.length ? `${t.acceptedEdits.length} accepted setting changes. Review them before saving.` : 'The tuner found no safe automatic changes. You can still save this configuration for the project.', 'extraction-note'));
         const edits = node('ul'); for (const edit of t.acceptedEdits) edits.append(node('li', `${edit.field}: ${edit.value}`)); details.append(edits);
         if (onTuneApply) {
           const save = button('Review settings and re-extract'); save.className = 'primary';
@@ -95,7 +97,7 @@ export function extractionPanel({ project, request, confirmation, controllerId, 
       edit: close, cancel: close,
       confirm: async () => {
         const saved = await request(`/api/agent/proposals/${proposal.id}/confirm`, { fingerprint: proposal.fingerprint, controllerId });
-        review.replaceChildren(node('p', saved.result.import ? 'Your source strings are imported. Open the project to inspect them.' : saved.result.settingsSaved ? 'Settings saved. Re-extraction started; import still needs your approval.' : saved.result.extraction?.operation === 'tune' ? 'Tuning preview started. Project settings have not changed.' : 'Extraction started. Follow its progress below.', 'extraction-success'));
+        review.replaceChildren(node('p', saved.result.import ? 'Your source strings are imported. Open the project to inspect them.' : saved.result.settingsSaved ? 'Settings saved. Re-extraction started; import still needs your approval.' : ['tune', 'tune-llm'].includes(saved.result.extraction?.operation) ? 'Tuning preview started. Project settings have not changed.' : 'Extraction started. Follow its progress below.', 'extraction-success'));
         content.hidden = false;
         await jobs(true);
         if (saved.result.import) await onImported();
@@ -127,6 +129,8 @@ export function extractionPanel({ project, request, confirmation, controllerId, 
       for (const [label, control] of [['Connected repository', select], ['Branch, tag or commit', ref], ['Source paths (one per line)', roots]]) { const field = node('label', label); field.append(control); fields.append(field); }
       const configPath = node('input'); configPath.value = '.hedgeling/extract.config.json'; configPath.maxLength = 512; configPath.name = 'configPath';
       const configLabel = node('label', 'Extraction config path'); configLabel.append(configPath); fields.append(configLabel);
+      const mode = node('select'); mode.name = 'tuningMode'; mode.append(new Option('Deterministic — no model calls', 'deterministic'), new Option('LLM-assisted — organization provider key', 'llm'));
+      const modeLabel = node('label', 'Tuning method'); modeLabel.append(mode); fields.append(modeLabel);
       const allowed = node('p', null, 'extraction-note');
       const selection = () => { const c = result.connections.find(c => c.connectionId === select.value); ref.value = c.defaultRef; roots.value = c.allowedRoots.join('\n'); allowed.textContent = 'Allowed roots: ' + c.allowedRoots.join(', '); };
       select.addEventListener('change', selection); selection();
@@ -136,7 +140,7 @@ export function extractionPanel({ project, request, confirmation, controllerId, 
       const configSelection = () => ({ projectSlug: project.slug, connectionId: select.value, ref: ref.value.trim(), configPath: configPath.value.trim() });
       const perform = (control, work) => control.addEventListener('click', async () => { control.disabled = true; info.textContent = ''; try { await work(); } catch(e) { info.textContent = e.message; } finally { control.disabled = false; } });
       perform(inspect, async () => { const result = await action(request, 'extraction.config', configSelection()); configView.textContent = JSON.stringify(result.effectiveSettings, null, 2); info.textContent = `Using ${result.source} settings. Repository config ${result.repository.found ? 'found' : 'not found'} at ${result.repository.commitSha}. ${result.repository.ignoredFields.length ? 'Unsupported fields omitted: ' + result.repository.ignoredFields.join(', ') : ''}`; });
-      perform(tune, () => propose('extraction.tune', { ...configSelection(), scanRoots: roots.value.split('\n').map(s => s.trim()).filter(Boolean) }));
+      perform(tune, () => propose('extraction.tune', { ...configSelection(), mode: mode.value, scanRoots: roots.value.split('\n').map(s => s.trim()).filter(Boolean) }));
       perform(download, async () => { const result = await action(request, 'extraction.settings', { projectSlug: project.slug, connectionId: select.value }); if (!result.download) { info.textContent = 'No project settings saved yet. Review a tuning run first.'; return; } const url = URL.createObjectURL(new Blob([result.download.content],{type:'application/json'})); const a = node('a'); a.href = url; a.download = result.download.filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); });
       form.append(fields, allowed, preview, inspect, tune, download); content.append(form, configView);
       form.addEventListener('submit', async event => {

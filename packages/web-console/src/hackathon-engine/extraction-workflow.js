@@ -14,7 +14,7 @@ const sourceSql = `select id,source_hash,source_text,shape,purpose,visual_contex
 
 // The host supplies its current authorization, entitlement, import/metering and
 // transaction facilities. Neither model arguments nor service tokens grant access.
-export function createExtractionWorkflow({ database, authorize, checkAccess, engine, fingerprint, importState }) {
+export function createExtractionWorkflow({ database, authorize, checkAccess, engine, fingerprint, importState, models }) {
   async function project(input, auth, context, db, lock = false) {
     const p = (await db.query(projectSql + (lock ? ' for update of p' : ''), [input.projectSlug])).rows[0];
     if (!p) deny(404, 'Project not found.', 'project_not_found');
@@ -69,10 +69,11 @@ export function createExtractionWorkflow({ database, authorize, checkAccess, eng
       ignoredFields: Array.isArray(value.ignoredFields) ? value.ignoredFields.filter(v => typeof v === 'string').slice(0, 30).map(v => v.slice(0, 80)) : [] };
   }
   async function tuning(row, live) {
-    if (row.request.operation !== 'tune' || live.status !== 'succeeded') deny(409, 'Wait for the tuning preview to finish.', 'tuning_not_ready');
+    if (!['tune', 'tune-llm'].includes(row.request.operation) || live.status !== 'succeeded') deny(409, 'Wait for the tuning preview to finish.', 'tuning_not_ready');
     const artifact = await engine().artifact(row.id);
     const report = artifact.tuning;
-    if (artifact.provenance?.commitSha !== live.commitSha || artifact.provenance?.repositoryId !== Number(row.binding.repositoryId) || artifact.provenance?.operation !== 'tune' || !report || report.mode !== 'deterministic' || report.llmCalls !== 0 || report.wrote !== false) deny(502, 'Unexpected tuning artifact.', 'tuning_artifact_invalid');
+    if (artifact.provenance?.commitSha !== live.commitSha || artifact.provenance?.repositoryId !== Number(row.binding.repositoryId) || artifact.provenance?.operation !== row.request.operation || !report || report.mode !== (row.request.operation === 'tune-llm' ? 'llm' : 'deterministic') || !Number.isSafeInteger(report.llmCalls) || report.llmCalls < 0 || report.llmCalls > (row.request.operation === 'tune-llm' ? 4 : 0) || report.wrote !== false) deny(502, 'Unexpected tuning artifact.', 'tuning_artifact_invalid');
+    if (report.mode === 'llm' && (!Number.isSafeInteger(report.classifiedCount) || report.classifiedCount < 0 || report.classifiedCount > 80 || report.maximumItems !== 80 || report.coverage !== 'bounded')) deny(502, 'Invalid model tuning coverage.', 'tuning_artifact_invalid');
     let value;
     try { value = tuningSettings(report.settings).settings; } catch { deny(502, 'Invalid tuned settings.', 'tuning_artifact_invalid'); }
     if (!Array.isArray(report.acceptedEdits) || report.acceptedEdits.length > 100) deny(502, 'Tuning report exceeds the supported limit.', 'tuning_artifact_invalid');
@@ -84,7 +85,7 @@ export function createExtractionWorkflow({ database, authorize, checkAccess, eng
     if (fingerprint(expected) !== fingerprint(value)) deny(502, 'Tuned configuration does not match its accepted edits.', 'tuning_artifact_invalid');
     const counts = c => c && Number.isSafeInteger(c.strings) && c.strings >= 0 && c.diagnostics && Number.isSafeInteger(c.diagnostics.total) && c.diagnostics.total >= 0;
     if (!counts(report.before) || !counts(report.after)) deny(502, 'Missing tuning counts.', 'tuning_artifact_invalid');
-    return { settings: value, acceptedEdits: report.acceptedEdits, before: { strings: report.before.strings, diagnostics: report.before.diagnostics.total }, after: { strings: report.after.strings, diagnostics: report.after.diagnostics.total }, mode: 'deterministic' };
+    return { settings: value, acceptedEdits: report.acceptedEdits, before: { strings: report.before.strings, diagnostics: report.before.diagnostics.total }, after: { strings: report.after.strings, diagnostics: report.after.diagnostics.total }, mode: report.mode, llmCalls: report.llmCalls, ...(report.mode === 'llm' ? { classifiedCount: report.classifiedCount, maximumItems: 80, coverage: 'bounded' } : {}) };
   }
   const uiTarget = (p, action) => ({ view: 'workspace', organizationId: p.organizationId, projectSlug: p.slug, action, resource: { type: 'project', id: p.id } });
   async function read(name, input, auth, context = {}) {
@@ -109,7 +110,8 @@ export function createExtractionWorkflow({ database, authorize, checkAccess, eng
     const result = { extraction: { id: row.id, projectSlug: p.slug, operation: row.request.operation, status: live.status, phase: live.phase, commitSha: live.commitSha,
       ref: row.request.ref, scanRoots: row.request.scanRoots, importedAt: row.imported_at, expiresAt: row.expires_at,
       message: ['failed', 'cancelled'].includes(live.status) ? 'Extraction did not complete. Review the source selection and connection before starting a new request.' : null } };
-    if (live.status === 'succeeded' && row.request.operation === 'tune') result.tuning = await tuning(row, live);
+    if (row.request.operation === 'tune-llm') result.modelUsage = await models.summary(row.id);
+    if (live.status === 'succeeded' && ['tune', 'tune-llm'].includes(row.request.operation)) result.tuning = await tuning(row, live);
     else if (live.status === 'succeeded') {
       const state = await artifact(row, live);
       const entries = Object.values(state.files['extracted-source'].entries);
@@ -129,15 +131,19 @@ export function createExtractionWorkflow({ database, authorize, checkAccess, eng
       if (!capabilities.sourceConfigured || !capabilities.operations?.includes('extract')) deny(503, 'Repository extraction is not configured yet.', 'engine_unconfigured');
       const saved = await settings(p, connected, db);
       const config = name === 'extraction.tune' ? await configuration(input, connected) : null;
-      if (config && !capabilities.operations.includes('tune')) deny(503, 'This engine does not support tuning yet.', 'tuning_unavailable');
-      const request = { connectionId: connected.connectionId, operation: config ? 'tune' : 'extract', ref: config ? config.commitSha : input.ref, scanRoots,
+      const llm = Boolean(config && input.mode === 'llm');
+      if (llm && !models) deny(503, 'LLM tuning is not configured.', 'tuning_unavailable');
+      const modelPlan = llm ? await models.preview(auth, p) : null;
+      if (llm && fingerprint(capabilities.modelLimits) !== fingerprint(modelPlan.limits)) deny(503, 'The engine tuning limits need updating.', 'tuning_unavailable');
+      if (config && !capabilities.operations.includes(llm ? 'tune-llm' : 'tune')) deny(503, 'This engine does not support tuning yet.', 'tuning_unavailable');
+      const request = { connectionId: connected.connectionId, operation: config ? (llm ? 'tune-llm' : 'tune') : 'extract', ref: config ? config.commitSha : input.ref, scanRoots,
         sourceLocale: Intl.getCanonicalLocales(p.sourceLocale.replaceAll('_', '-'))[0] };
       if (saved || config) request.settings = saved?.settings || config.settings;
-      resources = { project: p, connection: connected, savedSettingsVersion: saved ? fingerprint(saved) : null, ...(config ? { configuration: config, settingsSource: saved ? 'project' : config.found ? 'repository' : 'defaults' } : {}) };
-      fields = { projectSlug: p.slug, repository: connected.owner + '/' + connected.repository, ref: request.ref, scanRoots, sourceLocale: request.sourceLocale, ...(request.settings ? { settings: request.settings } : {}) };
+      resources = { project: p, connection: connected, ...(modelPlan ? { modelPlan } : {}), savedSettingsVersion: saved ? fingerprint(saved) : null, ...(config ? { configuration: config, settingsSource: saved ? 'project' : config.found ? 'repository' : 'defaults' } : {}) };
+      fields = { projectSlug: p.slug, repository: connected.owner + '/' + connected.repository, ref: request.ref, scanRoots, sourceLocale: request.sourceLocale, ...(modelPlan ? { tuningMode: 'llm', provider: modelPlan.provider, model: modelPlan.model, limits: modelPlan.limits } : {}), ...(request.settings ? { settings: request.settings } : {}) };
       return { organizationId: p.organizationId, resource: { type: 'project', id: p.id }, connection: connected, request,
-        preview: { action: name, fields, resources, cost: 'No translation model calls or translation-credit spending. Private service job limits apply.',
-          sideEffects: [...(config ? ['Run the built-in deterministic tuner for at most two rounds, with no LLM calls. Review its report before saving settings.', 'Tuning proposes settings only; the repository and project configuration remain unchanged.'] : []), 'Send only the selected source paths to the private hosted extraction service.',
+        preview: { action: name, fields, resources, cost: llm ? 'Uses your organization’s selected provider key. Up to 4 model requests including retries, each with at most 64 KiB of prompt text and 8,192 output tokens. Provider charges and platform usage limits apply; no managed AI credits are spent.' : 'No translation model calls or translation-credit spending. Private service job limits apply.',
+          sideEffects: [...(config ? [llm ? 'Classify at most 80 candidate texts in one tuning round. Candidate text and nearby source snippets go to the selected model provider. Coverage is bounded; this does not enrich the catalog or calculate character limits.' : 'Run the built-in deterministic tuner for at most two rounds, with no LLM calls. Review its report before saving settings.', 'Tuning proposes settings only; the repository and project configuration remain unchanged.'] : []), 'Send only the selected source paths to the private hosted extraction service.',
             'A branch or tag is pinned to its commit when processing starts; its head may change before then.',
             'Create an extraction record and a catalog retained for up to seven days. Import requires a separate confirmation.',
             'Maximum 1,000 files, 1 MiB per file, 20 MiB total source, and five minutes of processing. No repository configuration code runs.'] } };
@@ -188,6 +194,7 @@ export function createExtractionWorkflow({ database, authorize, checkAccess, eng
         || fingerprint(value.scanRoots) !== fingerprint(prepared.request.scanRoots) || fingerprint(value.settings || {}) !== fingerprint(prepared.request.settings || {})) deny(502, 'The service returned an unexpected extraction receipt. Retry this same confirmation.', 'engine_job_invalid');
       await db.query(`insert into extraction_requests(id,project_id,proposal_id,created_by_user_id,binding,request,expires_at)
         values($1,$2,$3,$4,$5,$6,$7)`, [value.id, p.id, proposal.id, auth.user.id, prepared.connection, { ...prepared.request, ...(action === 'extraction.tune' ? { settingsVersion: prepared.preview.resources.savedSettingsVersion } : {}) }, value.expiresAt]);
+      if (prepared.request.operation === 'tune-llm') await models.queue(value.id, prepared.preview.resources.modelPlan, auth, db);
       if (action === 'extraction.tuning.apply') await db.query(`insert into extraction_settings(project_id,connection_id,settings,binding_hash,source_commit,tuning_request_id,scan_roots) values($1,$2,$3,$4,$5,$6,$7) on conflict(project_id,connection_id) do update set settings=excluded.settings,binding_hash=excluded.binding_hash,source_commit=excluded.source_commit,tuning_request_id=excluded.tuning_request_id,scan_roots=excluded.scan_roots,updated_at=now()`, [p.id, prepared.connection.connectionId, prepared.request.settings, fingerprint(prepared.connection), prepared.request.ref, prepared.row.id, prepared.request.scanRoots]);
       return { ...(action === 'extraction.tuning.apply' ? { settingsSaved: true } : {}), extraction: { id: value.id, projectSlug: p.slug, status: value.status, operation: prepared.request.operation, name: action === 'extraction.tune' ? 'Extraction tuning preview' : 'Source extraction', expiresAt: value.expiresAt },
         projectSlug: p.slug, uiTarget: uiTarget(p, action) };

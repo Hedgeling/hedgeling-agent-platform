@@ -354,6 +354,7 @@ try {
       "202610272100_extraction_tuning.sql",
       "202610272300_library_workflow.sql",
       "202610281800_translation_jobs.sql",
+      "202610282100_tuning_models.sql",
     ],
   );
   assert.equal(

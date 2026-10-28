@@ -63,13 +63,13 @@ function fixtureTurn(history, organizationId) {
     if (!response) return part('console_get_library_asset', { projectSlug: libraryPrompt[2], kind: 'prompt', key: libraryPrompt[1] });
     if (response.name === 'console_get_library_asset' && !response.response.error) return part('console_propose_translation_instructions', { projectSlug: libraryPrompt[2], key: libraryPrompt[1], label: 'Clear product voice', body: 'Use clear, friendly language. Preserve placeholders and product names.', active: true, expectedVersion: response.response.asset?.version || null });
   }
-  const tuningPrompt = /^Tune extraction for project "([^"]+)" at "([^"]+)" in "([^"]+)"\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  const tuningPrompt = /^Tune extraction for project "([^"]+)" at "([^"]+)" in "([^"]+)"( with LLM)?\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
   if (tuningPrompt && !confirmation) {
     if (!response) return part('console_list_source_connections', { projectSlug: tuningPrompt[1] });
     if (response.name === 'console_list_source_connections' && response.response.connections?.length === 1) return part('console_get_extraction_config', { projectSlug:tuningPrompt[1],connectionId:response.response.connections[0].connectionId,ref:tuningPrompt[2],configPath:'.hedgeling/extract.config.json' });
     if (response.name === 'console_get_extraction_config' && !response.response.error) {
       const discovered = history.flatMap(h => h.parts || []).findLast(p => p.functionResponse?.name === 'console_list_source_connections')?.functionResponse.response;
-      return part('console_propose_extraction_tuning', { projectSlug:tuningPrompt[1],connectionId:discovered.connections[0].connectionId,ref:tuningPrompt[2],scanRoots:[tuningPrompt[3]],configPath:'.hedgeling/extract.config.json' });
+      return part('console_propose_extraction_tuning', { projectSlug:tuningPrompt[1],connectionId:discovered.connections[0].connectionId,ref:tuningPrompt[2],scanRoots:[tuningPrompt[3]],configPath:'.hedgeling/extract.config.json',...(tuningPrompt[4]?{mode:'llm'}:{}) });
     }
   }
   const applyTuning = /^Review applying tuning ([a-f0-9-]{36}) to project ([\w-]+)\./.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');

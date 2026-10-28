@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { registerJobTranslation, translationJobs } from './translation-jobs-integration.js';
+import { generateGeminiTuning } from './hackathon-engine/tuning-gemini.js';
+import { registerTuningProvider, tuningModels } from './tuning-models-integration.js';
 import { TRANSLATION_JOB_LIMITS } from './hackathon-engine/translation-jobs.js';
 import { fingerprint } from './workspace-actions.js';
 import actionsRouter from "./actions.js";
@@ -2190,6 +2192,11 @@ async function jobRevisionRequest({ sourceId, locale, p, auth, itemId }) {
     auth, authorizedProject: p, commercialAccess, translationJob: true,
     get: name => name.toLowerCase() === 'idempotency-key' ? `translation-job-${itemId}` : undefined };
 }
+registerTuningProvider(async ({ provider, model, system, user, apiKey, maxOutputTokens }) => {
+  if (provider === 'meta') return generateMetaText({ system, user, apiKey, maxOutputTokens });
+  if (geminiClientOverride) return geminiClientOverride({ system, user, apiKey, model, maxOutputTokens });
+  return generateGeminiTuning({ system, user, apiKey, model, maxOutputTokens });
+});
 registerJobTranslation({
   inspect: async options => {
     const req = await jobRevisionRequest(options);
@@ -2242,6 +2249,7 @@ if (isEntrypoint) {
   // Bound retention of abandoned encrypted key previews even without traffic.
   await expireAiProposals();
   if (process.env.HEDGELING_AGENT_ENABLED === "true") translationJobs.startWorker();
+  if (process.env.HEDGELING_AGENT_ENABLED === "true") tuningModels.startWorker();
   setInterval(() => { void expireAiProposals().catch(() => console.error("Expired AI-key preview cleanup failed")); }, 60000).unref();
   app.listen(port, process.env.HEDGELING_AUTH_MODE === "local" ? "127.0.0.1" : "0.0.0.0", () => {
     console.log(`Hedgeling web console listening on :${port}`);

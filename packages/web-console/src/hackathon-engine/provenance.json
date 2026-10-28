@@ -1,9 +1,19 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "bf937c93c8f6ff0dea602d982fdb2f5bd619df50",
+  "revision": "9e5d30b8c4cb1f6f05b3344dab2a851543e36579",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
+    {
+      "source": "src/tuning-gemini.js",
+      "destination": "tuning-gemini.js",
+      "sha256": "b6b9e9485aba9db0551342efe93d6da2a50a50cbcd233c68940e3b31cc73a687"
+    },
+    {
+      "source": "src/tuning-models.js",
+      "destination": "tuning-models.js",
+      "sha256": "c010294e8ad8f0bc6dad55c21d71e5b3b07ec2059bfd5c3e08e7b82a11ea40d8"
+    },
     {
       "source": "src/agent-scope.js",
       "destination": "agent-scope.js",
@@ -32,7 +42,7 @@
     {
       "source": "src/engine-operations.js",
       "destination": "engine-operations.js",
-      "sha256": "fff2809790af2f17ab54076bf5290299bc9465026fc92167ca1c0e82d6d8b7f7"
+      "sha256": "37ac1286dd7e48d8eaa8a2a25d762b61d9d1a698869e74f5ba4ff76b72ed3ce7"
     },
     {
       "source": "src/translation-jobs.js",
@@ -82,7 +92,7 @@
     {
       "source": "src/extraction-actions.js",
       "destination": "extraction-actions.js",
-      "sha256": "aa4556255673f1dc4d27c9152bc302ab827bbe7f8625279d035af2f69d60f3f3"
+      "sha256": "6bbb79adc7fccdb00ef4a900203542ed7c4603795b0a2d0f86b1e9ac73861203"
     },
     {
       "source": "src/extraction-catalog.js",
@@ -92,7 +102,7 @@
     {
       "source": "src/extraction-workflow.js",
       "destination": "extraction-workflow.js",
-      "sha256": "8c12a29ecfdac158d6d3f3e2559e38fb10819fde677ba6d01df51abd13df2b67"
+      "sha256": "04dba72ac5bacd653b62123bfec703f01ad4dd98d8769b0799c06bb470315ffe"
     },
     {
       "source": "LICENSE",
@@ -103,6 +113,11 @@
       "source": "NOTICE",
       "destination": "NOTICE",
       "sha256": "91424905df6ef3e602591ed759c25d56369ea5f2549ca2fa10a3e16ac7dfb18f"
+    },
+    {
+      "source": "contracts/202610282100_tuning_models.sql",
+      "destination": "../../db/migrations/202610282100_tuning_models.sql",
+      "sha256": "b6d66773a2c9de6d9f234d62b30d802e0ae47f4dc2483baa285c96d8bc973f34"
     },
     {
       "source": "src/translation-job-actions.js",
@@ -167,7 +182,7 @@
     {
       "source": "src/extraction-actions.js",
       "destination": "../../../api-contract/extraction-actions.js",
-      "sha256": "aa4556255673f1dc4d27c9152bc302ab827bbe7f8625279d035af2f69d60f3f3"
+      "sha256": "6bbb79adc7fccdb00ef4a900203542ed7c4603795b0a2d0f86b1e9ac73861203"
     },
     {
       "source": "contracts/202610272100_extraction_tuning.sql",
@@ -192,7 +207,7 @@
     {
       "source": "ui/extraction.js",
       "destination": "../public/extraction.js",
-      "sha256": "8bd374fb433feeeb216548be3fe42d188c823ccfaf2a31bd4c7992cc60f75570"
+      "sha256": "a2194476df232d0c51fdd2b932756469e4200deb73afaccc37fa7a7b0730d689"
     },
     {
       "source": "ui/extraction.css",

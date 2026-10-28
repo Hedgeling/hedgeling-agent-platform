@@ -5,6 +5,7 @@ import { effectiveOrganizationAccess } from './entitlements.js';
 import { createExtractionWorkflow } from './hackathon-engine/extraction-workflow.js';
 import { engineOperations } from './hackathon-engine/engine-operations.js';
 import { fail } from './action-errors.js';
+import { tuningModels } from './tuning-models-integration.js';
 
 let importHandler;
 export function registerExtractionImport(handler) { importHandler = handler; }
@@ -14,6 +15,7 @@ function canonical(value) {
   return value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])])) : value;
 }
 export const extractionWorkflow = createExtractionWorkflow({
+  models: tuningModels,
   database: { query },
   fingerprint: value => crypto.createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex'),
   engine: () => engineOperations({ url: process.env.HEDGELING_ENGINE_URL, token: process.env.HEDGELING_ENGINE_TOKEN }),

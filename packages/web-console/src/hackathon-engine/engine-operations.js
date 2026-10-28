@@ -16,6 +16,9 @@ export function engineOperations({ url, token, fetchImpl = fetch }) {
     configuration: (connectionId, ref, path) => call('v1/connections/' + encodeURIComponent(connectionId) + '/config?' + new URLSearchParams({ ref, path })),
     create: (body, idempotencyKey) => call('v1/jobs', { body, idempotencyKey }),
     job: id => call(jobPath(id)),
+    cancel: id => call(jobPath(id) + '/cancel', { body: {} }),
+    modelRequests: id => call(jobPath(id) + '/model-requests'),
+    modelResult: (id, requestId, body) => call(jobPath(id) + '/model-requests/' + jobPath(requestId).split('/').at(-1), { body }),
     artifact: id => call(jobPath(id) + '/artifact', { maxBytes: 21 * 1024 * 1024 }),
   });
 }
