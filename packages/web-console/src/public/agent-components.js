@@ -1,6 +1,6 @@
 import { translationJobControls } from './translation-jobs.js';
 import { documentPanel } from './documents.js';
-import { contextPanel } from './context-enrichment.js';
+import { contextPanel, characterSuggestionLabel } from './context-enrichment.js';
 import { CHAT_LIMITS } from './chat-limits.js';
 import { projectLanguages } from './project-locales.js';
 import { extractionPanel } from './extraction.js';
@@ -14,7 +14,7 @@ export function element(tag, className = "", text = "") {
   const node = document.createElement(tag); node.className = className; if (text) node.textContent = text; return node;
 }
 export const actionLabel = { "organization.create": "Create organization", "business_unit.create": "Create business unit", "project.create": "Create project", "localization_job.create": "Create job draft", "organization.update": "Save organization name", "business_unit.update": "Save business-unit name", "project.update": "Save project name", "localization_job.update": "Save job changes" };
-const workflowLabels = { machine_translation: "AI translation", human_translation: "Human translation", review: "Review", qa: "Quality check" };
+const workflowLabels = { machine_translation: "AI Translation", human_translation: "Human translation", review: "Review", qa: "Quality check" };
 Object.assign(actionLabel, { 'localization_job.start': 'Start translation', 'localization_job.cancel': 'Stop job' });
 Object.assign(actionLabel, { 'documents.job': 'Import document and create job' });
 Object.assign(actionLabel, { 'context.enrich': 'Generate context suggestions', 'context.apply': 'Accept selected context' });
@@ -81,7 +81,7 @@ function appendProposalDetails(card, preview) {
     if (resources.stringsWithCode !== undefined) card.append(element('p','',`${resources.stringsWithCode} of ${preview.fields.strings.length} strings have code evidence; the rest use available metadata.`));
     for (const item of preview.fields.strings) {
       const detail = element('details','context-suggestion'); detail.append(element('summary','',item.source));
-      if (item.description) detail.append(element('p','',item.description),element('p','',item.suggestedMaxCharacters == null ? 'No character count suggested.' : `Advisory maximum: ${item.suggestedMaxCharacters} Unicode characters`),element('p','',item.limitReason));
+      if (item.description) detail.append(element('p','',item.description),element('p','',characterSuggestionLabel(item)),element('p','',item.limitReason));
       else detail.append(element('p','',item.existingContext ? `Current description: ${item.existingContext}` : 'No accepted description yet.'));
       card.append(detail);
     }
@@ -201,7 +201,7 @@ export class Workspace {
     const fragment = document.createDocumentFragment();
     const head = element("header", "workspace-heading");
     if (organizationId) { head.dataset.resourceType = "organization"; head.dataset.resourceId = organizationId; }
-    head.append(element("span", "agent-eyebrow", "PROJECTS"), element("h1", "", "Your projects, in every language."), element("p", "", "Explore projects and jobs by business unit, or preview your next workspace change."));
+    head.append(element("span", "agent-eyebrow", "PROJECTS"), element("h1", "", "Your projects"), element("p", "", "Explore projects and jobs by business unit, or preview your next workspace change."));
     const select = element("select"); select.setAttribute("aria-label", "Workspace organization");
     select.append(new Option("New organization", ""));
     for (const org of config.organizations) select.append(new Option(org.name, org.id));
@@ -278,7 +278,7 @@ export class Workspace {
     const jobProjects = data.projects.filter((p) => p.canCreateJob);
     if (jobProjects.length) forms.append(this.form("localization_job.create", [
       { name: "projectSlug", label: "Project", options: jobProjects.map((p) => [p.slug, p.name]) }, input("name", "Job name"), input("targetLocales", "Target languages, separated by commas", jobProjects[0].targetLocales.join(", ")),
-      { name: "workflow", label: "Workflow", options: [["machine_translation,review", "AI translation → Human review"], ["human_translation,review", "Human translation → Review"], ["machine_translation,review,qa", "AI translation → Review → QA"]] },
+      { name: "workflow", label: "Workflow", options: [["machine_translation,review", "AI Translation → Human review"], ["human_translation,review", "Human translation → Review"], ["machine_translation,review,qa", "AI Translation → Review → QA"]] },
     ]));
     fragment.append(forms);
     if (generation === this.refreshGeneration) {

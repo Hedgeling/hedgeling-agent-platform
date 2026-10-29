@@ -2,10 +2,12 @@
 const node = (tag,text = '',cls = '') => { const n = document.createElement(tag); n.textContent = text; n.className = cls; return n; };
 const button = text => { const n = node('button',text); n.type = 'button'; return n; };
 const errorText = { context_stale:'The source or accepted guidance changed. Request a fresh analysis.',context_provider_changed:'The provider settings changed. Request a fresh analysis.',context_request_uncertain:'Processing was interrupted. This request will not be retried automatically.',context_result_invalid:'The model returned incomplete or invalid suggestions. No guidance was saved.' };
+export const characterSuggestionLabel = result => result.suggestedMaxCharacters == null ? 'No character count suggested.'
+  : `Suggested length: ${result.suggestedMaxCharacters} Unicode characters · ${result.suggestionSource === 'formula' ? 'formula estimate' : 'LLM suggestion'} · not enforced`;
 function resultCard(result) {
   const card = node('article','','context-suggestion');
   card.append(node('h4',result.source || result.id),node('p',result.description),node('p',`${result.evidence === 'code' ? 'Code evidence' : 'Metadata only'} · ${result.confidence} confidence`,'context-evidence'));
-  card.append(node('p',result.suggestedMaxCharacters == null ? 'No character count suggested.' : `Suggested maximum: ${result.suggestedMaxCharacters} Unicode characters · advisory`),node('p',result.limitReason));
+  card.append(node('p',characterSuggestionLabel(result)),node('p',result.limitReason));
   return card;
 }
 export function contextProgress({ runId,request,onReview }) {
@@ -29,7 +31,7 @@ export function contextProgress({ runId,request,onReview }) {
 }
 export function contextPanel({ project,request,confirmation,controllerId }) {
   const root = node('details','','context-panel'); root.dataset.projectSlug = project.slug; root.append(node('summary','Context · descriptions and length suggestions'));
-  const explanation = node('p','Give translators the meaning behind each string. Review LLM descriptions and optional length suggestions before using them. Explicit limits stay unchanged.');
+  const explanation = node('p','Give translators the meaning behind each string. Review LLM descriptions and suggested lengths before using them. Formula estimates fill gaps when the model has no length suggestion: source +30%, rounded up, with at least 5 extra characters. These targets are not enforced. Explicit limits stay unchanged.');
   const load = button('Browse string context'), generate = button('Preview context enrichment'), next = button('More strings'), runsMore = button('More analyses'); next.hidden = runsMore.hidden = true;
   const listing = node('div'), history = node('div'), progress = node('div'), approval = node('div'), error = node('p','','agent-error'); error.setAttribute('role','alert');
   const chooseHelp = node('p','Select up to 20 strings, or leave the selection empty to analyze the next batch without current accepted context.');
@@ -75,7 +77,7 @@ export function contextPanel({ project,request,confirmation,controllerId }) {
       for (const s of r.strings) {
         const row = node('label','','context-source'), check = node('input'); check.type = 'checkbox'; check.value = s.id; check.setAttribute('aria-label',`Analyze: ${s.source}`);
         const content = node('span'); content.append(node('strong',s.source),node('span',`${s.codeAvailable ? 'Code excerpt available' : 'Metadata only'} · ${s.current ? 'Accepted context is current' : s.accepted ? 'Context needs refreshing' : 'No accepted context'}`,'context-evidence'));
-        if (s.accepted) content.append(node('p',s.accepted.description));
+        if (s.accepted) content.append(node('p',s.accepted.description),node('p',characterSuggestionLabel(s.accepted)));
         if (s.hardLimit != null) content.append(node('span',`Existing enforced limit: ${s.hardLimit}`));
         row.append(check,content); listing.append(row);
       }

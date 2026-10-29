@@ -27,13 +27,21 @@ test('enrichment and acceptance require separate human approvals; accepted fresh
   assert.equal(a.meta.calls.length,1); assert.match(a.meta.calls[0].body.input,/<h1>/);
   assert.equal((await a.database.query('select count(*)::int n from source_context_enrichments')).rows[0].n,0);
   const approval = await a.preview('context.apply',{runId:result.id,stringIds:[a.sources[0]]});
+  const suggestion = approval.preview.fields.strings[0];
+  assert.equal(suggestion.suggestionSource,'formula'); assert.equal(suggestion.suggestedMaxCharacters,17);
   await a.confirm(approval); await a.confirm(approval);
   assert.equal(a.meta.calls.length,1); assert.equal((await a.contextStatus(result.id)).status,'awaiting_review');
   const detail = await a.request(`/api/strings/${a.sources[0]}`); assert.match(detail.body.acceptedContext.description,/personalized welcome/);
+  assert.equal(detail.body.acceptedContext.suggestedMaxCharacters,17);
+  const longTranslation = 'Bonjour {name}, nous sommes ravis de vous accueillir dans votre espace.';
+  a.meta.control.beforeResponse = () => { a.meta.control.text = longTranslation; };
   const job = await a.draft(); await a.confirm(await a.preview('localization_job.start',{jobId:job.id}));
   assert.equal((await a.done(job.id)).status,'awaiting_review');
   const inputs = a.meta.calls.slice(1).map(c => JSON.parse(c.body.input.slice(c.body.input.indexOf('{'))));
   assert.equal(inputs.filter(i => i.acceptedContext?.description.includes('personalized welcome')).length,1);
+  assert.equal(inputs.find(i => i.acceptedContext)?.acceptedContext.suggestionSource,'formula');
+  const translations = (await a.database.query('select text from translations where source_string_id=$1',[a.sources[0]])).rows;
+  assert(translations.some(row => row.text === longTranslation), 'Exceeding the advisory target must neither reject nor truncate the translation.');
   assert.equal((await a.database.query('select count(*)::int n from source_strings where limit_chars is not null')).rows[0].n,0);
   await a.database.query("update context_variants set code_context='<footer>Hello {name}</footer>' where source_string_id=$1",[a.sources[0]]);
   assert.equal((await a.request(`/api/strings/${a.sources[0]}`)).body.acceptedContext,null);
@@ -44,6 +52,29 @@ test('enrichment and acceptance require separate human approvals; accepted fresh
   await a.database.query('delete from agent_proposals where id=$1',[preview.id]);
   assert.equal((await a.database.query('select count(*)::int n from source_context_enrichments')).rows[0].n,1);
   assert.equal((await a.database.query('select proposal_id from context_enrichment_runs where id=$1',[result.id])).rows[0].proposal_id,null);
+});
+test('legacy pending results get reviewable estimates without model calls or rewriting previously accepted guidance',options,async t => {
+  const a = await setup(t), result = await a.enrich();
+  await a.confirm(await a.preview('context.apply',{runId:result.id,stringIds:[a.sources[0]]}));
+  // Emulate results and guidance saved before the fallback existed.
+  const legacy = result.results.map(({formula,suggestionSource,modelLimitReason,source,...row}) => ({...row,suggestedMaxCharacters:null,limitReason:modelLimitReason}));
+  await a.database.query('update context_enrichment_runs set results=$2 where id=$1',[result.id,JSON.stringify(legacy)]);
+  await a.database.query('update source_context_enrichments set data=$2 where source_string_id=$1',[a.sources[0],legacy.find(s => s.id===a.sources[0])]);
+  const read = await a.contextStatus(result.id);
+  assert.equal(read.results.find(s => s.id===a.sources[0]).suggestedMaxCharacters,null);
+  const pending = read.results.find(s => s.id===a.sources[1]);
+  assert.equal(pending.suggestedMaxCharacters,17); assert.equal(pending.suggestionSource,'formula');
+  assert.deepEqual((await a.contextStatus(result.id)).results,read.results);
+  assert.deepEqual((await a.database.query('select results from context_enrichment_runs where id=$1',[result.id])).rows[0].results,legacy,'Reads must not write suggestions.');
+  const approval = await a.preview('context.apply',{runId:result.id});
+  assert.deepEqual(approval.preview.fields.strings[0],pending);
+  await a.confirm(approval);
+  const final = await a.contextStatus(result.id);
+  assert.equal(final.status,'applied'); assert.deepEqual(final.results,read.results);
+  const detail = (await a.request(`/api/strings/${a.sources[1]}`)).body.acceptedContext;
+  assert.equal(detail.suggestionSource,'formula'); assert.equal(detail.suggestedMaxCharacters,17);
+  assert.equal((await a.request(`/api/strings/${a.sources[0]}`)).body.acceptedContext.suggestedMaxCharacters,null);
+  assert.equal(a.meta.calls.length,1);
 });
 test('stale source/provider previews are rejected before spending; stale results cannot be accepted',options,async t => {
   const a = await setup(t,1), p = await a.preview('context.enrich',{projectSlug:a.project.slug});

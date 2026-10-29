@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 import { randomUUID } from 'node:crypto';
 import { fail } from './errors.js';
-import { CONTEXT_LIMITS, CONTEXT_VERSION, contextEvidence, enrichmentPrompt, parseEnrichment } from './context-analysis.js';
+import { CONTEXT_LIMITS, CONTEXT_VERSION, contextEvidence, enrichmentPrompt, parseEnrichment, withLengthSuggestion } from './context-analysis.js';
 const projectSql = `select p.id,p.slug,p.name,p.source_locale as "sourceLocale",p.business_unit_id as "businessUnitId",b.organization_id as "organizationId"
   from projects p join business_units b on b.id=p.business_unit_id where p.data_purged_at is null and `;
 const target = p => ({ view: 'workspace', organizationId: p.organizationId, projectSlug: p.slug, action: 'context.enrich', resource: { type: 'project', id: p.id } });
 const safeRun = r => ({ id: r.id, status: r.status, strings: r.snapshot.length, createdAt: r.created_at, finishedAt: r.finished_at,
   provider: r.provider_plan.provider, model: r.provider_plan.model, acceptedIds: r.accepted_ids, error: r.error_code });
+// Older pending analyses gain the same reviewable fallback without another
+// paid request. Accepted results remain exactly as the person approved them.
+const reviewResults = r => r.results.map(result => r.accepted_ids.includes(result.id) ? result
+  : withLengthSuggestion(result, r.snapshot.find(s => s.id === result.id)?.evidence));
 
 export function createContextEnrichment({ database, transaction, authorize, inspectProvider, generate, fingerprint }) {
   async function project(input, auth, scope, db, write = false, lock = false) {
@@ -51,7 +55,7 @@ export function createContextEnrichment({ database, transaction, authorize, insp
       return { runs: rows.slice(0,20).map(safeRun), page: { nextCursor: rows.length > 20 ? rows[19].id : null }, uiTarget };
     }
     const r = await run(input.runId, database);
-    return { run: { ...safeRun(r), results: r.results.map(result => ({ ...result, source: r.snapshot.find(s => s.id === result.id)?.source })) }, uiTarget };
+    return { run: { ...safeRun(r), results: reviewResults(r).map(result => ({ ...result, source: r.snapshot.find(s => s.id === result.id)?.source })) }, uiTarget };
   }
   async function prepare(name, input, auth, scope = {}, db = database, lock = false) {
     const p = await project(input, auth, scope, db, true, lock), uiTarget = target(p);
@@ -65,7 +69,7 @@ export function createContextEnrichment({ database, transaction, authorize, insp
       if (selected.length !== ids.length || p.sourceLocale !== r.source_locale || selected.some(s => {
         const old = r.snapshot.find(o => o.id === s.id); return !old || old.version !== s.version || old.acceptedVersion !== s.acceptedVersion;
       })) throw fail(409, 'Source code, content, or accepted guidance changed. Generate a fresh analysis for these strings.', 'context_stale');
-      const results = r.results.filter(s => ids.includes(s.id));
+      const results = reviewResults(r).filter(s => ids.includes(s.id));
       return { p, r, selected, results, organizationId: p.organizationId, uiTarget, preview: { action: name,
         fields: { strings: results.map(r => ({ source: selected.find(s => s.id === r.id).source, ...r })) },
         resources: { project: p, runId: r.id, version: fingerprint(selected) }, cost: 'No model calls.',
@@ -96,7 +100,7 @@ export function createContextEnrichment({ database, transaction, authorize, insp
         stringsWithCode: selected.filter(s => s.evidence.contexts.some(c => c.snippet?.text || (c.code && c.code !== c.file && !/^.+:\d+$/.test(c.code)))).length },
       cost: `One request using your organization’s ${provider.provider} key, at most ${plan.maximumOutputTokens} output tokens. Provider charges and usage budgets apply; no Hedgeling translation credits. This is a token bound, not a dollar quote.`,
       sideEffects: ['Send the selected source strings and up to four stored context variants each, including available nearby code, to the selected provider.',
-        'Generate descriptions and optional advisory character counts for review. Missing code is reported as limited evidence.',
+        'Generate descriptions and advisory length targets for review. Without a model suggestion or enforced limit, use source length +30% rounded up (at least 5 extra characters), labeled as a formula estimate. Missing code is reported as limited evidence.',
         'Accepting suggestions requires a separate confirmation. No translations or enforced limits change.',
         'This one request continues if chat is paused. Interrupted requests are never automatically retried.'] } };
   }
@@ -117,7 +121,10 @@ export function createContextEnrichment({ database, transaction, authorize, insp
       data=excluded.data,model=excluded.model,provider=excluded.provider,prompt_version=excluded.prompt_version,accepted_by_user_id=excluded.accepted_by_user_id,updated_at=now()`,
     [result.id,r.id,selected.find(s => s.id === result.id).version,result,r.provider_plan.model,r.provider_plan.provider,r.provider_plan.promptVersion,auth.user.id]);
     const accepted = [...new Set([...r.accepted_ids,...results.map(s => s.id)])];
-    await db.query('update context_enrichment_runs set accepted_ids=$2,status=$3 where id=$1', [r.id,accepted,accepted.length === r.results.length ? 'applied' : 'awaiting_review']);
+    // Persist the exact approved results, including fallbacks added to older
+    // pending analyses, so the run history matches saved translator guidance.
+    const savedResults = r.results.map(old => results.find(s => s.id === old.id) || old);
+    await db.query('update context_enrichment_runs set accepted_ids=$2,status=$3,results=$4 where id=$1', [r.id,accepted,accepted.length === r.results.length ? 'applied' : 'awaiting_review',JSON.stringify(savedResults)]);
     return { accepted: results.length, projectSlug: p.slug, uiTarget: target(p) };
   }
   async function tick() {

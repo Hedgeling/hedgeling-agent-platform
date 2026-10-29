@@ -18,6 +18,9 @@ try {
   const chat = page.locator('#hedgelingAgent'); await expect(chat.locator('#agentInput')).toBeEnabled();
   await chat.getByRole('button',{name:'Minimize chat',exact:true}).click();
   await page.evaluate(async org => { await window.HedgelingAgent.browseWorkspace(org);window.HedgelingConsole.openWorkspace(); },app.org);
+  await expect(page.getByRole('heading',{name:'Your projects',exact:true})).toBeVisible();
+  const jobForm = page.locator('[data-workspace-action="localization_job.create"]');
+  await expect(jobForm.locator('option[value="machine_translation,review"]')).toHaveText('AI Translation → Human review');
   const panel = page.locator(`.context-panel[data-project-slug="${app.project.slug}"]`);
   await panel.locator('summary').first().click(); await panel.getByRole('button',{name:'Browse string context',exact:true}).click();
   await expect(panel).toContainText('Code excerpt available');
@@ -28,8 +31,10 @@ try {
   await expect(panel.locator('.context-progress')).toContainText('Context ready to review'); assert.equal(app.meta.calls.length,1);
   await panel.getByRole('button',{name:'Review and accept context',exact:true}).click();
   await expect(panel).toContainText('No fixed width is available.');
+  await expect(panel).toContainText('Suggested length: 17 Unicode characters · formula estimate · not enforced');
   await panel.getByRole('button',{name:'Preview accepting selected context',exact:true}).click();
   await expect(panel.locator('.workspace-confirmation')).toContainText('Preserve existing translations');
+  await expect(panel.locator('.workspace-confirmation')).toContainText('Suggested length: 17 Unicode characters · formula estimate · not enforced');
   await panel.getByRole('button',{name:'Accept selected context',exact:true}).click();
   await expect(panel).toContainText('Accepted context is current'); assert.equal(app.meta.calls.length,1);
   await panel.scrollIntoViewIfNeeded(); await page.screenshot({path:path.join(artifacts,'desktop.png')});

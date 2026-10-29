@@ -1,23 +1,23 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "8c03810930fe9c65e1b2a07ab70af2d5921306ac",
+  "revision": "721c532765935df6bf0f5812ed0409292b278eeb",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
     {
       "source": "src/context-enrichment.js",
       "destination": "context-enrichment.js",
-      "sha256": "b490e1b1d7ea8ea5a441b8b400581263321341bcc2e52d7ff8ffd0859574ea33"
+      "sha256": "547e0fc29d3a8ccced6f47414ae1e05a76177eecb0c09e41983f3d4f57a060d8"
     },
     {
       "source": "src/context-analysis.js",
       "destination": "context-analysis.js",
-      "sha256": "87e5c086833e2f926884a1675dd2a2daf984abb49248f50d27c2cc352c632e9c"
+      "sha256": "53269e9a7b2f1119199abd6b6b40d5bbc354af2afdf13eae0dffbe488c829950"
     },
     {
       "source": "src/context-actions.js",
       "destination": "context-actions.js",
-      "sha256": "c627a13f90730a3cc90ffb8734268bf8f7e59f98b1033b7432104d383973c4f8"
+      "sha256": "ac5592b07d0ac8b483b747a054571df9cb6656aee922a91165957565f64c8891"
     },
     {
       "source": "src/documents.js",
@@ -92,7 +92,7 @@
     {
       "source": "src/translation-job-actions.js",
       "destination": "translation-job-actions.js",
-      "sha256": "5b6c3ef001b9f4499cf50df6aab51b95dd949f0fa797cff248941124a78cac3e"
+      "sha256": "f27b89eb4ed9379cde333b65d63167f550ade7afa6647c1c4a3b3a958c41bf90"
     },
     {
       "source": "src/chat-limits.js",
@@ -157,7 +157,7 @@
     {
       "source": "src/context-actions.js",
       "destination": "../../../api-contract/context-actions.js",
-      "sha256": "c627a13f90730a3cc90ffb8734268bf8f7e59f98b1033b7432104d383973c4f8"
+      "sha256": "ac5592b07d0ac8b483b747a054571df9cb6656aee922a91165957565f64c8891"
     },
     {
       "source": "contracts/202610291600_context_enrichment.sql",
@@ -172,7 +172,7 @@
     {
       "source": "ui/context-enrichment.js",
       "destination": "../public/context-enrichment.js",
-      "sha256": "143b646dd5bcc7bccd68c2fa950ac1c46232255bcc887eaed1752614d24b7437"
+      "sha256": "1e3f0f103a4d7c7ae0803767803b1e63a2f7ac52da25af2d80ac2dfc95770111"
     },
     {
       "source": "ui/context-enrichment.css",
@@ -212,7 +212,7 @@
     {
       "source": "src/translation-job-actions.js",
       "destination": "../../../api-contract/translation-job-actions.js",
-      "sha256": "5b6c3ef001b9f4499cf50df6aab51b95dd949f0fa797cff248941124a78cac3e"
+      "sha256": "f27b89eb4ed9379cde333b65d63167f550ade7afa6647c1c4a3b3a958c41bf90"
     },
     {
       "source": "contracts/202610281800_translation_jobs.sql",

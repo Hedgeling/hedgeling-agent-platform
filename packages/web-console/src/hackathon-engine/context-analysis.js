@@ -1,7 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 import { fail } from './errors.js';
 export const CONTEXT_LIMITS = Object.freeze({ strings: 20, promptBytes: 65536, outputTokens: 8192, requests: 1, contexts: 4 });
-export const CONTEXT_VERSION = 'context-enrichment-v2';
+export const CONTEXT_VERSION = 'context-enrichment-v3';
+// A writing target, not a measurement of available space. Count the literal
+// source (including placeholder/markup syntax), never guessed rendered values.
+export function withLengthSuggestion(result, evidence) {
+  if (result.suggestedMaxCharacters != null) return { ...result, suggestionSource: result.suggestionSource || 'model' };
+  if (!evidence || evidence.hardLimit != null || typeof evidence.sourceText !== 'string' || !evidence.sourceText.trim()) return result;
+  const sourceCharacters = [...evidence.sourceText].length;
+  const suggestedMaxCharacters = Math.max(Math.ceil(sourceCharacters * 13 / 10), sourceCharacters + 5);
+  return { ...result, suggestedMaxCharacters, suggestionSource: 'formula', unit: 'unicode_code_points', advisory: true,
+    formula: { version: 'source-plus-30pct-min5-v1', sourceCharacters, expansionPercent: 30, minimumExtraCharacters: 5 },
+    modelLimitReason: result.limitReason,
+    limitReason: `Formula estimate: ${sourceCharacters} source characters +30%, rounded up, with at least 5 extra characters. Soft target only; longer translations are allowed. Counts literal source, including any placeholders or markup, not rendered width. Model assessment: ${result.limitReason}` };
+}
 export function contextEvidence(source, contexts) {
   const ordered = contexts.map(c => ({ shape: c.shape ?? null, purpose: c.purpose ?? null, visualContext: c.visual_context ?? c.visualContext ?? null,
     file: c.file_path ?? c.filePath ?? null, code: c.code_context ?? c.codeContext ?? null,
@@ -40,7 +52,7 @@ export function parseEnrichment(text, items) {
     seen.add(row.id);
     const hasCode = original.evidence.contexts.slice(0, CONTEXT_LIMITS.contexts).some(c => c.snippet?.text || (c.code && c.code !== c.file && !/^.+:\d+$/.test(c.code)));
     if (original.evidence.hardLimit != null && row.suggestedMaxCharacters !== null) invalid();
-    return { id: row.id, description: row.description.trim(), evidence: hasCode ? 'code' : 'metadata', confidence: row.confidence,
-      suggestedMaxCharacters: row.suggestedMaxCharacters, limitReason: row.limitReason.trim(), unit: 'unicode_code_points', advisory: true };
+    return withLengthSuggestion({ id: row.id, description: row.description.trim(), evidence: hasCode ? 'code' : 'metadata', confidence: row.confidence,
+      suggestedMaxCharacters: row.suggestedMaxCharacters, limitReason: row.limitReason.trim(), unit: 'unicode_code_points', advisory: true }, original.evidence);
   });
 }
