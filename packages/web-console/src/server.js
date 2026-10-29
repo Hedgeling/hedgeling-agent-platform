@@ -1,3 +1,4 @@
+import { githubRouter,githubCallbackPage,githubCallbackScript,localEngineAllowed } from './repositories-integration.js';
 import { createHash } from 'node:crypto';
 import { registerJobTranslation, translationJobs } from './translation-jobs-integration.js';
 import { registerDocumentImport, documentsRouter } from './documents-integration.js';
@@ -1089,7 +1090,10 @@ if (process.env.HEDGELING_AUTH_MODE === "local") {
   app.get("/local-login.js", (_req, res) => res.sendFile(path.join(__dirname, "public", "local-login.js")));
   app.post("/api/auth/local", authRateLimit({ key: "local-login", limit: 10 }), asyncRoute(localSignIn));
 }
+app.get('/api/github/callback',githubCallbackPage);
+app.get('/github-callback.js',githubCallbackScript);
 app.use(requireAuthentication);
+app.use('/api/github',githubRouter);
 app.get(
   "/onboarding",
   (_req, res) => res.sendFile(path.join(__dirname, "public", "onboarding.html")),
@@ -1117,7 +1121,7 @@ app.get("/api/me", (req, res) => {
 
 app.get("/api/platform/engine-status", requirePlatformAdmin, asyncRoute(async (_req, res) => {
   res.set("Cache-Control", "no-store");
-  res.json(await engineStatus());
+  res.json(await engineStatus(process.env,{allowLoopbackHttp:localEngineAllowed()}));
 }));
 
 app.use("/api/actions", actionsRouter);

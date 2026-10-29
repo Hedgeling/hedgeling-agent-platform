@@ -5,6 +5,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 import pg from 'pg';
+import { startLocalEngine } from './dev-engine.js';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const script = fileURLToPath(import.meta.url);
@@ -48,19 +49,21 @@ async function startDatabase() {
   try { if (!(await client.query("select 1 from pg_database where datname='hedgeling_workbench'")).rowCount) await client.query('create database hedgeling_workbench'); }
   finally { await client.end(); }
 }
-function serve() {
-  const allowed = /^(HEDGELING_(?:AGENT_(?:PROVIDER|META_MODEL|GEMINI_MODEL)|META_(?:API_KEY|RESPONSES_URL|TRANSLATION_MODEL)|AI_KEY(?:_ID|RING)|GEMINI_(?:API_KEY|MODEL))|GEMINI_API_KEY|GOOGLE_AI_API_KEY)$/;
+async function serve() {
+  const allowed = /^(HEDGELING_(?:GITHUB_(?:CLIENT_ID|CLIENT_SECRET|CALLBACK_URL)|ENGINE_(?:URL|TOKEN|ALLOW_LOOPBACK_HTTP)|AGENT_(?:PROVIDER|META_MODEL|GEMINI_MODEL)|META_(?:API_KEY|RESPONSES_URL|TRANSLATION_MODEL)|AI_KEY(?:_ID|RING)|GEMINI_(?:API_KEY|MODEL))|GEMINI_API_KEY|GOOGLE_AI_API_KEY)$/;
   const env = Object.fromEntries(Object.entries(config).filter(([name]) => allowed.test(name)));
+  const engine = await startLocalEngine({config,folder,databaseUrl});
+  if(engine)Object.assign(env,{HEDGELING_ENGINE_URL:engine.url,HEDGELING_ENGINE_TOKEN:engine.token,HEDGELING_ENGINE_ALLOW_LOOPBACK_HTTP:'true'});
   Object.assign(env, { PATH: process.env.PATH, NODE_ENV: 'development', DATABASE_URL: databaseUrl('hedgeling_workbench'), DATABASE_SSL: 'false', PORT: String(port),
-    HEDGELING_LOCAL_SITE_SEED: 'true', HEDGELING_LOCAL_WATCH: 'true', HEDGELING_LOCAL_SESSION_FILE: sessionFile });
+    HEDGELING_GITHUB_CALLBACK_URL: `${origin}/api/github/callback`, HEDGELING_LOCAL_SITE_SEED: 'true', HEDGELING_LOCAL_WATCH: 'true', HEDGELING_LOCAL_SESSION_FILE: sessionFile });
   const child = spawn(process.execPath, [path.join(root, 'packages/web-console/scripts/dev-agent.js')], { cwd: root, env, stdio: 'inherit' });
   for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => child.kill(signal));
-  child.on('exit', code => { process.exitCode = code || 0; });
-  child.on('error', () => { console.error('Local server failed to start; inspect the private server log.'); process.exitCode = 1; });
+  child.on('exit', code => { process.exitCode = code || 0; void engine?.stop(); });
+  child.on('error', () => { console.error('Local server failed to start; inspect the private server log.'); process.exitCode = 1; void engine?.stop(); });
 }
 const command = process.argv[2] || 'start';
 try {
-  if (command === 'serve') serve();
+  if (command === 'serve') await serve();
   else if (command === 'start') {
     const session = read(sessionFile);
     if (running() && Date.parse(session?.expiresAt) > Date.now()) console.log(`Local console already running: ${origin}\nRun npm run local:open to sign in.`);

@@ -6,7 +6,7 @@ import { translationProvider } from './organization-ai.js';
 import { geminiModelForPlan } from './ai-credits.js';
 import { metaTranslationConfiguration } from './hackathon-engine/meta-translation.js';
 import { createTuningModels } from './hackathon-engine/tuning-models.js';
-import { engineOperations } from './hackathon-engine/engine-operations.js';
+import { sourceEngine, repositories } from './repositories-integration.js';
 import { reserveUsage, recordUsageEvent, geminiTokenMeasurements, usageActor } from './usage.js';
 import { fail } from './action-errors.js';
 
@@ -40,15 +40,18 @@ async function inspect(auth, p) {
   return { organizationId: p.organizationId, mode: 'byok', provider: selected.provider, model, version: fingerprint(version) };
 }
 export const tuningModels = createTuningModels({ database: { query }, transaction: withTransaction, fingerprint,
-  engine: () => engineOperations({ url: process.env.HEDGELING_ENGINE_URL, token: process.env.HEDGELING_ENGINE_TOKEN }), inspect,
+  engine: sourceEngine, inspect,
   authorize: async (auth, run) => {
     const p = (await query(`select p.id,p.slug,p.source_locale as "sourceLocale",p.business_unit_id as "businessUnitId",b.organization_id as "organizationId"
       from projects p join business_units b on b.id=p.business_unit_id where p.id=$1 and p.data_purged_at is null`, [run.project_id])).rows[0];
     if (!p) throw fail(403, 'Project unavailable.', 'tuning_access_denied');
     const connection = (await query(`select connection_id as "connectionId",repository_id::text as "repositoryId",repository_owner as owner,
-      repository_name as repository,allowed_roots as "allowedRoots",default_ref as "defaultRef" from extraction_connections where project_id=$1 and connection_id=$2 and active=true`, [p.id, run.binding.connectionId])).rows[0];
+      repository_name as repository,allowed_roots as "allowedRoots",default_ref as "defaultRef",source_mode as "sourceMode" from extraction_connections where project_id=$1 and connection_id=$2 and active=true`, [p.id, run.binding.connectionId])).rows[0];
+    if (connection && connection.sourceMode !== 'github-fetch') delete connection.sourceMode;
     if (!connection || fingerprint(connection) !== fingerprint(run.binding) || Intl.getCanonicalLocales(p.sourceLocale.replaceAll('_','-'))[0] !== run.request.sourceLocale) throw fail(409, 'Source connection or locale changed.', 'tuning_connection_changed');
-    await permission(auth, p); return p;
+    await permission(auth, p);
+    if (connection.sourceMode === 'github-fetch') await repositories.connected(connection, auth);
+    return p;
   },
   generate: async ({ run, call, project: p }) => {
     if (!providerCall) throw fail(503, 'Tuning provider is not configured.', 'tuning_provider_unconfigured');

@@ -17,6 +17,7 @@ export const actionLabel = { "organization.create": "Create organization", "busi
 const workflowLabels = { machine_translation: "AI Translation", human_translation: "Human translation", review: "Review", qa: "Quality check" };
 Object.assign(actionLabel, { 'localization_job.start': 'Start translation', 'localization_job.cancel': 'Stop job' });
 Object.assign(actionLabel, { 'documents.job': 'Import document and create job' });
+Object.assign(actionLabel, { 'repositories.connect': 'Connect repository' });
 Object.assign(actionLabel, { 'context.enrich': 'Generate context suggestions', 'context.apply': 'Accept selected context' });
 Object.assign(actionLabel, { 'project.locales.add': 'Add target languages', 'extraction.tune': 'Run tuning preview', 'extraction.tuning.apply': 'Save settings and re-extract', 'extraction.start': 'Start extraction', 'extraction.import': 'Import source strings' });
 Object.assign(actionLabel, { 'library.prompt.save': 'Save instructions', 'library.persona.save': 'Save persona', 'library.glossary.save': 'Save term', 'library.restore': 'Restore revision', 'library.review': 'Confirm review' });

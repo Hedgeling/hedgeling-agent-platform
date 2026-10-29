@@ -7,14 +7,14 @@ const deny = (status, message, code) => { throw new AgentError(status, message, 
 const projectSql = `select p.id,p.slug,p.name,p.source_locale as "sourceLocale",p.business_unit_id as "businessUnitId",b.organization_id as "organizationId"
   from projects p join business_units b on b.id=p.business_unit_id where p.slug=$1 and p.data_purged_at is null`;
 const bindingSql = `select connection_id as "connectionId",repository_id::text as "repositoryId",repository_owner as owner,
-  repository_name as repository,allowed_roots as "allowedRoots",default_ref as "defaultRef"
+  repository_name as repository,allowed_roots as "allowedRoots",default_ref as "defaultRef",source_mode as "sourceMode"
   from extraction_connections where project_id=$1 and active=true`;
 const sourceSql = `select id,source_hash,source_text,shape,purpose,visual_context,limit_chars,updated_at
   from source_strings where project_id=$1 order by id`;
 
 // The host supplies its current authorization, entitlement, import/metering and
 // transaction facilities. Neither model arguments nor service tokens grant access.
-export function createExtractionWorkflow({ database, authorize, checkAccess, engine, fingerprint, importState, models }) {
+export function createExtractionWorkflow({ database, authorize, checkAccess, engine, fingerprint, importState, models, repositories }) {
   async function project(input, auth, context, db, lock = false) {
     const p = (await db.query(projectSql + (lock ? ' for update of p' : ''), [input.projectSlug])).rows[0];
     if (!p) deny(404, 'Project not found.', 'project_not_found');
@@ -25,6 +25,7 @@ export function createExtractionWorkflow({ database, authorize, checkAccess, eng
   async function binding(p, id, db) {
     const row = (await db.query(bindingSql + ' and connection_id=$2', [p.id, id])).rows[0];
     if (!row) deny(403, 'This repository is not connected to the selected project.', 'connection_denied');
+    if(row.sourceMode !== 'github-fetch') delete row.sourceMode;
     sourcePaths(row.allowedRoots, row.allowedRoots);
     return row;
   }
@@ -33,6 +34,7 @@ export function createExtractionWorkflow({ database, authorize, checkAccess, eng
     const row = (await db.query('select * from extraction_requests where id=$1 and project_id=$2' + (lock ? ' for update' : ''), [input.extractionId, p.id])).rows[0];
     if (!row) deny(404, 'Extraction not found in this project.', 'extraction_not_found');
     const connected = await binding(p, row.binding.connectionId, db);
+    if(connected.sourceMode==='github-fetch')await repositories.connected(connected,auth);
     if (fingerprint(connected) !== fingerprint(row.binding)) deny(409, 'Repository access changed. Start a new extraction from the current connection.', 'connection_changed');
     return { p, row, connected };
   }
@@ -57,11 +59,11 @@ export function createExtractionWorkflow({ database, authorize, checkAccess, eng
     if (saved && saved.binding_hash !== fingerprint(connected)) deny(409, 'Repository access changed. Review the project’s saved extraction settings with an operator.', 'settings_connection_changed');
     return saved;
   }
-  async function configuration(input, connected) {
+  async function configuration(input, connected, auth) {
     if (!tuningConfigPath(input.configPath)) deny(400, 'Use a .hedgeling/extract.config.json path.', 'invalid_config_path');
     const parent = input.configPath.slice(0, -'.hedgeling/extract.config.json'.length).replace(/\/$/, '');
     if (parent && !connected.allowedRoots.some(root => parent === root || parent.startsWith(root + '/'))) deny(403, 'The config path must be at repository root or within an allowed source root.', 'config_path_denied');
-    const value = await engine().configuration(connected.connectionId, input.ref, input.configPath);
+    const value = connected.sourceMode==='github-fetch' ? await repositories.configuration(connected,input.ref,input.configPath,auth) : await engine().configuration(connected.connectionId, input.ref, input.configPath);
     if (value.repositoryId !== Number(connected.repositoryId) || !/^[a-f0-9]{40}$/.test(value.commitSha || '') || value.path !== input.configPath || typeof value.found !== 'boolean') deny(502, 'Unexpected repository configuration response.', 'config_response_invalid');
     let safe;
     try { safe = tuningSettings(value.settings).settings; } catch { deny(502, 'Invalid repository extraction settings.', 'config_response_invalid'); }
@@ -94,7 +96,7 @@ export function createExtractionWorkflow({ database, authorize, checkAccess, eng
       const connected = await binding(p, input.connectionId, database), saved = await settings(p, connected, database);
       if (name === 'extraction.settings') return { projectSlug: p.slug, saved: saved ? { settings: saved.settings, sourceCommit: saved.source_commit, updatedAt: saved.updated_at } : null,
         download: saved ? { filename: 'extract.config.json', content: JSON.stringify({ sourceLocale: p.sourceLocale, scanRoots: saved.scan_roots, ...saved.settings }, null, 2) + '\n' } : null };
-      const repository = await configuration(input, connected);
+      const repository = await configuration(input, connected, auth);
       return { projectSlug: p.slug, repository, effectiveSettings: saved?.settings || repository.settings, source: saved ? 'project' : repository.found ? 'repository' : 'defaults' };
     }
     if (name === 'extraction.connections') return { projectSlug: p.slug, connections: (await database.query(bindingSql + ' order by connection_id', [p.id])).rows };
@@ -128,25 +130,26 @@ export function createExtractionWorkflow({ database, authorize, checkAccess, eng
       const scanRoots = sourcePaths(input.scanRoots, connected.allowedRoots);
       if (!p.sourceLocale) deny(400, 'Set a source language for this project first.', 'source_locale_required');
       const capabilities = await engine().capabilities();
-      if (!capabilities.sourceConfigured || !capabilities.operations?.includes('extract')) deny(503, 'Repository extraction is not configured yet.', 'engine_unconfigured');
+      if (!(connected.sourceMode==='github-fetch' ? capabilities.snapshotConfigured : capabilities.sourceConfigured) || !capabilities.operations?.includes('extract')) deny(503, 'Repository extraction is not configured yet.', 'engine_unconfigured');
       const saved = await settings(p, connected, db);
-      const config = name === 'extraction.tune' ? await configuration(input, connected) : null;
+      const sourcePlan = connected.sourceMode==='github-fetch' ? await repositories.plan(connected,input.ref,scanRoots,auth) : null;
+      const config = name === 'extraction.tune' ? await configuration(sourcePlan ? {...input,ref:sourcePlan.commitSha} : input, connected, auth) : null;
       const llm = Boolean(config && input.mode === 'llm');
       if (llm && !models) deny(503, 'LLM tuning is not configured.', 'tuning_unavailable');
       const modelPlan = llm ? await models.preview(auth, p) : null;
       if (llm && fingerprint(capabilities.modelLimits) !== fingerprint(modelPlan.limits)) deny(503, 'The engine tuning limits need updating.', 'tuning_unavailable');
       if (config && !capabilities.operations.includes(llm ? 'tune-llm' : 'tune')) deny(503, 'This engine does not support tuning yet.', 'tuning_unavailable');
-      const request = { connectionId: connected.connectionId, operation: config ? (llm ? 'tune-llm' : 'tune') : 'extract', ref: config ? config.commitSha : input.ref, scanRoots,
+      const request = { connectionId: connected.connectionId, operation: config ? (llm ? 'tune-llm' : 'tune') : 'extract', ref: sourcePlan ? sourcePlan.commitSha : config ? config.commitSha : input.ref, scanRoots,
         sourceLocale: Intl.getCanonicalLocales(p.sourceLocale.replaceAll('_', '-'))[0] };
       if (saved || config) request.settings = saved?.settings || config.settings;
-      resources = { project: p, connection: connected, ...(modelPlan ? { modelPlan } : {}), savedSettingsVersion: saved ? fingerprint(saved) : null, ...(config ? { configuration: config, settingsSource: saved ? 'project' : config.found ? 'repository' : 'defaults' } : {}) };
+      resources = { project: p, connection: connected, ...(sourcePlan ? { sourcePlan } : {}), ...(modelPlan ? { modelPlan } : {}), savedSettingsVersion: saved ? fingerprint(saved) : null, ...(config ? { configuration: config, settingsSource: saved ? 'project' : config.found ? 'repository' : 'defaults' } : {}) };
       fields = { projectSlug: p.slug, repository: connected.owner + '/' + connected.repository, ref: request.ref, scanRoots, sourceLocale: request.sourceLocale, ...(modelPlan ? { tuningMode: 'llm', provider: modelPlan.provider, model: modelPlan.model, limits: modelPlan.limits } : {}), ...(request.settings ? { settings: request.settings } : {}) };
       return { organizationId: p.organizationId, resource: { type: 'project', id: p.id }, connection: connected, request,
         preview: { action: name, fields, resources, cost: llm ? 'Uses your organization’s selected provider key. Up to 4 model requests including retries, each with at most 64 KiB of prompt text and 8,192 output tokens. Provider charges and platform usage limits apply; no managed AI credits are spent.' : 'No translation model calls or translation-credit spending. Private service job limits apply.',
           sideEffects: [...(config ? [llm ? 'Classify at most 80 candidate texts in one tuning round. Candidate text and nearby source snippets go to the selected model provider. Coverage is bounded; this does not enrich the catalog or calculate character limits.' : 'Run the built-in deterministic tuner for at most two rounds, with no LLM calls. Review its report before saving settings.', 'Tuning proposes settings only; the repository and project configuration remain unchanged.'] : []), 'Send only the selected source paths to the private hosted extraction service.',
-            'A branch or tag is pinned to its commit when processing starts; its head may change before then.',
+            sourcePlan ? 'The displayed commit is pinned. Source is fetched server-side with your GitHub access; no GitHub token reaches the engine or model.' : 'A branch or tag is pinned to its commit when processing starts; its head may change before then.',
             'Create an extraction record and a catalog retained for up to seven days. Import requires a separate confirmation.',
-            'Maximum 1,000 files, 1 MiB per file, 20 MiB total source, and five minutes of processing. No repository configuration code runs.'] } };
+            sourcePlan ? 'Maximum 100 files, 1 MiB per file, 5 MiB total source, and five minutes of processing. Repository code is never executed.' : 'Maximum 1,000 files, 1 MiB per file, 20 MiB total source, and five minutes of processing. No repository configuration code runs.'] } };
     }
     ({ row } = await linked(input, auth, context, db, lock));
     if (name === 'extraction.tuning.apply') {
@@ -186,7 +189,9 @@ export function createExtractionWorkflow({ database, authorize, checkAccess, eng
     if (['extraction.start', 'extraction.tune', 'extraction.tuning.apply'].includes(action)) {
       // Admission is fast; processing is asynchronous in the private service.
       // A lost response/local rollback is retried with this exact proposal key.
-      const created = await engine().create(prepared.request, 'proposal-' + proposal.id);
+      const created = prepared.connection.sourceMode==='github-fetch'
+        ? await repositories.submit(prepared.connection,prepared.request,'proposal-'+proposal.id,auth)
+        : await engine().create(prepared.request, 'proposal-' + proposal.id);
       const value = created.job;
       if (!value || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value.id || '') || !Number.isFinite(Date.parse(value.expiresAt))
         || value.connectionId !== prepared.connection.connectionId || value.ref !== prepared.request.ref

@@ -192,6 +192,12 @@ function receive(item, { replay = false } = {}) {
     confirmed.add(data.proposalId);
     const card = shell.querySelector(`[data-proposal-id="${data.proposalId}"]`);
     if (card) card.replaceChildren(element("p", "agent-receipt", "✓ Change confirmed"));
+    if (data.uiTarget?.action === 'repositories.connect') {
+      message('assistant', `${data.repository} is connected. We can now preview a scan of your selected paths.`, { replay });
+      if (!replay) for (const panel of document.querySelectorAll('[data-project-id]')) {
+        if (panel.dataset.projectId === data.uiTarget.resource?.id) panel.dispatchEvent(new Event('repository-refresh'));
+      }
+    }
     const resource = data.organization || data.businessUnit || data.project || data.job;
     if (data.contextRun) $('agentMessages').append(contextProgress({ runId: data.contextRun.id, request, onReview: async contextRun => {
       if (run?.status !== 'awaiting_input') throw new Error('Finish the current chat turn first, or review the analysis in Projects.');

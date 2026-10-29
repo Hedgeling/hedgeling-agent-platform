@@ -1,3 +1,4 @@
+import { REPOSITORY_ACTIONS } from './repository-actions.js';
 // Protocol-neutral operation descriptions shared by the API and MCP adapter.
 // These describe behavior, not authorization grants. The server reauthorizes
 // each invocation using its authenticated principal and resolved resource.
@@ -28,7 +29,7 @@ export const WORKSPACE_ACTIONS = [
   ...DOCUMENT_ACTIONS,
   ...TRANSLATION_JOB_ACTIONS,
   ...LIBRARY_ACTIONS,
-  ...EXTRACTION_ACTIONS,
+  ...REPOSITORY_ACTIONS, ...EXTRACTION_ACTIONS,
   ...PROJECT_LOCALE_ACTIONS,
   action("organizations.list", "console_list_organizations", "List permitted organizations in pages. Follow page.nextCursor until hasMore is false; never treat one page as the full account list.", "organization.view", schema({ search, ...paging }, [])),
   action("workspace.get", "console_get_workspace", "Read an organization and pages of permitted projects and business units. Continue each collection using pages.projects.nextCursor as projectCursor and pages.businessUnits.nextCursor as businessUnitCursor. For totals use console_report_workspace.", "organization.view", schema({ organizationId: id, limit: paging.limit, projectCursor: paging.cursor, businessUnitCursor: paging.cursor }, ["organizationId"])),

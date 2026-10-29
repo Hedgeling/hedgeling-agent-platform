@@ -33,9 +33,28 @@ HEDGELING_AI_KEY_ID=local
 HEDGELING_AI_KEYRING='{"local":"replace-with-32-random-bytes-in-base64"}'
 ```
 
-The launcher ignores hosted database, Cognito, Stripe and engine settings. It uses only its dedicated loopback database and an allowlist of model/vault settings. Restart after changing local configuration. The local workspace gets synthetic Business access, English as the sample project's source language, and target locales `fr-CA`, `ru-RU`, and `de`; confirm additions or edits through normal UI/agent flows. Organization translation keys are stored in this local database's encrypted vault and are independent of hosted settings. Add/select a translation provider in **Admin → AI providers & keys**. An explicit `fixture` chat provider offers deterministic demos without model calls; it is not a general-purpose assistant.
+The launcher ignores hosted database, Cognito and Stripe settings. It uses its dedicated loopback database and an explicit allowlist of model/vault, GitHub OAuth and engine settings from this local file. It never inherits a live service endpoint from the shell. Restart after changing local configuration. The local workspace gets synthetic Business access, English as the sample project's source language, and target locales `fr-CA`, `ru-RU`, and `de`; confirm additions or edits through normal UI/agent flows. Organization translation keys are stored in this local database's encrypted vault and are independent of hosted settings. Add/select a translation provider in **Admin → AI providers & keys**. An explicit `fixture` chat provider offers deterministic demos without model calls; it is not a general-purpose assistant.
 
 Document uploads, Library, project/locale management, jobs, review, file delivery and reporting run locally. GitHub source extraction/tuning still requires a separately configured private engine and local-tenant connection; the launcher does not silently connect to a live service. Do not assume a hosted project's connection exists in this fresh local database.
+
+## GitHub repositories and local extraction
+
+In **Projects → Source extraction → Connect or change a repository**, enter an HTTPS GitHub repository URL. Explore the default branch, list other branches, select literal paths, and review the connection. Ask Hedgeling to inspect the repository and suggest relevant paths when the feature scope is unclear. Suggestions based on filenames need review, especially for shared files. File lists paginate at 100; branches at 50. Extraction has its own confirmation, pins a commit, and accepts up to 100 files, 1 MiB each and 5 MiB total. Importing extracted strings is a separate confirmation.
+
+Public repositories work without login. For private repositories, add the following server-only values to the ignored local file:
+
+```dotenv
+HEDGELING_GITHUB_CLIENT_ID=your-github-app-client-id
+HEDGELING_GITHUB_CLIENT_SECRET=your-github-app-client-secret
+LOCAL_ENGINE_ROOT=/absolute/path/to/separate-private-engine-checkout
+LOCAL_ENGINE_PORT=4319
+```
+
+Install/build the private checkout's dependencies first. The launcher starts its existing engine API separately on loopback, with a separate `hedgeling_engine_local` database and generated local service credentials under `.hedgeling/local/engine/`. The console repository does not contain that engine. Stop/start restarts both processes and preserves data. Restart the local site after changing private engine code. Alternatively, configure `HEDGELING_ENGINE_URL` and `HEDGELING_ENGINE_TOKEN` explicitly for an authorized HTTPS service. Loopback HTTP is allowed only in local development with `HEDGELING_ENGINE_ALLOW_LOOPBACK_HTTP=true`; never use a production service as a fallback.
+
+Register `http://127.0.0.1:8088/api/github/callback` in the GitHub App (adjust the port if needed). The local launcher supplies that callback value automatically. Wildcards, authorization during installation, and Device Flow are unnecessary for this browser flow. Click **Connect GitHub** while signed into the console. Private access requires both the user's own access and the App's read-only Contents access to that repository. Being logged into github.com alone does not authorize the console. User credentials stay encrypted in the backend; they never reach the agent or engine. Reconnect after the current eight-hour connection expires. Disconnect removes local credentials; revoking the GitHub authorization itself is done on GitHub.
+
+After extraction confirmation, the console backend downloads the selected source at its pinned commit and sends that bounded snapshot to the separate engine. This is a hosted-processing workflow, not a promise that code stays on the user's device. Source snapshots are removed after processing/cancellation; catalogs and reports follow the existing seven-day retention. Private repository access is rechecked before reading results. No source is pushed back to GitHub.
 
 Context enrichment is available in **Projects → Context · descriptions and length suggestions** and through the assistant. The synthetic **Context workshop (sample)** project was imported locally to verify nearby-code descriptions; it does not represent a GitHub connection. Generate suggestions, review them, then accept selected context separately before starting a translation job. Advisory length suggestions never change enforced limits. The engine's source-excerpt adapter still needs deployment before hosted re-extractions can include those excerpts.
 

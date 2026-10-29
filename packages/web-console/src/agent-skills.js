@@ -1,3 +1,4 @@
+import { REPOSITORY_SKILL } from './hackathon-engine/repository-actions.js';
 import { AGENT_SCOPE_POLICY } from './hackathon-engine/agent-scope.js';
 import { CONTEXT_SKILL } from './hackathon-engine/context-actions.js';
 import { DOCUMENT_SKILL } from './hackathon-engine/document-actions.js';
@@ -6,6 +7,7 @@ import { LIBRARY_SKILL } from './hackathon-engine/library-actions.js';
 import { PROJECT_LOCALE_SKILL } from './hackathon-engine/project-locales-actions.js';
 import { EXTRACTION_SKILL } from './hackathon-engine/extraction-actions.js';
 export const agentSkills = Object.freeze([
+  REPOSITORY_SKILL,
   CONTEXT_SKILL,
   DOCUMENT_SKILL,
   TRANSLATION_JOB_SKILL,

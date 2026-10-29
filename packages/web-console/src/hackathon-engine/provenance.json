@@ -1,9 +1,29 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "721c532765935df6bf0f5812ed0409292b278eeb",
+  "revision": "428931ff59e4396bbe3c7faa88721d18682e41ab",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
+    {
+      "source": "src/github-source.js",
+      "destination": "github-source.js",
+      "sha256": "53ded18b58749c6bb4391a3a4938c98a148ceb7a5af393aecbaac9333fef238f"
+    },
+    {
+      "source": "src/github-identity.js",
+      "destination": "github-identity.js",
+      "sha256": "c3dc6691f32739307dc7cd466ac1538ccb10605528dfdbb8beff7a22564152f5"
+    },
+    {
+      "source": "src/repositories.js",
+      "destination": "repositories.js",
+      "sha256": "36856b29c2fcec51c7834e9a03ad9282cf17ebca200f361eae9cb218e493ce3b"
+    },
+    {
+      "source": "src/repository-actions.js",
+      "destination": "repository-actions.js",
+      "sha256": "0c5bcb7b35cb221b8fb4026e01756f5aa9b49929155ad82a9bf2af14886155fd"
+    },
     {
       "source": "src/context-enrichment.js",
       "destination": "context-enrichment.js",
@@ -67,22 +87,22 @@
     {
       "source": "src/http.js",
       "destination": "http.js",
-      "sha256": "0c7b3b785f32aeb7134fa183e3b02874fca584e75e09706d3b9bf3363f8e3682"
+      "sha256": "3cce9cfa7778a8ccf3934da1fd91baf14505ba3df985cfd850a68963e988eb6d"
     },
     {
       "source": "src/engine-client.js",
       "destination": "engine-client.js",
-      "sha256": "46ca15165bd5182aa7af068cd47ca2336fca5f38cdb2b164221fc06916641a6d"
+      "sha256": "456848de285d33f7d6677b2739f30b59a3042f52d8793a73ff9b511d4d2009f8"
     },
     {
       "source": "src/engine-status.js",
       "destination": "engine-status.js",
-      "sha256": "b8f220225a754cc5dc5cf309a6727098c2cbc4494546795c47c06cfc97811aa2"
+      "sha256": "ded1e3ce0a751245876ebbf88f049c6b2a7f7db9cce99eda0a9c1ace1c220b96"
     },
     {
       "source": "src/engine-operations.js",
       "destination": "engine-operations.js",
-      "sha256": "37ac1286dd7e48d8eaa8a2a25d762b61d9d1a698869e74f5ba4ff76b72ed3ce7"
+      "sha256": "3d10c906d0082b0873afd8914f88fca4a6ffe5caa7833e9266cbab024666ce91"
     },
     {
       "source": "src/translation-jobs.js",
@@ -142,7 +162,7 @@
     {
       "source": "src/extraction-workflow.js",
       "destination": "extraction-workflow.js",
-      "sha256": "04dba72ac5bacd653b62123bfec703f01ad4dd98d8769b0799c06bb470315ffe"
+      "sha256": "2d546d02b1b3023a22ce753af6f49a7e57b86926fb9a07189cebd2214c595a49"
     },
     {
       "source": "LICENSE",
@@ -153,6 +173,31 @@
       "source": "NOTICE",
       "destination": "NOTICE",
       "sha256": "91424905df6ef3e602591ed759c25d56369ea5f2549ca2fa10a3e16ac7dfb18f"
+    },
+    {
+      "source": "src/repository-actions.js",
+      "destination": "../../../api-contract/repository-actions.js",
+      "sha256": "0c5bcb7b35cb221b8fb4026e01756f5aa9b49929155ad82a9bf2af14886155fd"
+    },
+    {
+      "source": "contracts/202610292000_repository_connections.sql",
+      "destination": "../../db/migrations/202610292000_repository_connections.sql",
+      "sha256": "5cff7c8b3ba5c4d9b9382365e27d85a62e0fb36d4b839ed018148381e54b7199"
+    },
+    {
+      "source": "ui/repositories.js",
+      "destination": "../public/repositories.js",
+      "sha256": "bdb0e68cf6021dbeee30e1eee1a6ce0b37ece0fa8207b8b079bcfaf320857c96"
+    },
+    {
+      "source": "ui/github-callback.html",
+      "destination": "../public/github-callback.html",
+      "sha256": "059f302b1045afe4d009837969d9e56c4b3c3f8581c7bd17da861dd3aa075c45"
+    },
+    {
+      "source": "ui/github-callback.js",
+      "destination": "../public/github-callback.js",
+      "sha256": "e266ae0819272c2daa854475c01f93d4ba9f9b4b2075fc3b12e0874cfae4eb52"
     },
     {
       "source": "src/context-actions.js",
@@ -297,12 +342,12 @@
     {
       "source": "ui/extraction.js",
       "destination": "../public/extraction.js",
-      "sha256": "57d7887305279e78c8ab056e509537f81b1bdd6a87c4c86ec5eeac9db1660cb9"
+      "sha256": "9c1b9d725a18211c2ad8f3b1b8f5e497e1764a1639f2919df20c157c876856c2"
     },
     {
       "source": "ui/extraction.css",
       "destination": "../public/extraction.css",
-      "sha256": "0fd2c3748e957ef60dea8b428e3c73d6af35d2f1ee9f7ac2749df6544725bd50"
+      "sha256": "55b74c908624c470c8bb6dffa56780db17545a5f0358d143e0b88b72f1f568f7"
     }
   ]
 }
