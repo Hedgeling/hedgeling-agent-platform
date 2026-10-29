@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { randomUUID } from 'node:crypto';
 import { fail } from './errors.js';
+import { isAiOnly,jobCoverage } from './job-scope.js';
 
 export const TRANSLATION_JOB_LIMITS = Object.freeze({ defaultPairs: 100, maximumPairs: 200, promptBytes: 65536, outputTokens: 2048, attempts: 2 });
 const active = ['queued', 'running'];
@@ -27,6 +28,7 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
       where job_id=$1 and error_code is not null order by ordinal limit 5`, [job.id])).rows;
     return { job: { id: job.id, name: job.name, status: job.status, projectSlug: p.slug,
       targetLocales: job.target_locales, steps: job.steps, documentId: job.source_document_id || null, progress: Object.fromEntries(counts.map(r => [r.status, r.count])),
+      workflow: isAiOnly(job) ? 'AI-only translations' : job.steps.map(step=>({machine_translation:'AI Translation',human_translation:'Human translation',review:'Review',qa:'Quality check'})[step]||step).join(' → '), coverage: await jobCoverage(db,job),
       batch: job.execution?.summary || null, startedAt: job.started_at, finishedAt: job.finished_at, errors },
     uiTarget: target(p, job.id, 'localization_job.status') };
   }
@@ -59,7 +61,7 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
     if (!missing.length) throw fail(409, 'Every source/language pair already has a translation. Existing translations are preserved; use Review to revise one.', 'job_nothing_missing');
     const items = [];
     for (const pair of missing.slice(0, maximum)) {
-      const plan = await inspect({ ...pair, p, auth, db });
+      const plan = await inspect({ ...pair, p, auth, db, aiOnly:isAiOnly(job) });
       if (plan.promptBytes > TRANSLATION_JOB_LIMITS.promptBytes) throw fail(400, 'A translation prompt is too large. Reduce its context or Library guidance before starting.', 'job_prompt_limit');
       items.push({ ...pair, fingerprint: plan.fingerprint, creditCeiling: plan.creditCeiling, promptBytes: plan.promptBytes, provider: plan.provider, model: plan.model, mode: plan.mode });
     }
@@ -78,7 +80,8 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
       cost: `${credit} At most ${summary.maximumRequests} generation requests and ${summary.maximumOutputTokens} output tokens, including one validation retry per translation.`,
       sideEffects: [`Translate ${summary.pairs} missing source/language pairs using the active instructions, personas and glossary.`,
         `Keep existing translations unchanged (${summary.preservedPairs}). ${summary.remainingPairs} additional missing pairs remain outside this batch.`,
-        'Save generated drafts with placeholder, glossary and length checks. Human review, approval and publication remain separate.',
+        isAiOnly(job) ? 'Save AI-only translations. There is no review, verification or QA workflow step. Basic generation integrity checks still apply. These translations are not marked human-verified.' : 'Save generated drafts with placeholder, glossary and length checks. Human review, approval and publication remain separate.',
+        isAiOnly(job) ? 'Complete the job when all source/language pairs are present. A bounded batch with missing pairs remains partially translated. Opening a PR is a separate confirmation.' : 'Human review and publication require separate actions.',
         'Continue in the background if you close or pause chat. Use Stop job to cancel remaining work.',
         'If inputs or access change, or a request fails, stop and keep any drafts already saved.'] } };
   }
@@ -96,7 +99,8 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
     return { job: { id: job.id, name: job.name, status: name === 'localization_job.cancel' ? 'canceled' : 'queued', batch: prepared.summary || null }, projectSlug: p.slug, uiTarget: target(p, job.id, name) };
   }
   async function settle(db, jobId) {
-    await db.query(`update localization_jobs j set status=case when exists(select 1 from localization_job_items i where i.job_id=j.id and i.status in ('failed','uncertain')) then 'needs_attention' else 'awaiting_review' end,finished_at=now()
+    await db.query(`update localization_jobs j set status=case when exists(select 1 from localization_job_items i where i.job_id=j.id and i.status in ('failed','uncertain')) then 'needs_attention'
+      when j.steps=array['machine_translation']::text[] then case when (select count(*) from translations t where t.source_string_id in (select (s->>'id')::uuid from jsonb_array_elements(j.source_snapshot) s) and t.locale=any(j.target_locales) and length(trim(t.text))>0)=jsonb_array_length(j.source_snapshot)*cardinality(j.target_locales) then 'completed' else 'partially_translated' end else 'awaiting_review' end,finished_at=now()
       where j.id=$1 and j.status in ('queued','running') and not exists(select 1 from localization_job_items i where i.job_id=j.id and i.status in ('queued','running'))`, [jobId]);
   }
   async function tick() {
@@ -127,13 +131,13 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
       const currentItem = (await db.query('select status,lease_token from localization_job_items where id=$1' + (lock ? ' for update' : ''), [item.id])).rows[0];
       if (!active.includes(current.status) || currentItem?.status !== 'running' || currentItem.lease_token !== token) throw fail(409, 'This job stopped before the result could be saved.', 'job_stopped');
       if (lock) await db.query('select id from source_strings where id=$1 for update', [item.source_string_id]);
-      const plan = await inspect({ sourceId: item.source_string_id, locale: item.locale, p, auth, db });
+      const plan = await inspect({ sourceId: item.source_string_id, locale: item.locale, p, auth, db, aiOnly:isAiOnly(job) });
       if (plan.fingerprint !== item.expected_fingerprint || plan.creditCeiling > Number(item.credit_ceiling)) throw fail(409, 'Source content, translations, guidance or provider settings changed. Start a fresh batch.', 'job_inputs_changed');
       return { p, plan };
     };
     try {
       const { p, plan } = await guard(database);
-      await execute({ p, auth, sourceId: item.source_string_id, locale: item.locale, plan, creditCeiling: Number(item.credit_ceiling),
+      await execute({ p, auth, aiOnly:isAiOnly(job), sourceId: item.source_string_id, locale: item.locale, plan, creditCeiling: Number(item.credit_ceiling),
         jobId: job.id, itemId: item.id, beforeCall: () => guard(database), beforeSave: db => guard(db, true),
         afterSave: async db => {
           await db.query("update localization_job_items set status='succeeded',finished_at=now() where id=$1 and lease_token=$2 and status='running'", [item.id, token]);

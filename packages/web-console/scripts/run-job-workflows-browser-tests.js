@@ -1,0 +1,62 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { chromium, expect } from '@playwright/test';
+import { setupTranslationJobs } from '../test-support/translation-jobs.mjs';
+
+const cleanup = [];
+const app = await setupTranslationJobs({ after: fn => cleanup.push(fn) }, 2);
+const artifacts = await fs.mkdtemp(path.join(os.tmpdir(), 'hedgeling-job-workflows-browser-'));
+let browser, page;
+try {
+  const job = (await app.confirm(await app.preview('localization_job.create',{projectSlug:app.project.slug,name:'AI-only browser fixture',targetLocales:['fr'],steps:['machine_translation']}))).result.job;
+  browser = await chromium.launch({ headless: true, ...(process.env.HEDGELING_E2E_CHROMIUM_EXECUTABLE ? { executablePath: process.env.HEDGELING_E2E_CHROMIUM_EXECUTABLE } : {}) });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, colorScheme: 'light', reducedMotion: 'reduce' });
+  const split = app.cookie.indexOf('=');
+  await context.addCookies([{ name: app.cookie.slice(0, split), value: app.cookie.slice(split + 1), url: app.origin, httpOnly: true, sameSite: 'Strict' }]);
+  page = await context.newPage(); page.setDefaultTimeout(15000);
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto(app.origin);
+  const chat = page.locator('#hedgelingAgent');
+  await chat.locator('#agentScope').selectOption({ label: 'Local troubleshooting' });
+  await expect(chat.locator('#agentInput')).toBeEnabled();
+  await chat.getByRole('button', { name: 'Minimize chat', exact: true }).click();
+  await page.evaluate(async org => { await window.HedgelingAgent.browseWorkspace(org); window.HedgelingConsole.openWorkspace(); }, app.org);
+  const row = page.locator(`[data-resource-type="job"][data-resource-id="${job.id}"]`);
+  await expect(row).toContainText('AI-only translations');
+  await row.getByRole('button',{name:'Preview translation start',exact:true}).click();
+  const review=row.locator('.workspace-confirmation');
+  await expect(review).toContainText('no review, verification or QA');
+  await review.getByRole('button',{name:'Start translation',exact:true}).click();
+  await expect(row.locator('[data-translation-job-id]')).toContainText('Complete',{timeout:20000});
+  await expect(row.locator('[data-translation-job-id]')).toContainText('0 verified');
+  assert.equal(app.meta.calls.length,2);
+  app.meta.control.beforeResponse=({body})=>{const input=JSON.parse(body.input);app.meta.control.text=JSON.stringify({items:input.items.map(i=>({id:i.id,verdict:'pass',issues:[]}))});};
+  const quality=row.locator('.job-quality');await quality.locator('summary').first().click();
+  await quality.getByRole('button',{name:'Preview AI quality check',exact:true}).click();
+  await expect(review).toContainText('Save AI findings only');
+  assert.equal(app.meta.calls.length,2);
+  await page.screenshot({path:path.join(artifacts,'01-quality-preview.png')});
+  await review.getByRole('button',{name:'Run AI quality check',exact:true}).click();
+  await expect(quality).toContainText('2 pass',{timeout:20000});
+  await quality.getByRole('button',{name:'Preview verification of passing translations',exact:true}).click();
+  await expect(review).toContainText('Mark 2 passing translations verified');
+  await expect(review).not.toContainText('tell me');
+  await page.screenshot({path:path.join(artifacts,'02-verification-preview.png')});
+  await review.getByRole('button',{name:'Verify passing translations',exact:true}).click();
+  await expect(row.locator('[data-translation-job-id]')).toContainText('2 verified');
+  assert.equal(app.meta.calls.length,3);
+  await row.locator('.job-delivery > summary').click();
+  await expect(row.locator('.job-delivery')).toContainText('Connect a repository to this project first.');
+  await page.setViewportSize({width:390,height:844});
+  await row.scrollIntoViewIfNeeded();
+  await page.screenshot({path:path.join(artifacts,'03-mobile-job-controls.png')});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  assert.deepEqual(errors, []);
+  console.log('Job review, AI-only and delivery controls browser flow passed. Artifacts: ' + artifacts);
+} catch (error) {
+  await page?.screenshot({ path: path.join(artifacts, 'failure.png') }); console.error('Artifacts: ' + artifacts); throw error;
+} finally {
+  await browser?.close(); for (const close of cleanup.reverse()) await close();
+}

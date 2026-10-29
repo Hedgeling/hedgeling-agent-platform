@@ -144,11 +144,15 @@ export async function readJobs(auth, input, context = {}) {
     job.canEdit = job.status === "draft";
     job.canStart = job.status === 'draft' && job.steps[0] === 'machine_translation' && !job.steps.includes('human_translation');
     job.canStop = ['queued', 'running'].includes(job.status);
+    job.canReview = !['draft','queued','running'].includes(job.status);
+    job.canDeliver = !job.documentId && !['draft','queued','running','canceled'].includes(job.status);
     for (const locale of job.targetLocales) {
       const delegated = { ...auth, executionType: 'agent', platformAdmin: false, user: { ...auth.user, platformStaff: false } };
       const permissions = await projectPermissions(delegated, project, { locale });
       const allowed = ['jobs.view', 'jobs.update', 'strings.view', 'translations.edit'].every(p => permissions.includes(p));
       job.canStart &&= allowed; job.canStop &&= allowed;
+      job.canReview &&= ['jobs.view','jobs.update','strings.view','translations.view','translations.approve'].every(k=>permissions.includes(k));
+      job.canDeliver &&= ['jobs.view','jobs.update','strings.view','translations.view','projects.manage','imports.run','translations.publish'].every(k=>permissions.includes(k));
     }
     for (const locale of job.targetLocales.length ? job.targetLocales : [null]) {
       const key = JSON.stringify([project.id, locale]);

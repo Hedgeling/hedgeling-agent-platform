@@ -1,3 +1,5 @@
+import { JOB_REVIEW_ACTIONS } from './job-review-actions.js';
+import { JOB_DELIVERY_ACTIONS } from './job-delivery-actions.js';
 import { REPOSITORY_ACTIONS } from './repository-actions.js';
 // Protocol-neutral operation descriptions shared by the API and MCP adapter.
 // These describe behavior, not authorization grants. The server reauthorizes
@@ -18,7 +20,7 @@ const action = (name, toolName, description, permission, inputSchema, readOnly =
 const paging = { limit: { type: "integer", minimum: 1, maximum: 100 }, cursor: { type: "string", minLength: 1, maxLength: 4096 } };
 const search = { type: "string", minLength: 1, maxLength: 200 };
 const date = { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$" };
-const jobFilters = { search, status: { type: "string", enum: ["draft", "queued", "running", "awaiting_review", "needs_attention", "canceled"] }, targetLocale: text, createdFrom: date, createdBefore: date, businessUnitId: id };
+const jobFilters = { search, status: { type: "string", enum: ["draft", "queued", "running", "awaiting_review", "needs_attention", "canceled", "completed", "partially_translated"] }, targetLocale: text, createdFrom: date, createdBefore: date, businessUnitId: id };
 const jobChanges = { name: text, targetLocales: { type: "array", items: text, minItems: 1, maxItems: 30, uniqueItems: true }, steps: { type: "array", items: { type: "string", enum: ["machine_translation", "human_translation", "review", "qa"], description: "Workflow step: machine_translation is AI Translation (LLM); use that display label with people." }, minItems: 1, maxItems: 4, uniqueItems: true } };
 export const REPORT_ACTIONS = [
   { ...action("reports.workspace.summary", "console_report_workspace", "Get a complete permission-scoped organization overview: project and business-unit counts plus localization-job totals. Prefer this to enumerating projects for counts. Metrics describe stored jobs and states, not translation progress.", "organization.view", schema({ organizationId: id })), scope: "reporting" },
@@ -27,7 +29,7 @@ export const REPORT_ACTIONS = [
 export const WORKSPACE_ACTIONS = [
   ...CONTEXT_ACTIONS,
   ...DOCUMENT_ACTIONS,
-  ...TRANSLATION_JOB_ACTIONS,
+  ...TRANSLATION_JOB_ACTIONS, ...JOB_REVIEW_ACTIONS, ...JOB_DELIVERY_ACTIONS,
   ...LIBRARY_ACTIONS,
   ...REPOSITORY_ACTIONS, ...EXTRACTION_ACTIONS,
   ...PROJECT_LOCALE_ACTIONS,

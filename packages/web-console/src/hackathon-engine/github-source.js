@@ -44,7 +44,7 @@ export function githubSource({ fetchImpl = fetch } = {}) {
     catch(e) { if(e.upstreamStatus!==401||!token)throw e; token=null; repo=await request(base(name)); }
     if (!Number.isSafeInteger(repo.id) || typeof repo.private !== 'boolean' || typeof repo.default_branch !== 'string') throw fail(502,'Invalid repository metadata.','github_response_invalid');
     if(repo.private && !token)throw fail(403,'Connect GitHub to read this private repository.','github_access_required');
-    return { ...name, id:repo.id, visibility:repo.private?'private':'public', defaultRef:repo.default_branch, token };
+    return { ...name, id:repo.id, visibility:repo.private?'private':'public', defaultRef:repo.default_branch, canPush:repo.permissions?.push===true, token };
   }
   async function tree(repo, ref) {
     if(typeof ref!=='string'||!ref||ref.length>200||/[\x00-\x20\x7f]/.test(ref))throw fail(400,'Choose a branch, tag or commit.','repository_ref_invalid');
@@ -54,7 +54,7 @@ export function githubSource({ fetchImpl = fetch } = {}) {
     if(tree.truncated||!Array.isArray(tree.tree)||tree.tree.length>SOURCE_LIMITS.treeEntries)throw fail(422,'GitHub returned a truncated or oversized tree. Complete scope discovery is unavailable.','repository_tree_limit');
     const files=tree.tree.filter(f=>safeSourcePath(f.path)&&extensions.test(f.path)&&f.type==='blob'&&['100644','100755'].includes(f.mode));
     if(files.some(f=>!SHA.test(f.sha)||!Number.isSafeInteger(f.size)||f.size<0)||new Set(files.map(f=>f.path)).size!==files.length)throw fail(502,'Invalid source tree.','github_response_invalid');
-    return {commitSha:commit.sha, files:files.sort((a,b)=>a.path.localeCompare(b.path)), configurationEntries:tree.tree.filter(f=>tuningConfigPath(f.path))};
+    return {commitSha:commit.sha,treeSha:commit.commit.tree.sha, files:files.sort((a,b)=>a.path.localeCompare(b.path)), configurationEntries:tree.tree.filter(f=>tuningConfigPath(f.path))};
   }
   async function file(repo, entry, maximumBytes = SOURCE_LIMITS.fileBytes) {
     if(entry.size>maximumBytes)throw fail(422,'This file is too large for this operation.','repository_file_limit');

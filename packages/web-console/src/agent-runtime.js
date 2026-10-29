@@ -13,6 +13,13 @@ const route = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(ne
 const active = new Map();
 const running = ["planning", "reading", "executing"];
 const activityLabels = {
+  console_propose_job_quality_check: 'Preparing an AI quality check',
+  console_get_job_quality_check: 'Reading quality findings',
+  console_propose_job_verification: 'Preparing verification of passing translations',
+  console_propose_job_quality_cancel: 'Preparing to stop quality checks',
+  console_get_job_delivery_options: 'Finding translation delivery files',
+  console_propose_translation_pull_request: 'Preparing a translation pull request',
+
   console_list_documents: 'Finding uploaded documents',
   console_get_document: 'Reading document sections',
   console_propose_document_job: 'Preparing a document translation job',

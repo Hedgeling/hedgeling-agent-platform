@@ -15,21 +15,21 @@ export function element(tag, className = "", text = "") {
 }
 export const actionLabel = { "organization.create": "Create organization", "business_unit.create": "Create business unit", "project.create": "Create project", "localization_job.create": "Create job draft", "organization.update": "Save organization name", "business_unit.update": "Save business-unit name", "project.update": "Save project name", "localization_job.update": "Save job changes" };
 const workflowLabels = { machine_translation: "AI Translation", human_translation: "Human translation", review: "Review", qa: "Quality check" };
-Object.assign(actionLabel, { 'localization_job.start': 'Start translation', 'localization_job.cancel': 'Stop job' });
+Object.assign(actionLabel, { 'localization_job.start': 'Start translation', 'localization_job.cancel': 'Stop job', 'localization_job.review':'Run AI quality check', 'localization_job.verify':'Verify passing translations', 'localization_job.review_cancel':'Stop quality check', 'localization_job.pull_request':'Create translation PR' });
 Object.assign(actionLabel, { 'documents.job': 'Import document and create job' });
 Object.assign(actionLabel, { 'repositories.connect': 'Connect repository' });
 Object.assign(actionLabel, { 'context.enrich': 'Generate context suggestions', 'context.apply': 'Accept selected context' });
 Object.assign(actionLabel, { 'project.locales.add': 'Add target languages', 'extraction.tune': 'Run tuning preview', 'extraction.tuning.apply': 'Save settings and re-extract', 'extraction.start': 'Start extraction', 'extraction.import': 'Import source strings' });
 Object.assign(actionLabel, { 'library.prompt.save': 'Save instructions', 'library.persona.save': 'Save persona', 'library.glossary.save': 'Save term', 'library.restore': 'Restore revision', 'library.review': 'Confirm review' });
 const proposalLabel = preview => preview.library?.disposition === 'submit' ? 'Submit suggestion' : preview.library?.disposition === 'reject' ? 'Reject suggestion' : preview.library?.disposition === 'approve' ? 'Approve suggestion' : actionLabel[preview.action];
-const displayField = (key, value) => typeof value === 'boolean' ? (value ? 'Yes' : 'No') : Array.isArray(value) ? value.map((v) => key === "steps" ? workflowLabels[v] || v : v).join(key === "steps" ? " → " : ", ") : value && typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "—");
+const displayField = (key, value) => key === "steps" && Array.isArray(value) && value.length === 1 && value[0] === "machine_translation" ? "AI-only translations" : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : Array.isArray(value) ? value.map((v) => key === "steps" ? workflowLabels[v] || v : v).join(key === "steps" ? " → " : ", ") : value && typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "—");
 export function proposalCard(proposal, confirm, reject, { example = false, edit = null } = {}) {
   const card = element("article", "agent-proposal"); card.dataset.proposalId = proposal.id;
   const heading = element("div", "agent-card-heading");
   heading.append(element("span", "agent-eyebrow", example ? "EXAMPLE · APPROVAL CARD" : "HERE’S THE PLAN"), element("span", "agent-stamp", "Your call"));
   card.append(heading, element("h3", "", proposalLabel(proposal.preview) || "Review change"));
   appendProposalDetails(card, proposal.preview);
-  card.append(element("p", "agent-card-help", example ? "Give it a try—this is just a preview. Your workspace stays as it is." : (proposal.preview.action.startsWith('context.') || proposal.preview.action.startsWith('extraction.') || ['localization_job.start', 'localization_job.cancel'].includes(proposal.preview.action)) ? 'Ready to go? Confirm this step below. Want to change the selection? Discard it and tell me what to adjust.' : proposal.preview.changes ? "Happy with these changes? Save them when you’re ready. Want a tweak? Discard this preview and tell me what to adjust." : "Looks good? Create it when you’re ready. Want a tweak? Choose Discard, then tell me what to change and I’ll prepare a fresh preview."));
+  card.append(element("p", "agent-card-help", example ? "Give it a try—this is just a preview. Your workspace stays as it is." : (proposal.preview.action.startsWith('context.') || proposal.preview.action.startsWith('extraction.') || proposal.preview.action.startsWith('localization_job.')) ? 'Ready to go? Confirm this step below. Want to change the selection? Discard it and tell me what to adjust.' : proposal.preview.changes ? "Happy with these changes? Save them when you’re ready. Want a tweak? Discard this preview and tell me what to adjust." : "Looks good? Create it when you’re ready. Want a tweak? Choose Discard, then tell me what to change and I’ll prepare a fresh preview."));
   const actions = element("div", "agent-card-actions");
   const yes = element("button", "primary", proposalLabel(proposal.preview) || "Confirm change"); yes.type = "button";
   const no = element("button", "", "Discard"); no.type = "button";
@@ -51,12 +51,12 @@ export function proposalCard(proposal, confirm, reject, { example = false, edit 
 // and interaction: chat replies versus a manual form's review step.
 function appendProposalDetails(card, preview) {
   const fields = element("dl", "agent-fields");
-  const labels = { name: "Name", filename: 'Document', sourceLocale: "Source language", targetLocales: "Target languages", steps: "Workflow", repository: 'Repository', ref: 'Source revision', scanRoots: 'Source paths', commitSha: 'Pinned commit', settings: 'Extraction settings' };
+  const labels = { name: "Name", filename: 'Document', sourceLocale: "Source language", targetLocales: "Target languages", steps: "Workflow", repository: 'Repository', ref: 'Source revision', scanRoots: 'Source paths', commitSha: 'Pinned commit', settings: 'Extraction settings', selection:'Selection', translations:'Translations', baseBranch:'Base branch', workflow:'Workflow' };
   for (const [key, label] of preview.changes ? Object.entries(labels).filter(([key]) => ['commitSha', 'scanRoots'].includes(key)) : Object.entries(labels)) {
     const value = preview.fields[key];
     if (value !== undefined) fields.append(element("dt", "", label), element("dd", "", displayField(key, value)));
   }
-  const resources = preview.resources;
+  const resources = preview.resources || {};
   const scope = resources.organization?.name || resources.businessUnit?.name || resources.project?.name;
   if (scope) fields.append(element("dt", "", "In"), element("dd", "", scope));
   if (resources.sourceCount !== undefined) fields.append(element("dt", "", "Source content"), element("dd", "", `${resources.sourceCount} strings`));
@@ -76,7 +76,12 @@ function appendProposalDetails(card, preview) {
   if (preview.library) {
     fields.append(element('dt','','Library asset'),element('dd','',preview.library.label),element('dt','','Language'),element('dd','',preview.library.locale || 'Project-wide'),element('dt','','On confirmation'),element('dd','',preview.library.disposition === 'submit' ? 'Submit for review; keep active guidance unchanged' : preview.library.disposition === 'reject' ? 'Reject this suggestion' : 'Save this guidance'));
   }
+  if (resources.provider) fields.append(element('dt','','Provider'),element('dd','',`${resources.provider.provider} · ${resources.provider.model}`));
+  if (resources.coverage) fields.append(element('dt','','Coverage'),element('dd','',`${resources.coverage.saved}/${resources.coverage.total} present · ${resources.coverage.missing} missing`));
+  if (resources.baseCommit) fields.append(element('dt','','Base commit'),element('dd','',resources.baseCommit));
+  for (const file of resources.files || []) fields.append(element('dt','','File to change'),element('dd','',`${file.path} · ${file.bytes} bytes`));
   card.append(fields);
+  if (resources.sample?.length) { const sample = element('details',''); sample.append(element('summary','',`Translation sample (${resources.sample.length} shown)`)); for (const item of resources.sample) sample.append(element('p','',`${item.locale}: ${item.source || item.key} → ${item.translation || item.text}`)); card.append(sample); }
   if (preview.action.startsWith('context.')) {
     if (resources.provider) card.append(element('p','','Provider: ' + resources.provider.provider + ' / ' + resources.provider.model));
     if (resources.stringsWithCode !== undefined) card.append(element('p','',`${resources.stringsWithCode} of ${preview.fields.strings.length} strings have code evidence; the rest use available metadata.`));
@@ -105,7 +110,7 @@ export function workspaceConfirmation(proposal, { confirm, edit, cancel }) {
   const title = element("h3", "", updating ? "Review changes" : "Review details");
   title.id = `workspace-review-${proposal.id}`; title.tabIndex = -1; card.setAttribute("aria-labelledby", title.id);
   card.append(element("p", "workspace-confirmation-step", "REVIEW & CONFIRM"), title,
-    element("p", "workspace-confirmation-help", (proposal.preview.action.startsWith('context.') || proposal.preview.action.startsWith('extraction.') || ['localization_job.start', 'localization_job.cancel'].includes(proposal.preview.action)) ? 'Review this step before confirming. Use Edit details to return without starting it.' : updating ? "Check the changes below before saving. Choose Edit details to return to the form." : "Check the details below before creating this item. Choose Edit details to return to the form."));
+    element("p", "workspace-confirmation-help", (proposal.preview.action.startsWith('context.') || proposal.preview.action.startsWith('extraction.') || proposal.preview.action.startsWith('localization_job.')) ? 'Review this step before confirming. Use Edit details to return without starting it.' : updating ? "Check the changes below before saving. Choose Edit details to return to the form." : "Check the details below before creating this item. Choose Edit details to return to the form."));
   appendProposalDetails(card, proposal.preview);
   const actions = element("div", "workspace-confirmation-actions");
   const back = element("button", "", "Edit details"), dismiss = element("button", "", "Cancel");
@@ -186,7 +191,7 @@ async function readWorkspacePages(organizationId) {
 function jobLine(job, edit, controls) {
   const line = element("div", "workspace-job");
   line.dataset.resourceType = "job"; line.dataset.resourceId = job.id;
-  line.append(element("strong", "", job.name), element("span", "", `${job.status === "draft" ? "Draft" : job.status} · ${job.sourceCount} source strings · ${job.targetLocales.join(", ")}`));
+  line.append(element("strong", "", job.name), element("span", "", `${job.status === "draft" ? "Draft" : job.status} · ${displayField("steps", job.steps)} · ${job.sourceCount} source strings · ${job.targetLocales.join(", ")}`));
   if (job.canEdit) line.append(edit(job));
   line.append(controls(job));
   return line;
@@ -279,7 +284,7 @@ export class Workspace {
     const jobProjects = data.projects.filter((p) => p.canCreateJob);
     if (jobProjects.length) forms.append(this.form("localization_job.create", [
       { name: "projectSlug", label: "Project", options: jobProjects.map((p) => [p.slug, p.name]) }, input("name", "Job name"), input("targetLocales", "Target languages, separated by commas", jobProjects[0].targetLocales.join(", ")),
-      { name: "workflow", label: "Workflow", options: [["machine_translation,review", "AI Translation → Human review"], ["human_translation,review", "Human translation → Review"], ["machine_translation,review,qa", "AI Translation → Review → QA"]] },
+      { name: "workflow", label: "Workflow", options: [["machine_translation,review", "AI Translation → Human review"], ["machine_translation", "AI-only translations"], ["human_translation,review", "Human translation → Review"], ["machine_translation,review,qa", "AI Translation → Review → QA"]] },
     ]));
     fragment.append(forms);
     if (generation === this.refreshGeneration) {

@@ -33,8 +33,8 @@ try {
   assert.equal(app.meta.calls.length, 0);
   await review.scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(artifacts, '01-manual-start-preview.png') });
   await review.getByRole('button', { name: 'Start translation', exact: true }).click();
-  await expect(row.locator('.translation-job-progress')).toContainText('Drafts ready for review', { timeout: 20000 });
-  await expect(row.locator('.translation-job-progress')).toContainText('1 of 1 drafts saved');
+  await expect(row.locator('[data-translation-job-id]')).toContainText('Drafts ready for review', { timeout: 20000 });
+  await expect(row.locator('[data-translation-job-id]')).toContainText('1 of 1 drafts saved');
   await expect(row.getByRole('link', { name: 'Open translations to review' })).toBeVisible();
   assert.equal(app.meta.calls.length, 1);
   await page.screenshot({ path: path.join(artifacts, '02-manual-progress.png') });

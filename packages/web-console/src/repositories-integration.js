@@ -15,7 +15,7 @@ import {engineOperations} from './hackathon-engine/engine-operations.js';
 const canonical=v=>v instanceof Date?v.toISOString():Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
 export const localEngineAllowed=()=>process.env.NODE_ENV==='development'&&process.env.HEDGELING_AUTH_MODE==='local'&&process.env.HEDGELING_ENGINE_ALLOW_LOOPBACK_HTTP==='true';
 export const sourceEngine=()=>engineOperations({url:process.env.HEDGELING_ENGINE_URL,token:process.env.HEDGELING_ENGINE_TOKEN,allowLoopbackHttp:localEngineAllowed()});
-const github=githubSource();
+export const github=githubSource();
 export const githubConnection=githubIdentity({database:{query},github,
   encrypt:(value,user)=>encryptSecret(value,user,'github-user'),decrypt:(value,user)=>decryptSecret(value,user,'github-user'),
   configuration:()=>({clientId:process.env.HEDGELING_GITHUB_CLIENT_ID,clientSecret:process.env.HEDGELING_GITHUB_CLIENT_SECRET,

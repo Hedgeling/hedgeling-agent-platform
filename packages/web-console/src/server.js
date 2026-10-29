@@ -1,3 +1,4 @@
+import { jobReview, registerJobReviewProvider } from './job-workflows-integration.js';
 import { githubRouter,githubCallbackPage,githubCallbackScript,localEngineAllowed } from './repositories-integration.js';
 import { createHash } from 'node:crypto';
 import { registerJobTranslation, translationJobs } from './translation-jobs-integration.js';
@@ -2199,12 +2200,12 @@ async function reviseTranslation(req, res, jobExecution = null) {
   res.json(responseBody);
 }
 
-async function jobRevisionRequest({ sourceId, locale, p, auth, itemId }) {
+async function jobRevisionRequest({ sourceId, locale, p, auth, itemId, aiOnly=false }) {
   const commercialAccess = await effectiveOrganizationAccess(p.organizationId, 'ai_revision');
   if (!commercialAccess.allowed) throw fail(402, 'This workspace needs translation access on its platform plan.', 'job_entitlement_required');
   const enabled = (await query('select 1 from locales where project_id=$1 and locale=$2 and enabled=true', [p.id, locale])).rowCount;
   if (!enabled || locale === p.sourceLocale) throw fail(409, 'This job’s target language is no longer enabled.', 'job_inputs_changed');
-  return { params: { sourceId, locale }, body: { instruction: 'Translate this source string for the target locale using the active Library guidance. Save a draft for human review.' },
+  return { params: { sourceId, locale }, body: { instruction: 'Translate this source string for the target locale using the active Library guidance. ' + (aiOnly ? 'Save AI-only output without claiming human verification.' : 'Save a draft for human review.') },
     auth, authorizedProject: p, commercialAccess, translationJob: true,
     get: name => name.toLowerCase() === 'idempotency-key' ? `translation-job-${itemId}` : undefined };
 }
@@ -2215,6 +2216,7 @@ const generateAnalysis = async ({ provider, model, system, user, apiKey, maxOutp
 };
 registerTuningProvider(generateAnalysis);
 registerContextProvider(generateAnalysis);
+registerJobReviewProvider(generateAnalysis);
 registerJobTranslation({
   inspect: async options => {
     const req = await jobRevisionRequest(options);
@@ -2266,7 +2268,7 @@ if (isEntrypoint) {
   await runStartupMigration();
   // Bound retention of abandoned encrypted key previews even without traffic.
   await expireAiProposals();
-  if (process.env.HEDGELING_AGENT_ENABLED === "true") translationJobs.startWorker();
+  if (process.env.HEDGELING_AGENT_ENABLED === "true") { translationJobs.startWorker(); jobReview.startWorker(); }
   if (process.env.HEDGELING_AGENT_ENABLED === "true") tuningModels.startWorker();
   if (process.env.HEDGELING_AGENT_ENABLED === "true") contextEnrichment.startWorker();
   setInterval(() => { void expireAiProposals().catch(() => console.error("Expired AI-key preview cleanup failed")); }, 60000).unref();
