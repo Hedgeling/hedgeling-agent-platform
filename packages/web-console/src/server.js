@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { registerJobTranslation, translationJobs } from './translation-jobs-integration.js';
+import { registerDocumentImport, documentsRouter } from './documents-integration.js';
 import { generateGeminiTuning } from './hackathon-engine/tuning-gemini.js';
 import { registerTuningProvider, tuningModels } from './tuning-models-integration.js';
 import { TRANSLATION_JOB_LIMITS } from './hackathon-engine/translation-jobs.js';
@@ -989,7 +990,7 @@ export async function importHedgelingState({
   return counts;
 }
 
-registerExtractionImport(async ({ prepared, proposal, auth, database }) => {
+const importSourceArtifact = async ({ prepared, proposal, auth, database }) => {
   const project = prepared.preview.resources.project;
   const state = prepared.state;
   const identity = usageIdentity({ get: name => name === 'idempotency-key' ? `extraction-${proposal.id}` : '' }, 'state_import', {
@@ -1005,7 +1006,9 @@ registerExtractionImport(async ({ prepared, proposal, auth, database }) => {
     resourceLimits: prepared.access.limits?.resources || {}, transaction,
     usageContext: { organizationId: project.organizationId, businessUnitId: project.businessUnitId, projectId: project.id,
       actor: usageActor(auth), reservationId: reservation.id, attemptNumber: reservation.attemptNumber, usageWarnings: reservation.warnings, ...identity } });
-});
+};
+registerExtractionImport(importSourceArtifact);
+registerDocumentImport(importSourceArtifact);
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
@@ -1114,6 +1117,7 @@ app.get("/api/platform/engine-status", requirePlatformAdmin, asyncRoute(async (_
 }));
 
 app.use("/api/actions", actionsRouter);
+app.use('/api/documents', documentsRouter);
 app.use("/api/agent", authRateLimit({ key: "agent-console", limit: 300, identity: (req) => req.auth?.user?.id }), agentRouter);
 app.use("/api/onboarding", selfServiceRouter);
 app.use("/api", entitlementLeasesRouter);

@@ -1,4 +1,5 @@
 import { translationJobControls } from './translation-jobs.js';
+import { documentPanel } from './documents.js';
 import { CHAT_LIMITS } from './chat-limits.js';
 import { projectLanguages } from './project-locales.js';
 import { extractionPanel } from './extraction.js';
@@ -14,6 +15,7 @@ export function element(tag, className = "", text = "") {
 export const actionLabel = { "organization.create": "Create organization", "business_unit.create": "Create business unit", "project.create": "Create project", "localization_job.create": "Create job draft", "organization.update": "Save organization name", "business_unit.update": "Save business-unit name", "project.update": "Save project name", "localization_job.update": "Save job changes" };
 const workflowLabels = { machine_translation: "AI translation", human_translation: "Human translation", review: "Review", qa: "Quality check" };
 Object.assign(actionLabel, { 'localization_job.start': 'Start translation', 'localization_job.cancel': 'Stop job' });
+Object.assign(actionLabel, { 'documents.job': 'Import document and create job' });
 Object.assign(actionLabel, { 'project.locales.add': 'Add target languages', 'extraction.tune': 'Run tuning preview', 'extraction.tuning.apply': 'Save settings and re-extract', 'extraction.start': 'Start extraction', 'extraction.import': 'Import source strings' });
 Object.assign(actionLabel, { 'library.prompt.save': 'Save instructions', 'library.persona.save': 'Save persona', 'library.glossary.save': 'Save term', 'library.restore': 'Restore revision', 'library.review': 'Confirm review' });
 const proposalLabel = preview => preview.library?.disposition === 'submit' ? 'Submit suggestion' : preview.library?.disposition === 'reject' ? 'Reject suggestion' : preview.library?.disposition === 'approve' ? 'Approve suggestion' : actionLabel[preview.action];
@@ -46,7 +48,7 @@ export function proposalCard(proposal, confirm, reject, { example = false, edit 
 // and interaction: chat replies versus a manual form's review step.
 function appendProposalDetails(card, preview) {
   const fields = element("dl", "agent-fields");
-  const labels = { name: "Name", sourceLocale: "Source language", targetLocales: "Target languages", steps: "Workflow", repository: 'Repository', ref: 'Source revision', scanRoots: 'Source paths', commitSha: 'Pinned commit', settings: 'Extraction settings' };
+  const labels = { name: "Name", filename: 'Document', sourceLocale: "Source language", targetLocales: "Target languages", steps: "Workflow", repository: 'Repository', ref: 'Source revision', scanRoots: 'Source paths', commitSha: 'Pinned commit', settings: 'Extraction settings' };
   for (const [key, label] of preview.changes ? Object.entries(labels).filter(([key]) => ['commitSha', 'scanRoots'].includes(key)) : Object.entries(labels)) {
     const value = preview.fields[key];
     if (value !== undefined) fields.append(element("dt", "", label), element("dd", "", displayField(key, value)));
@@ -225,6 +227,8 @@ export class Workspace {
           onSaved: () => window.HedgelingConsole?.refresh() }));
         if (p.canExtract) card.append(extractionPanel({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId,
           onImported: () => window.HedgelingConsole?.refresh() }));
+        if (p.canExtract && p.canCreateJob) card.append(documentPanel({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId,
+          onChanged: jobId => this.refresh(organizationId, jobId) }));
         if (p.canViewJobs) {
           const jobs = element("div");
           for (const job of recentJobs.filter((job) => job.projectSlug === p.slug)) jobs.append(jobLine(job, editJob, jobControls));

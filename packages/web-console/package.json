@@ -43,7 +43,8 @@
     "test:locales:browser": "node scripts/run-project-locales-browser-tests.js",
     "test:library:browser": "node scripts/run-library-browser-tests.js",
     "test:tuning:browser": "node scripts/run-tuning-browser-tests.js",
-    "test:translation-jobs:browser": "node scripts/run-translation-jobs-browser-tests.js"
+    "test:translation-jobs:browser": "node scripts/run-translation-jobs-browser-tests.js",
+    "test:documents:browser": "node scripts/run-documents-browser-tests.js"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1116.0",
@@ -51,8 +52,11 @@
     "@aws-sdk/s3-request-presigner": "^3.1116.0",
     "@hedgeling/api-contract": "0.1.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@xmldom/xmldom": "0.9.12",
     "aws-jwt-verify": "^5.2.1",
     "express": "^5.1.0",
+    "fflate": "0.8.3",
+    "pdfjs-dist": "6.4.299",
     "pg": "^8.13.1",
     "stripe": "22.3.2"
   },

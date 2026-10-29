@@ -129,7 +129,7 @@ export async function readJobs(auth, input, context = {}) {
   const values = [...scope.values, previous?.after[0] || null, previous?.after[1] || null, limit + 1];
   const index = scope.values.length;
   const result = (await query(`with matching as (
-    select j.id,j.name,j.status,j.source_locale as "sourceLocale",j.target_locales as "targetLocales",j.steps,
+    select j.id,j.name,j.status,j.source_document_id as "documentId",j.source_locale as "sourceLocale",j.target_locales as "targetLocales",j.steps,
       jsonb_array_length(j.source_snapshot) as "sourceCount",j.created_at as "createdAt",
       p.slug as "projectSlug",p.name as "projectName",b.id as "businessUnitId",b.name as "businessUnitName"
     from ${scope.from} where ${scope.where}

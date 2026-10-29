@@ -13,6 +13,10 @@ const route = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(ne
 const active = new Map();
 const running = ["planning", "reading", "executing"];
 const activityLabels = {
+  console_list_documents: 'Finding uploaded documents',
+  console_get_document: 'Reading document sections',
+  console_propose_document_job: 'Preparing a document translation job',
+  console_export_document: 'Preparing your download',
   console_list_library: 'Searching the Library',
   console_get_library_asset: 'Reading translation guidance',
   console_read_library_sources: 'Reading source examples for the Library',
@@ -130,6 +134,7 @@ async function runTurn(auth, runId) {
           await event(runId, "activity", { tool, label: activityLabels[call.name] || "Checking available tools", status: "working" });
           const reply = await tools.client.callTool({ name: call.name, arguments: call.args || {} });
           result = JSON.parse(reply.content?.find((c) => c.type === "text")?.text || "{}");
+          if (Array.isArray(result.files)) events.push(['files', { files: result.files }]);
           if (result.proposal) { proposal = result.proposal; events.push(["proposal", { ...proposal, uiTarget: result.uiTarget }]); }
           else events.push(["activity", { tool, label: result.error || "Workspace information loaded", status: result.error ? "failed" : "complete", ...(result.uiTarget ? { uiTarget: result.uiTarget } : {}) }]);
         }

@@ -29,6 +29,7 @@ function fixtureTurn(history, organizationId) {
   const part = (name, args) => ({ role: "model", parts: [{ functionCall: { name, args } }] });
   if (confirmation) {
     const result = JSON.parse(confirmation.text.slice("Confirmed result: ".length));
+    if (result.document && result.job?.status === 'draft') return { role: 'model', parts: [{ text: 'The document job is ready as a draft. Translation start requires a separate confirmation.' }] };
     if (result.job && result.job.status !== 'draft') return { role: 'model', parts: [{ text: `Translation job ${result.job.status}. Generated drafts require human review.` }] };
     if (result.library) return { role: 'model', parts: [{ text: result.library.status === 'saved' ? `${result.library.label} saved after confirmation. Existing translations are unchanged.` : 'Your Library suggestion was submitted for review.' }] };
     if (result.addedLocales) return { role: 'model', parts: [{ text: `Added ${result.addedLocales.join(', ')} to your project after confirmation. Choose a translation action when you’re ready.` }] };
@@ -45,6 +46,13 @@ function fixtureTurn(history, organizationId) {
   // Explicit synthetic prompts for local browser/MCP tests. Production Meta
   // follows the extraction skill using these same authenticated tools.
   const lastUser = history.findLast(item => item.role === 'user' && !item.confirmation && item.parts?.some(p => p.text));
+  const documentPrompt = /^Create a French document job for ([a-f0-9-]{36})\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  if (documentPrompt && !confirmation) {
+    if (!response) return part('console_get_document', { documentId: documentPrompt[1] });
+    if (response.name === 'console_get_document' && !response.response.error) return part('console_propose_document_job', { documentId: documentPrompt[1], name: 'Document French', targetLocales: ['fr'] });
+  }
+  const documentExport = /^Export draft CSV for document job ([a-f0-9-]{36})\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  if (documentExport && !confirmation && !response) return part('console_export_document', { jobId: documentExport[1], locale: 'fr', format: 'csv', status: 'drafts' });
   const personaPrompt = /^Create persona "([^"]+)" for project "([^"]+)"\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
   if (personaPrompt && !confirmation) {
     if (!response) return part('console_get_library_asset', { projectSlug: personaPrompt[2], kind: 'persona', key: personaPrompt[1] });
