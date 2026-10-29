@@ -1,5 +1,6 @@
 import { translationJobControls } from './translation-jobs.js';
 import { documentPanel } from './documents.js';
+import { contextPanel } from './context-enrichment.js';
 import { CHAT_LIMITS } from './chat-limits.js';
 import { projectLanguages } from './project-locales.js';
 import { extractionPanel } from './extraction.js';
@@ -16,6 +17,7 @@ export const actionLabel = { "organization.create": "Create organization", "busi
 const workflowLabels = { machine_translation: "AI translation", human_translation: "Human translation", review: "Review", qa: "Quality check" };
 Object.assign(actionLabel, { 'localization_job.start': 'Start translation', 'localization_job.cancel': 'Stop job' });
 Object.assign(actionLabel, { 'documents.job': 'Import document and create job' });
+Object.assign(actionLabel, { 'context.enrich': 'Generate context suggestions', 'context.apply': 'Accept selected context' });
 Object.assign(actionLabel, { 'project.locales.add': 'Add target languages', 'extraction.tune': 'Run tuning preview', 'extraction.tuning.apply': 'Save settings and re-extract', 'extraction.start': 'Start extraction', 'extraction.import': 'Import source strings' });
 Object.assign(actionLabel, { 'library.prompt.save': 'Save instructions', 'library.persona.save': 'Save persona', 'library.glossary.save': 'Save term', 'library.restore': 'Restore revision', 'library.review': 'Confirm review' });
 const proposalLabel = preview => preview.library?.disposition === 'submit' ? 'Submit suggestion' : preview.library?.disposition === 'reject' ? 'Reject suggestion' : preview.library?.disposition === 'approve' ? 'Approve suggestion' : actionLabel[preview.action];
@@ -26,7 +28,7 @@ export function proposalCard(proposal, confirm, reject, { example = false, edit 
   heading.append(element("span", "agent-eyebrow", example ? "EXAMPLE · APPROVAL CARD" : "HERE’S THE PLAN"), element("span", "agent-stamp", "Your call"));
   card.append(heading, element("h3", "", proposalLabel(proposal.preview) || "Review change"));
   appendProposalDetails(card, proposal.preview);
-  card.append(element("p", "agent-card-help", example ? "Give it a try—this is just a preview. Your workspace stays as it is." : (proposal.preview.action.startsWith('extraction.') || ['localization_job.start', 'localization_job.cancel'].includes(proposal.preview.action)) ? 'Ready to go? Confirm this step below. Want to change the selection? Discard it and tell me what to adjust.' : proposal.preview.changes ? "Happy with these changes? Save them when you’re ready. Want a tweak? Discard this preview and tell me what to adjust." : "Looks good? Create it when you’re ready. Want a tweak? Choose Discard, then tell me what to change and I’ll prepare a fresh preview."));
+  card.append(element("p", "agent-card-help", example ? "Give it a try—this is just a preview. Your workspace stays as it is." : (proposal.preview.action.startsWith('context.') || proposal.preview.action.startsWith('extraction.') || ['localization_job.start', 'localization_job.cancel'].includes(proposal.preview.action)) ? 'Ready to go? Confirm this step below. Want to change the selection? Discard it and tell me what to adjust.' : proposal.preview.changes ? "Happy with these changes? Save them when you’re ready. Want a tweak? Discard this preview and tell me what to adjust." : "Looks good? Create it when you’re ready. Want a tweak? Choose Discard, then tell me what to change and I’ll prepare a fresh preview."));
   const actions = element("div", "agent-card-actions");
   const yes = element("button", "primary", proposalLabel(proposal.preview) || "Confirm change"); yes.type = "button";
   const no = element("button", "", "Discard"); no.type = "button";
@@ -74,6 +76,16 @@ function appendProposalDetails(card, preview) {
     fields.append(element('dt','','Library asset'),element('dd','',preview.library.label),element('dt','','Language'),element('dd','',preview.library.locale || 'Project-wide'),element('dt','','On confirmation'),element('dd','',preview.library.disposition === 'submit' ? 'Submit for review; keep active guidance unchanged' : preview.library.disposition === 'reject' ? 'Reject this suggestion' : 'Save this guidance'));
   }
   card.append(fields);
+  if (preview.action.startsWith('context.')) {
+    if (resources.provider) card.append(element('p','','Provider: ' + resources.provider.provider + ' / ' + resources.provider.model));
+    if (resources.stringsWithCode !== undefined) card.append(element('p','',`${resources.stringsWithCode} of ${preview.fields.strings.length} strings have code evidence; the rest use available metadata.`));
+    for (const item of preview.fields.strings) {
+      const detail = element('details','context-suggestion'); detail.append(element('summary','',item.source));
+      if (item.description) detail.append(element('p','',item.description),element('p','',item.suggestedMaxCharacters == null ? 'No character count suggested.' : `Advisory maximum: ${item.suggestedMaxCharacters} Unicode characters`),element('p','',item.limitReason));
+      else detail.append(element('p','',item.existingContext ? `Current description: ${item.existingContext}` : 'No accepted description yet.'));
+      card.append(detail);
+    }
+  }
   if (preview.changes) for (const change of preview.changes) {
     const section = element("section", "agent-change"); section.append(element("h4", "", change.label));
     const values = element("dl", "agent-change-values");
@@ -92,7 +104,7 @@ export function workspaceConfirmation(proposal, { confirm, edit, cancel }) {
   const title = element("h3", "", updating ? "Review changes" : "Review details");
   title.id = `workspace-review-${proposal.id}`; title.tabIndex = -1; card.setAttribute("aria-labelledby", title.id);
   card.append(element("p", "workspace-confirmation-step", "REVIEW & CONFIRM"), title,
-    element("p", "workspace-confirmation-help", (proposal.preview.action.startsWith('extraction.') || ['localization_job.start', 'localization_job.cancel'].includes(proposal.preview.action)) ? 'Review this step before confirming. Use Edit details to return without starting it.' : updating ? "Check the changes below before saving. Choose Edit details to return to the form." : "Check the details below before creating this item. Choose Edit details to return to the form."));
+    element("p", "workspace-confirmation-help", (proposal.preview.action.startsWith('context.') || proposal.preview.action.startsWith('extraction.') || ['localization_job.start', 'localization_job.cancel'].includes(proposal.preview.action)) ? 'Review this step before confirming. Use Edit details to return without starting it.' : updating ? "Check the changes below before saving. Choose Edit details to return to the form." : "Check the details below before creating this item. Choose Edit details to return to the form."));
   appendProposalDetails(card, proposal.preview);
   const actions = element("div", "workspace-confirmation-actions");
   const back = element("button", "", "Edit details"), dismiss = element("button", "", "Cancel");
@@ -227,6 +239,7 @@ export class Workspace {
           onSaved: () => window.HedgelingConsole?.refresh() }));
         if (p.canExtract) card.append(extractionPanel({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId,
           onImported: () => window.HedgelingConsole?.refresh() }));
+        if (p.canExtract) card.append(contextPanel({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId }));
         if (p.canExtract && p.canCreateJob) card.append(documentPanel({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId,
           onChanged: jobId => this.refresh(organizationId, jobId) }));
         if (p.canViewJobs) {

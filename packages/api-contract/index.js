@@ -2,6 +2,7 @@
 // These describe behavior, not authorization grants. The server reauthorizes
 // each invocation using its authenticated principal and resolved resource.
 import Ajv from "ajv";
+import { CONTEXT_ACTIONS } from './context-actions.js';
 import { DOCUMENT_ACTIONS } from './document-actions.js';
 import { TRANSLATION_JOB_ACTIONS } from './translation-job-actions.js';
 import { LIBRARY_ACTIONS } from './library-actions.js';
@@ -23,6 +24,7 @@ export const REPORT_ACTIONS = [
   { ...action("reports.jobs.summary", "console_report_jobs", "Aggregate ALL matching permitted localization jobs in one organization, grouped by status, project, business unit or target locale. Totals cover every matching job, independent of group pagination. Follow page.nextCursor for remaining groups. Locale groups overlap for multilingual jobs.", "jobs.view", schema({ organizationId: id, projectSlug: text, ...jobFilters, groupBy: { type: "string", enum: ["status", "project", "business_unit", "target_locale"] }, ...paging }, ["organizationId"])), scope: "reporting" },
 ];
 export const WORKSPACE_ACTIONS = [
+  ...CONTEXT_ACTIONS,
   ...DOCUMENT_ACTIONS,
   ...TRANSLATION_JOB_ACTIONS,
   ...LIBRARY_ACTIONS,

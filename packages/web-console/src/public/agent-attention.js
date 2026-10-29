@@ -1,6 +1,8 @@
 // Only semantic destinations owned by the console are addressable. Tool/model
 // text never becomes a selector, script, URL, or click instruction.
 const toolActions = Object.freeze({
+  console_propose_context_enrichment: 'context.enrich', console_propose_context_apply: 'context.apply',
+  console_list_string_context: 'read', console_list_context_runs: 'read', console_get_context_run: 'read',
   console_propose_translation_job_start: 'localization_job.start',
   console_propose_translation_job_cancel: 'localization_job.cancel',
   console_get_translation_job_status: 'localization_job.status',

@@ -1,9 +1,24 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "169064fc112f359a6d8e176f00e56beff5101711",
+  "revision": "8c03810930fe9c65e1b2a07ab70af2d5921306ac",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
+    {
+      "source": "src/context-enrichment.js",
+      "destination": "context-enrichment.js",
+      "sha256": "b490e1b1d7ea8ea5a441b8b400581263321341bcc2e52d7ff8ffd0859574ea33"
+    },
+    {
+      "source": "src/context-analysis.js",
+      "destination": "context-analysis.js",
+      "sha256": "87e5c086833e2f926884a1675dd2a2daf984abb49248f50d27c2cc352c632e9c"
+    },
+    {
+      "source": "src/context-actions.js",
+      "destination": "context-actions.js",
+      "sha256": "c627a13f90730a3cc90ffb8734268bf8f7e59f98b1033b7432104d383973c4f8"
+    },
     {
       "source": "src/documents.js",
       "destination": "documents.js",
@@ -122,7 +137,7 @@
     {
       "source": "src/extraction-catalog.js",
       "destination": "extraction-catalog.js",
-      "sha256": "53c899ec169142503fbeef822723606b0f99a22f585323735ce03cc1b2950a01"
+      "sha256": "277339bf417c45ef059191dc372a3b0789e55b1dd2e91b0c3d5557818360efa6"
     },
     {
       "source": "src/extraction-workflow.js",
@@ -138,6 +153,31 @@
       "source": "NOTICE",
       "destination": "NOTICE",
       "sha256": "91424905df6ef3e602591ed759c25d56369ea5f2549ca2fa10a3e16ac7dfb18f"
+    },
+    {
+      "source": "src/context-actions.js",
+      "destination": "../../../api-contract/context-actions.js",
+      "sha256": "c627a13f90730a3cc90ffb8734268bf8f7e59f98b1033b7432104d383973c4f8"
+    },
+    {
+      "source": "contracts/202610291600_context_enrichment.sql",
+      "destination": "../../db/migrations/202610291600_context_enrichment.sql",
+      "sha256": "93429d6bc3f80f8a644c2cf0aff1ba2d1ee7686f56fc1edb2a76563f2d7784b1"
+    },
+    {
+      "source": "contracts/202610291601_context_retention.sql",
+      "destination": "../../db/migrations/202610291601_context_retention.sql",
+      "sha256": "8334c275843edb9751b0719c9f9ce7cc8a0c842ebb343edfbffda5e28874933f"
+    },
+    {
+      "source": "ui/context-enrichment.js",
+      "destination": "../public/context-enrichment.js",
+      "sha256": "143b646dd5bcc7bccd68c2fa950ac1c46232255bcc887eaed1752614d24b7437"
+    },
+    {
+      "source": "ui/context-enrichment.css",
+      "destination": "../public/context-enrichment.css",
+      "sha256": "8de7780761d6901975bca8074130c2f61e2cac4b49cb15ff85308ca448a87a92"
     },
     {
       "source": "src/document-actions.js",

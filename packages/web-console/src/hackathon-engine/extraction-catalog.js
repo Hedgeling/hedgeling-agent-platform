@@ -36,8 +36,13 @@ export function catalogState(artifact, expected) {
       if (!Array.isArray(locations) || locations.length > 1000) invalid();
       for (const location of locations.length ? locations : [{}]) {
         const file = text(location.file, 512);
+        const snippet = location.snippet;
+        if (snippet && (typeof snippet !== 'object' || typeof snippet.text !== 'string' || Buffer.byteLength(snippet.text) > 2048
+          || !Number.isSafeInteger(snippet.startLine) || snippet.startLine < 1 || !Number.isSafeInteger(snippet.endLine)
+          || snippet.endLine < snippet.startLine || snippet.endLine - snippet.startLine > 6)) invalid();
         variants.push({ shape: text(context.shape), purpose: text(context.purpose), visualContext: text(context.visualContext), file,
-          codeContext: file ? file + (Number.isSafeInteger(location.line) ? ':' + location.line : '') : null,
+          codeContext: snippet ? snippet.text : file ? file + (Number.isSafeInteger(location.line) ? ':' + location.line : '') : null,
+          ...(snippet ? { codeEvidence: { text: snippet.text, startLine: snippet.startLine, endLine: snippet.endLine, commitSha: expected.commitSha } } : {}),
           uiContext: text(context.purpose), appStateContext: null });
       }
       if (variants.length > 1000) invalid();

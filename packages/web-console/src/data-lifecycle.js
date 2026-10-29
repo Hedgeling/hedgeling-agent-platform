@@ -653,6 +653,7 @@ async function purgeProjectContent(client, {
   await client.query("delete from gemini_calls where project_id = $1", [projectId]);
   await client.query("delete from localization_jobs where project_id = $1", [projectId]);
   await client.query('delete from uploaded_documents where project_id=$1', [projectId]);
+  await client.query('delete from context_enrichment_runs where project_id=$1', [projectId]);
   // Conversations can refer to several projects in their organization. Purge
   // that organization's conversations rather than retaining source content in
   // model history or pretending a partial transcript can be redacted safely.

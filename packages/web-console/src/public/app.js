@@ -2898,6 +2898,7 @@ function renderContextPane(data) {
   ].filter(([, value]) => value !== null && value !== undefined && value !== "");
 
   $("panel-context").innerHTML = `
+    ${data.acceptedContext ? `<section class="context-suggestion"><h3>Accepted translator context</h3><p>${escapeHtml(data.acceptedContext.description)}</p><p>${escapeHtml(data.acceptedContext.suggestedMaxCharacters == null ? 'No character count suggested.' : `Advisory maximum: ${data.acceptedContext.suggestedMaxCharacters} Unicode characters`)}</p><p>${escapeHtml(data.acceptedContext.limitReason)}</p></section>` : ''}
     <div class="fact-grid">
       ${sourceFacts.map(([label, value]) => `
         <div>

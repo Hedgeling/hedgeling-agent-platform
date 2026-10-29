@@ -37,6 +37,8 @@ The launcher ignores hosted database, Cognito, Stripe and engine settings. It us
 
 Document uploads, Library, project/locale management, jobs, review, file delivery and reporting run locally. GitHub source extraction/tuning still requires a separately configured private engine and local-tenant connection; the launcher does not silently connect to a live service. Do not assume a hosted project's connection exists in this fresh local database.
 
+Context enrichment is available in **Projects → Context · descriptions and length suggestions** and through the assistant. The synthetic **Context workshop (sample)** project was imported locally to verify nearby-code descriptions; it does not represent a GitHub connection. Generate suggestions, review them, then accept selected context separately before starting a translation job. Advisory length suggestions never change enforced limits. The engine's source-excerpt adapter still needs deployment before hosted re-extractions can include those excerpts.
+
 ## Validate and release a batch
 
 Test locally through the UI and agent, run the relevant suites plus build/lint/public-boundary checks, and keep new work off `main` until ready. Then open one reviewed batch PR, update the event provenance/integration inventory, and let the existing CI/container/deployment pipeline validate and publish the batch. There is no need to run the cloud deployment for each visual change.

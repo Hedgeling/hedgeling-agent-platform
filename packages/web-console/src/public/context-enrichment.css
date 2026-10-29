@@ -1,0 +1,13 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+.context-panel { margin-block: 1rem; padding: 1rem; border: 1px solid var(--border, currentColor); border-radius: .75rem; }
+.context-panel summary { cursor: pointer; font-weight: 700; }
+.context-panel button { margin: .25rem .5rem .25rem 0; min-height: 40px; }
+.context-panel p, .context-progress p, .context-suggestion { overflow-wrap: anywhere; }
+.context-panel .context-source { display: flex; align-items: flex-start; gap: .75rem; padding: .75rem 0; border-block-end: 1px solid var(--line, currentColor); font-size: 1rem; font-weight: 400; line-height: 1.5; }
+.context-source input, .context-panel fieldset input { width: 1.25rem; height: 1.25rem; flex-shrink: 0; }
+.context-source > span, .context-evidence { display: block; }
+.context-evidence { margin-block: .35rem; font-size: .9rem; }
+.context-suggestion { padding: .75rem; border: 1px solid var(--border, currentColor); border-radius: .5rem; margin-block: .5rem; }
+.context-suggestion h4 { margin: 0; }
+.context-panel fieldset { min-width: 0; }
+.context-progress { padding: .75rem; }
