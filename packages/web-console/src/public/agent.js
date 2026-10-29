@@ -1,4 +1,5 @@
 import { translationJobProgress } from './translation-jobs.js';
+import { openDocumentUpload, fileCard } from './documents.js';
 import { renderChatMarkdown } from "./chat-markdown.js";
 import { request, element, proposalCard, Workspace, typewriterComposer } from "./agent-components.js";
 import { extractionProgress } from './extraction.js';
@@ -39,6 +40,7 @@ shell.innerHTML = `
   <footer class="agent-footer">
   <p id="agentComposerHint" class="agent-composer-hint" role="status" aria-live="polite" hidden></p>
   ${typewriterComposer}
+  <button type="button" id="agentUploadDocument" class="agent-document-upload" disabled>＋ Upload document</button>
   <div class="agent-run-controls"><button type="button" id="agentTakeControl" hidden>Take control</button><button type="button" id="agentPause">Pause</button><button type="button" id="agentTakeover">Take over</button><button type="button" id="agentCancel">Cancel task</button><label><input type="checkbox" id="agentFollow" checked> Follow along</label></div>
   <div class="agent-footnote"><span id="agentProviderLabel">You confirm every change.</span><a id="agentCardExamples" href="/agent-preview.html" target="_blank" rel="noopener" hidden>Try card examples ↗</a><label class="agent-theme">Theme <select data-theme-preference><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><button type="button" id="agentOpaque" aria-pressed="false">Hide workspace edges</button><label class="agent-resize">Width <input id="agentWidth" type="range" min="360" max="640" value="480" aria-label="Side panel width"></label></div></footer>`;
 const launcher = element("button", "agent-launcher"); launcher.type = "button"; launcher.setAttribute("aria-label", "Open Hedgeling assistant");
@@ -99,6 +101,7 @@ function updateState(status) {
   if (otherController) $("agentStatus").textContent = "Viewing conversation · Take control to continue";
   $("agentTakeControl").hidden = !otherController; $("agentPause").hidden = paused;
   const chat = scopeChat();
+  $('agentUploadDocument').disabled = !scope || switching || Boolean(otherController);
   const organization = config?.organizations.find((org) => org.id === scope);
   const roleRequired = chat.reason === "organization_access_required";
   const canBill = !roleRequired && organization?.permissions?.includes("billing.manage");
@@ -135,7 +138,7 @@ function message(role, text, { replay = false } = {}) {
   $("agentMessages").append(item);
 }
 function hasUnsavedEdits() {
-  return dirty || window.HedgelingConsole?.libraryDirty() || [...document.querySelectorAll('.project-languages form input')].some(input => input.value.trim());
+  return dirty || window.HedgelingConsole?.libraryDirty() || document.querySelector('[data-document-dirty="true"]') || [...document.querySelectorAll('.project-languages form input')].some(input => input.value.trim());
 }
 async function follow(target, { phase = "working", card, label = "Looking at this section" } = {}) {
   const generation = ++attentionGeneration;
@@ -157,6 +160,7 @@ function receive(item, { replay = false } = {}) {
   if (seen.has(String(item.sequence))) return;
   seen.add(String(item.sequence)); cursor = Math.max(cursor, Number(item.sequence));
   const { kind, data } = item;
+  if (kind === 'files') for (const file of data.files || []) $('agentMessages').append(fileCard(file));
   if (kind === "commercial_access") { const chat = scopeChat(); chat.allowed = false; chat.message = data.message; updateState(run?.status || "paused"); }
   if (kind === "message") message(data.role, data.text, { replay });
   if (kind === "activity") {
@@ -377,6 +381,15 @@ async function initialize() {
   for (const button of shell.querySelectorAll("[data-mode]")) button.addEventListener("click", () => setMode(button.dataset.mode));
   launcher.addEventListener("click", openConversation);
   $("agentNew").addEventListener("click", () => startConversation().catch(showError));
+  $('agentUploadDocument').addEventListener('click', () => {
+    const organizationId = scope;
+    if (!organizationId) return;
+    void openDocumentUpload({ root: shell, organizationId, request, onChoose: ({ document, projectSlug }) => {
+      if (scope !== organizationId) return showError(new Error('The workspace changed. Select the document again.'));
+      $('agentInput').value = `Please inspect uploaded document ${document.id} in project ${projectSlug} and help me create a document translation job. Ask me for any missing language choices.`;
+      $('agentInput').focus();
+    } }).catch(showError);
+  });
   $("agentScope").addEventListener("change", () => startConversation($("agentScope").value || null, { restore: true }).catch(showError));
   $("agentUpgrade").addEventListener("click", async () => {
     setMode("minimized");
@@ -410,7 +423,7 @@ async function initialize() {
   }
   $("agentOpaque").addEventListener("click", () => { const opaque = shell.dataset.opaque !== "true"; shell.dataset.opaque = String(opaque); $("agentOpaque").setAttribute("aria-pressed", String(opaque)); });
   $("agentWidth").addEventListener("input", (event) => document.documentElement.style.setProperty("--agent-panel-width", `${Number(event.target.value)}px`));
-  document.addEventListener("input", (event) => { if (event.target.closest("main") && !event.target.closest(".project-languages, .library-workbench") && (event.target.matches("textarea:not([readonly])") || event.target.closest("form"))) dirty = true; });
+  document.addEventListener("input", (event) => { if (event.target.closest("main") && !event.target.closest(".project-languages, .library-workbench, .document-panel") && (event.target.matches("textarea:not([readonly])") || event.target.closest("form"))) dirty = true; });
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "Space") { event.preventDefault(); if (mode === "minimized") void openConversation(); else setMode("minimized"); }
     if (event.key === "Escape" && mode === "overlay") { event.preventDefault(); setMode("minimized"); }

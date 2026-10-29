@@ -26,7 +26,7 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
     const errors = (await db.query(`select locale,error_code as code,error_message as message from localization_job_items
       where job_id=$1 and error_code is not null order by ordinal limit 5`, [job.id])).rows;
     return { job: { id: job.id, name: job.name, status: job.status, projectSlug: p.slug,
-      targetLocales: job.target_locales, steps: job.steps, progress: Object.fromEntries(counts.map(r => [r.status, r.count])),
+      targetLocales: job.target_locales, steps: job.steps, documentId: job.source_document_id || null, progress: Object.fromEntries(counts.map(r => [r.status, r.count])),
       batch: job.execution?.summary || null, startedAt: job.started_at, finishedAt: job.finished_at, errors },
     uiTarget: target(p, job.id, 'localization_job.status') };
   }
@@ -44,12 +44,16 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
     if (job.source_locale !== p.sourceLocale) throw fail(409, 'The source language changed. Create a new job draft.', 'job_source_changed');
     const other = (await db.query("select id from localization_jobs where project_id=$1 and status in ('queued','running') limit 1", [p.id])).rows[0];
     if (other) throw fail(409, 'Another translation job is running in this project. Wait for it or stop it first.', 'job_already_running');
-    const sources = (await db.query('select id,source_hash,source_text from source_strings where project_id=$1 order by id', [p.id])).rows;
+    const sources = (await db.query('select id,source_hash,source_text from source_strings where project_id=$1' +
+      (job.source_document_id ? ' and id=any($2::uuid[])' : '') + ' order by id',
+      job.source_document_id ? [p.id, job.source_snapshot.map(s => s.id)] : [p.id])).rows;
     if (!sources.length) throw fail(400, 'Import source strings before starting translation.', 'job_source_empty');
     if (fingerprint(content(sources)) !== fingerprint(content(job.source_snapshot))) throw fail(409, 'Source content changed since this job draft. Create a new draft with the current catalog.', 'job_source_changed');
     const existing = (await db.query('select t.source_string_id,t.locale from translations t join source_strings s on s.id=t.source_string_id where s.project_id=$1 and t.locale=any($2::text[])', [p.id, job.target_locales])).rows;
-    const saved = new Set(existing.map(r => `${r.source_string_id}:${r.locale}`));
-    const maximum = input.maxTranslations ?? TRANSLATION_JOB_LIMITS.defaultPairs;
+    const selected = new Set(sources.map(s => s.id));
+    const selectedExisting = existing.filter(r => selected.has(r.source_string_id));
+    const saved = new Set(selectedExisting.map(r => `${r.source_string_id}:${r.locale}`));
+    const maximum = input.maxTranslations ?? (job.source_document_id ? TRANSLATION_JOB_LIMITS.maximumPairs : TRANSLATION_JOB_LIMITS.defaultPairs);
     if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > TRANSLATION_JOB_LIMITS.maximumPairs) throw fail(400, 'Choose between 1 and 200 translations per batch.', 'job_batch_limit');
     const missing = sources.flatMap(s => job.target_locales.filter(locale => !saved.has(`${s.id}:${locale}`)).map(locale => ({ sourceId: s.id, locale })));
     if (!missing.length) throw fail(409, 'Every source/language pair already has a translation. Existing translations are preserved; use Review to revise one.', 'job_nothing_missing');
@@ -62,7 +66,7 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
     const provider = items[0];
     if (items.some(item => item.provider !== provider.provider || item.model !== provider.model || item.mode !== provider.mode)) throw fail(409, 'Provider settings changed. Request a fresh preview.', 'job_provider_changed');
     const summary = { pairs: items.length, sourceCount: new Set(items.map(i => i.sourceId)).size, remainingPairs: missing.length - items.length,
-      preservedPairs: existing.length, provider: provider.provider, model: provider.model, mode: provider.mode,
+      preservedPairs: selectedExisting.length, provider: provider.provider, model: provider.model, mode: provider.mode,
       creditCeiling: items.reduce((n, i) => n + i.creditCeiling, 0), maximumRequests: items.length * TRANSLATION_JOB_LIMITS.attempts,
       maximumOutputTokens: items.length * TRANSLATION_JOB_LIMITS.attempts * TRANSLATION_JOB_LIMITS.outputTokens,
       maximumInputBytes: items.reduce((n, i) => n + i.promptBytes + 1024, 0) * TRANSLATION_JOB_LIMITS.attempts };

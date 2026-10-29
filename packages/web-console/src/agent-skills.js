@@ -1,9 +1,11 @@
 import { AGENT_SCOPE_POLICY } from './hackathon-engine/agent-scope.js';
+import { DOCUMENT_SKILL } from './hackathon-engine/document-actions.js';
 import { TRANSLATION_JOB_SKILL } from './hackathon-engine/translation-job-actions.js';
 import { LIBRARY_SKILL } from './hackathon-engine/library-actions.js';
 import { PROJECT_LOCALE_SKILL } from './hackathon-engine/project-locales-actions.js';
 import { EXTRACTION_SKILL } from './hackathon-engine/extraction-actions.js';
 export const agentSkills = Object.freeze([
+  DOCUMENT_SKILL,
   TRANSLATION_JOB_SKILL,
   LIBRARY_SKILL,
   EXTRACTION_SKILL,

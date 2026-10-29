@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { documentExports } from './documents.js';
 const node = (tag, text = '', className = '') => { const value = document.createElement(tag); value.textContent = text; value.className = className; return value; };
 const names = { draft: 'Draft', queued: 'Queued', running: 'Translating', awaiting_review: 'Drafts ready for review', needs_attention: 'Needs attention', canceled: 'Stopped' };
 
@@ -12,12 +13,13 @@ export function translationJobProgress({ jobId, request, onStop = null }) {
   const review = node('a', 'Open translations to review'); review.hidden = true;
   const stop = node('button', 'Stop job'); stop.type = 'button'; stop.hidden = !onStop;
   card.append(title, status, detail, review, refresh, stop, error);
-  let timer, busy = false;
+  let timer, busy = false, exportsAdded = false;
   const load = async () => {
     if (busy) return; busy = true; clearTimeout(timer); refresh.disabled = true; error.textContent = '';
     try {
       const { result } = await request('/api/actions/localization_job.status', { jobId });
       const job = result.job, count = job.progress.succeeded || 0;
+      if (job.documentId && !exportsAdded) { card.append(documentExports({ job, request })); exportsAdded = true; }
       title.textContent = job.name;
       status.textContent = `${names[job.status] || job.status}${job.batch ? ` · ${count} of ${job.batch.pairs} drafts saved` : ''}`;
       detail.textContent = job.batch ? `${job.batch.remainingPairs} additional missing translations outside this batch. Existing translations are preserved. Review and publishing remain separate.` : 'Start a preview to see the languages, provider and work limit.';
@@ -52,7 +54,7 @@ export function translationJobControls({ job, request, confirmation, controllerI
   };
   if (job.canStart) {
     const label = node('label', 'Maximum translations in this batch ');
-    const maximum = node('input'); maximum.type = 'number'; maximum.min = '1'; maximum.max = '200'; maximum.value = '100'; maximum.required = true; maximum.style.width = '5rem';
+    const maximum = node('input'); maximum.type = 'number'; maximum.min = '1'; maximum.max = '200'; maximum.value = job.documentId ? '200' : '100'; maximum.required = true; maximum.style.width = '5rem';
     label.append(maximum);
     const start = node('button', 'Preview translation start'); start.type = 'button';
     start.addEventListener('click', async () => { if (!maximum.reportValidity()) return; start.disabled = true;
