@@ -132,6 +132,8 @@ try {
   await expect(shell.locator("#agentStatus")).toContainText("Paused");
   await shell.locator("#agentTakeover").focus();
   await page.keyboard.press("Shift+Tab");
+  await expect(shell.locator("#agentUploadDocument")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
   await expect(shell.locator("#agentInput")).toBeFocused();
   await expect(shell.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
   await shell.locator("#agentPause").click();
