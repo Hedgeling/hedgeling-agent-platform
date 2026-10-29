@@ -355,6 +355,7 @@ try {
       "202610272300_library_workflow.sql",
       "202610281800_translation_jobs.sql",
       "202610282100_tuning_models.sql",
+      "202610290100_document_jobs.sql",
     ],
   );
   assert.equal(
