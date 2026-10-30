@@ -24,6 +24,9 @@ try {
   await chat.getByRole('button', { name: 'Minimize chat', exact: true }).click();
   await page.evaluate(async org => { await window.HedgelingAgent.browseWorkspace(org); window.HedgelingConsole.openWorkspace(); }, app.org);
   const row = page.locator(`[data-resource-type="job"][data-resource-id="${job.id}"]`);
+  await expect(row.getByLabel('Maximum translations in this batch')).toHaveValue('2');
+  await expect(row.getByLabel('Maximum translations in this batch')).toHaveAttribute('max','10000');
+  await expect(row).toContainText('one start approval');
   await row.getByLabel('Maximum translations in this batch').fill('1');
   await row.getByRole('button', { name: 'Preview translation start', exact: true }).click();
   const review = row.locator('.workspace-confirmation');

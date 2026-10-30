@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { documentExports } from './documents.js';
+import { TRANSLATION_JOB_LIMITS, defaultTranslationBatchSize } from './translation-job-limits.js';
 const node = (tag, text = '', className = '') => { const value = document.createElement(tag); value.textContent = text; value.className = className; return value; };
 const names = { draft: 'Draft', queued: 'Queued', running: 'Translating', awaiting_review: 'Drafts ready for review', needs_attention: 'Needs attention', canceled: 'Stopped', completed:'Complete', partially_translated:'Partially translated' };
 
@@ -58,13 +59,14 @@ export function translationJobControls({ job, request, confirmation, controllerI
   };
   if (job.canStart) {
     const label = node('label', 'Maximum translations in this batch ');
-    const maximum = node('input'); maximum.type = 'number'; maximum.min = '1'; maximum.max = '200'; maximum.value = job.documentId ? '200' : '100'; maximum.required = true; maximum.style.width = '5rem';
+    const maximum = node('input'); maximum.type = 'number'; maximum.min = '1'; maximum.max = String(TRANSLATION_JOB_LIMITS.maximumPairs); maximum.value = String(defaultTranslationBatchSize(job.sourceCount, job.targetLocales.length)); maximum.required = true; maximum.style.width = '7rem';
     label.append(maximum);
     const start = node('button', 'Preview translation start'); start.type = 'button';
     start.addEventListener('click', async () => { if (!maximum.reportValidity()) return; start.disabled = true;
       try { await preview('localization_job.start', { jobId: job.id, maxTranslations: Number(maximum.value) }); } catch(e) { error.textContent = e.message; }
       finally { start.disabled = false; } });
     root.append(label, start);
+    root.append(node('p', 'One source string in one target language counts as one translation. The default covers the full job up to 10,000 translations with one start approval; existing translations are preserved.'));
   }
   if (job.status !== 'draft') root.append(translationJobProgress({ jobId: job.id, request,
     onSettled: ['queued','running'].includes(job.status) ? onChanged : null,

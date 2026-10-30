@@ -83,7 +83,7 @@ export function createDocuments({ database, transaction, authorize, checkAccess,
         cost: 'Import counts toward managed-string and source-processing limits. No translation model calls or translation charges until a separate start confirmation.',
         sideEffects: [`Import ${d.segments.length} document text sections and create a job containing only those sections.`,
           'Preserve unrelated project content and existing translations.', ...d.warnings,
-          `${d.segments.length * input.targetLocales.length} source/language pairs in total; translation runs process at most 200 pairs per approved batch.`] } };
+          `${d.segments.length * input.targetLocales.length} source/language pairs in total; one start approval covers all missing pairs up to 10,000; larger jobs need another batch.`] } };
   }
   async function apply(prepared, proposal, auth, db) {
     await importState({ prepared, proposal, auth, database: db });

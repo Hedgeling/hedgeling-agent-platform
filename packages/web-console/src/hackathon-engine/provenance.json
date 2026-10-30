@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "0bd62e3cfa196c2b059c9378836a20823f229171",
+  "revision": "3968a01f5b06bbefb965a263f3a8b02e021e6206",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -72,7 +72,7 @@
     {
       "source": "src/documents.js",
       "destination": "documents.js",
-      "sha256": "176dc945442cf2c48926faad55aca1ed18ab65d934feecfd0026915fb0ab5e3f"
+      "sha256": "b98686596e5ff6b4505230e2d0e9563fccfa52ec4271a23be26a2f93977f07be"
     },
     {
       "source": "src/document-parser.js",
@@ -92,7 +92,7 @@
     {
       "source": "src/document-actions.js",
       "destination": "document-actions.js",
-      "sha256": "d85e735c5b25546cbd764cebf5843444ac1cecad1282e433d45b26fa3a14b676"
+      "sha256": "9975f3fa301710a8533bcba0253f82e3ced43aae64c05738825ab82e20ee63e6"
     },
     {
       "source": "src/tuning-gemini.js",
@@ -135,14 +135,19 @@
       "sha256": "3d10c906d0082b0873afd8914f88fca4a6ffe5caa7833e9266cbab024666ce91"
     },
     {
+      "source": "src/translation-job-limits.js",
+      "destination": "translation-job-limits.js",
+      "sha256": "01a5c392e50dece01d3d00d8f202eef495c7c77a82dc64636acb105e3ce5c6ec"
+    },
+    {
       "source": "src/translation-jobs.js",
       "destination": "translation-jobs.js",
-      "sha256": "f51d4bdd1ceb7e5af1a37356b7b55e22a0bc919c58ff9d791b3b3feaf4020954"
+      "sha256": "e0259f335f23208fb880568487359b8a7f58c61d2c7b4b1ee6072cb55bca7d32"
     },
     {
       "source": "src/translation-job-actions.js",
       "destination": "translation-job-actions.js",
-      "sha256": "8cf7c3a6f95e8070af87e1cd0b8f66a6b2929919c43b1e9848cd0e5b281dbd71"
+      "sha256": "9489f46f4e77bb179439cf66b4ea8eb08bf95e30ac2de80d7a2b923ecb652b9e"
     },
     {
       "source": "src/chat-limits.js",
@@ -203,6 +208,16 @@
       "source": "NOTICE",
       "destination": "NOTICE",
       "sha256": "91424905df6ef3e602591ed759c25d56369ea5f2549ca2fa10a3e16ac7dfb18f"
+    },
+    {
+      "source": "src/translation-job-limits.js",
+      "destination": "../../../api-contract/translation-job-limits.js",
+      "sha256": "01a5c392e50dece01d3d00d8f202eef495c7c77a82dc64636acb105e3ce5c6ec"
+    },
+    {
+      "source": "src/translation-job-limits.js",
+      "destination": "../public/translation-job-limits.js",
+      "sha256": "01a5c392e50dece01d3d00d8f202eef495c7c77a82dc64636acb105e3ce5c6ec"
     },
     {
       "source": "src/job-review-actions.js",
@@ -272,7 +287,7 @@
     {
       "source": "src/document-actions.js",
       "destination": "../../../api-contract/document-actions.js",
-      "sha256": "d85e735c5b25546cbd764cebf5843444ac1cecad1282e433d45b26fa3a14b676"
+      "sha256": "9975f3fa301710a8533bcba0253f82e3ced43aae64c05738825ab82e20ee63e6"
     },
     {
       "source": "contracts/202610290100_document_jobs.sql",
@@ -302,7 +317,7 @@
     {
       "source": "src/translation-job-actions.js",
       "destination": "../../../api-contract/translation-job-actions.js",
-      "sha256": "8cf7c3a6f95e8070af87e1cd0b8f66a6b2929919c43b1e9848cd0e5b281dbd71"
+      "sha256": "9489f46f4e77bb179439cf66b4ea8eb08bf95e30ac2de80d7a2b923ecb652b9e"
     },
     {
       "source": "contracts/202610281800_translation_jobs.sql",
@@ -317,7 +332,7 @@
     {
       "source": "ui/translation-jobs.js",
       "destination": "../public/translation-jobs.js",
-      "sha256": "7dfd9fb13686827f42fcfa1867df70f4e309bb15ac575214d8678dab1e0a0ffa"
+      "sha256": "379e4eb8f27ad743835aad10357654c9f7e3aaa12c0f7ca4a54ac26ded851db7"
     },
     {
       "source": "src/chat-limits.js",

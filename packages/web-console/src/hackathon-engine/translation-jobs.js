@@ -2,8 +2,9 @@
 import { randomUUID } from 'node:crypto';
 import { fail } from './errors.js';
 import { isAiOnly,jobCoverage } from './job-scope.js';
+import { TRANSLATION_JOB_LIMITS } from './translation-job-limits.js';
+export { TRANSLATION_JOB_LIMITS } from './translation-job-limits.js';
 
-export const TRANSLATION_JOB_LIMITS = Object.freeze({ defaultPairs: 100, maximumPairs: 200, promptBytes: 65536, outputTokens: 2048, attempts: 2 });
 const active = ['queued', 'running'];
 const projectSql = `select p.id,p.slug,p.name,p.source_locale as "sourceLocale",p.business_unit_id as "businessUnitId",b.organization_id as "organizationId"
   from projects p join business_units b on b.id=p.business_unit_id join localization_jobs j on j.project_id=p.id where j.id=$1 and p.data_purged_at is null`;
@@ -55,15 +56,24 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
     const selected = new Set(sources.map(s => s.id));
     const selectedExisting = existing.filter(r => selected.has(r.source_string_id));
     const saved = new Set(selectedExisting.map(r => `${r.source_string_id}:${r.locale}`));
-    const maximum = input.maxTranslations ?? (job.source_document_id ? TRANSLATION_JOB_LIMITS.maximumPairs : TRANSLATION_JOB_LIMITS.defaultPairs);
-    if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > TRANSLATION_JOB_LIMITS.maximumPairs) throw fail(400, 'Choose between 1 and 200 translations per batch.', 'job_batch_limit');
+    const maximum = input.maxTranslations ?? TRANSLATION_JOB_LIMITS.defaultPairs;
+    if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > TRANSLATION_JOB_LIMITS.maximumPairs) throw fail(400, `Choose between 1 and ${TRANSLATION_JOB_LIMITS.maximumPairs.toLocaleString('en-US')} translations per batch.`, 'job_batch_limit');
     const missing = sources.flatMap(s => job.target_locales.filter(locale => !saved.has(`${s.id}:${locale}`)).map(locale => ({ sourceId: s.id, locale })));
     if (!missing.length) throw fail(409, 'Every source/language pair already has a translation. Existing translations are preserved; use Review to revise one.', 'job_nothing_missing');
     const items = [];
-    for (const pair of missing.slice(0, maximum)) {
-      const plan = await inspect({ ...pair, p, auth, db, aiOnly:isAiOnly(job) });
-      if (plan.promptBytes > TRANSLATION_JOB_LIMITS.promptBytes) throw fail(400, 'A translation prompt is too large. Reduce its context or Library guidance before starting.', 'job_prompt_limit');
-      items.push({ ...pair, fingerprint: plan.fingerprint, creditCeiling: plan.creditCeiling, promptBytes: plan.promptBytes, provider: plan.provider, model: plan.model, mode: plan.mode });
+    const selectedPairs = missing.slice(0, maximum);
+    // Prepare a bounded number of read-only inspections together. Preserve input
+    // order for approval fingerprints and drain all reads before a rollback.
+    // Model execution remains sequential in the durable worker below.
+    for (let offset = 0; offset < selectedPairs.length; offset += 8) {
+      const results = await Promise.allSettled(selectedPairs.slice(offset, offset + 8).map(async pair => {
+        const plan = await inspect({ ...pair, p, auth, db, aiOnly:isAiOnly(job) });
+        if (plan.promptBytes > TRANSLATION_JOB_LIMITS.promptBytes) throw fail(400, 'A translation prompt is too large. Reduce its context or Library guidance before starting.', 'job_prompt_limit');
+        return { ...pair, fingerprint: plan.fingerprint, creditCeiling: plan.creditCeiling, promptBytes: plan.promptBytes, provider: plan.provider, model: plan.model, mode: plan.mode };
+      }));
+      const rejected = results.find(result => result.status === 'rejected');
+      if (rejected) throw rejected.reason;
+      items.push(...results.map(result => result.value));
     }
     const provider = items[0];
     if (items.some(item => item.provider !== provider.provider || item.model !== provider.model || item.mode !== provider.mode)) throw fail(409, 'Provider settings changed. Request a fresh preview.', 'job_provider_changed');
@@ -94,7 +104,10 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
       const actor = { principalType: 'user', user: { id: auth.user.id, platformStaff: false }, executionType: 'agent', platformAdmin: false,
         identityConnectionId: auth.identityConnectionId || null, agentRunId: proposal.run_id || null };
       await db.query("update localization_jobs set status='queued',started_at=now(),execution=$2 where id=$1", [job.id, { summary: prepared.summary, actor, proposalId: proposal.id }]);
-      for (const [ordinal, item] of prepared.items.entries()) await db.query(`insert into localization_job_items(job_id,source_string_id,locale,ordinal,expected_fingerprint,credit_ceiling) values($1,$2,$3,$4,$5,$6)`, [job.id, item.sourceId, item.locale, ordinal, item.fingerprint, item.creditCeiling]);
+      await db.query(`insert into localization_job_items(job_id,source_string_id,locale,ordinal,expected_fingerprint,credit_ceiling)
+        select $1,item."sourceId",item.locale,item.ordinal,item.fingerprint,item."creditCeiling"
+        from jsonb_to_recordset($2::jsonb) as item("sourceId" uuid,locale text,ordinal integer,fingerprint text,"creditCeiling" numeric)`,
+        [job.id, JSON.stringify(prepared.items.map((item, ordinal) => ({ ...item, ordinal })))]);
     }
     return { job: { id: job.id, name: job.name, status: name === 'localization_job.cancel' ? 'canceled' : 'queued', batch: prepared.summary || null }, projectSlug: p.slug, uiTarget: target(p, job.id, name) };
   }
