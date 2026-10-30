@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { randomUUID } from 'node:crypto';
 import { fail } from './errors.js';
+import { isAiOnly,jobCoverage } from './job-scope.js';
+import { TRANSLATION_JOB_LIMITS } from './translation-job-limits.js';
+import { TRANSLATION_OUTPUT_ERRORS } from './translation-output-errors.js';
+export { TRANSLATION_JOB_LIMITS } from './translation-job-limits.js';
 
-export const TRANSLATION_JOB_LIMITS = Object.freeze({ defaultPairs: 100, maximumPairs: 200, promptBytes: 65536, outputTokens: 2048, attempts: 2 });
 const active = ['queued', 'running'];
 const projectSql = `select p.id,p.slug,p.name,p.source_locale as "sourceLocale",p.business_unit_id as "businessUnitId",b.organization_id as "organizationId"
   from projects p join business_units b on b.id=p.business_unit_id join localization_jobs j on j.project_id=p.id where j.id=$1 and p.data_purged_at is null`;
@@ -23,10 +26,11 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
   async function read(input, auth, context = {}, db = database) {
     const { p, job } = await load(input, auth, context, db);
     const counts = (await db.query('select status,count(*)::int as count from localization_job_items where job_id=$1 group by status', [job.id])).rows;
-    const errors = (await db.query(`select locale,error_code as code,error_message as message from localization_job_items
+    const errors = (await db.query(`select source_string_id as "sourceId",locale,error_code as code,error_message as message from localization_job_items
       where job_id=$1 and error_code is not null order by ordinal limit 5`, [job.id])).rows;
     return { job: { id: job.id, name: job.name, status: job.status, projectSlug: p.slug,
       targetLocales: job.target_locales, steps: job.steps, documentId: job.source_document_id || null, progress: Object.fromEntries(counts.map(r => [r.status, r.count])),
+      workflow: isAiOnly(job) ? 'AI-only translations' : job.steps.map(step=>({machine_translation:'AI Translation',human_translation:'Human translation',review:'Review',qa:'Quality check'})[step]||step).join(' → '), coverage: await jobCoverage(db,job),
       batch: job.execution?.summary || null, startedAt: job.started_at, finishedAt: job.finished_at, errors },
     uiTarget: target(p, job.id, 'localization_job.status') };
   }
@@ -53,15 +57,24 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
     const selected = new Set(sources.map(s => s.id));
     const selectedExisting = existing.filter(r => selected.has(r.source_string_id));
     const saved = new Set(selectedExisting.map(r => `${r.source_string_id}:${r.locale}`));
-    const maximum = input.maxTranslations ?? (job.source_document_id ? TRANSLATION_JOB_LIMITS.maximumPairs : TRANSLATION_JOB_LIMITS.defaultPairs);
-    if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > TRANSLATION_JOB_LIMITS.maximumPairs) throw fail(400, 'Choose between 1 and 200 translations per batch.', 'job_batch_limit');
+    const maximum = input.maxTranslations ?? TRANSLATION_JOB_LIMITS.defaultPairs;
+    if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > TRANSLATION_JOB_LIMITS.maximumPairs) throw fail(400, `Choose between 1 and ${TRANSLATION_JOB_LIMITS.maximumPairs.toLocaleString('en-US')} translations per batch.`, 'job_batch_limit');
     const missing = sources.flatMap(s => job.target_locales.filter(locale => !saved.has(`${s.id}:${locale}`)).map(locale => ({ sourceId: s.id, locale })));
     if (!missing.length) throw fail(409, 'Every source/language pair already has a translation. Existing translations are preserved; use Review to revise one.', 'job_nothing_missing');
     const items = [];
-    for (const pair of missing.slice(0, maximum)) {
-      const plan = await inspect({ ...pair, p, auth, db });
-      if (plan.promptBytes > TRANSLATION_JOB_LIMITS.promptBytes) throw fail(400, 'A translation prompt is too large. Reduce its context or Library guidance before starting.', 'job_prompt_limit');
-      items.push({ ...pair, fingerprint: plan.fingerprint, creditCeiling: plan.creditCeiling, promptBytes: plan.promptBytes, provider: plan.provider, model: plan.model, mode: plan.mode });
+    const selectedPairs = missing.slice(0, maximum);
+    // Prepare a bounded number of read-only inspections together. Preserve input
+    // order for approval fingerprints and drain all reads before a rollback.
+    // Model execution remains sequential in the durable worker below.
+    for (let offset = 0; offset < selectedPairs.length; offset += 8) {
+      const results = await Promise.allSettled(selectedPairs.slice(offset, offset + 8).map(async pair => {
+        const plan = await inspect({ ...pair, p, auth, db, aiOnly:isAiOnly(job) });
+        if (plan.promptBytes > TRANSLATION_JOB_LIMITS.promptBytes) throw fail(400, 'A translation prompt is too large. Reduce its context or Library guidance before starting.', 'job_prompt_limit');
+        return { ...pair, fingerprint: plan.fingerprint, creditCeiling: plan.creditCeiling, promptBytes: plan.promptBytes, provider: plan.provider, model: plan.model, mode: plan.mode };
+      }));
+      const rejected = results.find(result => result.status === 'rejected');
+      if (rejected) throw rejected.reason;
+      items.push(...results.map(result => result.value));
     }
     const provider = items[0];
     if (items.some(item => item.provider !== provider.provider || item.model !== provider.model || item.mode !== provider.mode)) throw fail(409, 'Provider settings changed. Request a fresh preview.', 'job_provider_changed');
@@ -78,9 +91,11 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
       cost: `${credit} At most ${summary.maximumRequests} generation requests and ${summary.maximumOutputTokens} output tokens, including one validation retry per translation.`,
       sideEffects: [`Translate ${summary.pairs} missing source/language pairs using the active instructions, personas and glossary.`,
         `Keep existing translations unchanged (${summary.preservedPairs}). ${summary.remainingPairs} additional missing pairs remain outside this batch.`,
-        'Save generated drafts with placeholder, glossary and length checks. Human review, approval and publication remain separate.',
+        isAiOnly(job) ? 'Save AI-only translations. There is no review, verification or QA workflow step. Basic generation integrity checks still apply. These translations are not marked human-verified.' : 'Save generated drafts with placeholder, glossary and length checks. Human review, approval and publication remain separate.',
+        isAiOnly(job) ? 'Complete the job when all source/language pairs are present. A bounded batch with missing pairs remains partially translated. Opening a PR is a separate confirmation.' : 'Human review and publication require separate actions.',
         'Continue in the background if you close or pause chat. Use Stop job to cancel remaining work.',
-        'If inputs or access change, or a request fails, stop and keep any drafts already saved.'] } };
+        'Flag individual translations that fail output, placeholder, glossary or hard-length checks after two attempts; keep them unsaved and continue the remaining approved work.',
+        'If inputs or access change, a budget blocks work, or a provider request fails, stop and keep any drafts already saved.'] } };
   }
   async function apply(name, prepared, proposal, auth, db) {
     const { p, job } = prepared;
@@ -91,12 +106,16 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
       const actor = { principalType: 'user', user: { id: auth.user.id, platformStaff: false }, executionType: 'agent', platformAdmin: false,
         identityConnectionId: auth.identityConnectionId || null, agentRunId: proposal.run_id || null };
       await db.query("update localization_jobs set status='queued',started_at=now(),execution=$2 where id=$1", [job.id, { summary: prepared.summary, actor, proposalId: proposal.id }]);
-      for (const [ordinal, item] of prepared.items.entries()) await db.query(`insert into localization_job_items(job_id,source_string_id,locale,ordinal,expected_fingerprint,credit_ceiling) values($1,$2,$3,$4,$5,$6)`, [job.id, item.sourceId, item.locale, ordinal, item.fingerprint, item.creditCeiling]);
+      await db.query(`insert into localization_job_items(job_id,source_string_id,locale,ordinal,expected_fingerprint,credit_ceiling)
+        select $1,item."sourceId",item.locale,item.ordinal,item.fingerprint,item."creditCeiling"
+        from jsonb_to_recordset($2::jsonb) as item("sourceId" uuid,locale text,ordinal integer,fingerprint text,"creditCeiling" numeric)`,
+        [job.id, JSON.stringify(prepared.items.map((item, ordinal) => ({ ...item, ordinal })))]);
     }
     return { job: { id: job.id, name: job.name, status: name === 'localization_job.cancel' ? 'canceled' : 'queued', batch: prepared.summary || null }, projectSlug: p.slug, uiTarget: target(p, job.id, name) };
   }
   async function settle(db, jobId) {
-    await db.query(`update localization_jobs j set status=case when exists(select 1 from localization_job_items i where i.job_id=j.id and i.status in ('failed','uncertain')) then 'needs_attention' else 'awaiting_review' end,finished_at=now()
+    await db.query(`update localization_jobs j set status=case when exists(select 1 from localization_job_items i where i.job_id=j.id and i.status in ('failed','uncertain')) then 'needs_attention'
+      when j.steps=array['machine_translation']::text[] then case when (select count(*) from translations t where t.source_string_id in (select (s->>'id')::uuid from jsonb_array_elements(j.source_snapshot) s) and t.locale=any(j.target_locales) and length(trim(t.text))>0)=jsonb_array_length(j.source_snapshot)*cardinality(j.target_locales) then 'completed' else 'partially_translated' end else 'awaiting_review' end,finished_at=now()
       where j.id=$1 and j.status in ('queued','running') and not exists(select 1 from localization_job_items i where i.job_id=j.id and i.status in ('queued','running'))`, [jobId]);
   }
   async function tick() {
@@ -127,13 +146,13 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
       const currentItem = (await db.query('select status,lease_token from localization_job_items where id=$1' + (lock ? ' for update' : ''), [item.id])).rows[0];
       if (!active.includes(current.status) || currentItem?.status !== 'running' || currentItem.lease_token !== token) throw fail(409, 'This job stopped before the result could be saved.', 'job_stopped');
       if (lock) await db.query('select id from source_strings where id=$1 for update', [item.source_string_id]);
-      const plan = await inspect({ sourceId: item.source_string_id, locale: item.locale, p, auth, db });
+      const plan = await inspect({ sourceId: item.source_string_id, locale: item.locale, p, auth, db, aiOnly:isAiOnly(job) });
       if (plan.fingerprint !== item.expected_fingerprint || plan.creditCeiling > Number(item.credit_ceiling)) throw fail(409, 'Source content, translations, guidance or provider settings changed. Start a fresh batch.', 'job_inputs_changed');
       return { p, plan };
     };
     try {
       const { p, plan } = await guard(database);
-      await execute({ p, auth, sourceId: item.source_string_id, locale: item.locale, plan, creditCeiling: Number(item.credit_ceiling),
+      await execute({ p, auth, aiOnly:isAiOnly(job), sourceId: item.source_string_id, locale: item.locale, plan, creditCeiling: Number(item.credit_ceiling),
         jobId: job.id, itemId: item.id, beforeCall: () => guard(database), beforeSave: db => guard(db, true),
         afterSave: async db => {
           await db.query("update localization_job_items set status='succeeded',finished_at=now() where id=$1 and lease_token=$2 and status='running'", [item.id, token]);
@@ -142,10 +161,11 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
     } catch (error) {
       await transaction(async db => {
         await db.query('select id from localization_jobs where id=$1 for update', [job.id]);
-        const code = ['job_stopped','job_inputs_changed','byok_key_missing','job_access_denied','job_entitlement_required'].includes(error.code) ? error.code : 'job_translation_failed';
-        const message = code === 'job_translation_failed' ? 'Translation could not finish. Check provider access, usage limits and source constraints before starting a new batch.' : error.message;
+        const outputFailure = Object.hasOwn(TRANSLATION_OUTPUT_ERRORS, error.code);
+        const code = outputFailure || ['job_stopped','job_inputs_changed','byok_key_missing','job_access_denied','job_entitlement_required'].includes(error.code) ? error.code : 'job_translation_failed';
+        const message = outputFailure ? TRANSLATION_OUTPUT_ERRORS[code] : code === 'job_translation_failed' ? 'Translation could not finish. Check provider access, usage limits and source constraints before starting a new batch.' : error.message;
         await db.query("update localization_job_items set status=$3,error_code=$4,error_message=$5,finished_at=now() where id=$1 and lease_token=$2 and status='running'", [item.id, token, code === 'job_stopped' ? 'canceled' : 'failed', code, message]);
-        await db.query("update localization_job_items set status='canceled',finished_at=now() where job_id=$1 and status='queued'", [job.id]);
+        if (!outputFailure) await db.query("update localization_job_items set status='canceled',finished_at=now() where job_id=$1 and status='queued'", [job.id]);
         await settle(db, job.id);
       });
     }

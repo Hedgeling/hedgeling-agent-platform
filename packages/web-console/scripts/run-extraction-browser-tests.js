@@ -51,7 +51,7 @@ try {
   await chat.getByRole('button', { name: 'Minimize chat', exact: true }).click();
   await page.evaluate(() => window.HedgelingConsole.openWorkspace());
   const panel = page.locator('.extraction-panel');
-  await panel.locator('summary').click();
+  await panel.locator(':scope > summary').click();
   await expect(panel.getByRole('button', { name: 'Review extraction', exact: true })).toBeVisible();
   await panel.getByRole('button', { name: 'Review extraction', exact: true }).click();
   await expect(panel.locator('.workspace-confirmation')).toContainText('Review this step');

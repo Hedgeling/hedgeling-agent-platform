@@ -7,6 +7,79 @@ import { setupTranslationJobs as setup } from '../test-support/translation-jobs.
 const manualController = crypto.randomUUID();
 const options = { skip: process.env.HEDGELING_REQUIRE_AGENT_TEST_DATABASE !== 'true' };
 
+for (const scenario of [
+  {name:'glossary',code:'job_glossary_invalid',text:'Salut {name}'},
+  {name:'placeholders',code:'job_placeholders_invalid',text:'Bonjour ami'},
+  {name:'hard length',code:'job_length_invalid',text:'Bonjour et bienvenue {name}',limit:12},
+  {name:'invalid output',code:'job_output_invalid',text:'[fr] Bonjour {name}'},
+  {name:'AI-only glossary',code:'job_glossary_invalid',text:'Salut {name}',aiOnly:true},
+]) test(`${scenario.name} rejection flags one item and continues the same approved job`,options,async t=>{
+  const a=await setup(t,3);
+  const first=(await a.database.query('select id from source_strings where project_id=$1 order by id limit 1',[a.project.id])).rows[0].id;
+  if(scenario.limit)await a.database.query('update source_strings set limit_chars=$2 where id=$1',[first,scenario.limit]);
+  const job=(await a.confirm(await a.preview('localization_job.create',{projectSlug:a.project.slug,name:'Continue after validation',targetLocales:['fr'],steps:scenario.aiOnly?['machine_translation']:['machine_translation','review']}))).result.job;
+  let release;const gate=new Promise(resolve=>{release=resolve;});t.after(release);
+  a.meta.control.beforeResponse=async()=>{
+    a.meta.control.text=a.meta.calls.length<=2?scenario.text:'Bonjour {name}';
+    if(a.meta.calls.length===3)await gate;
+  };
+  const proposal=await a.preview('localization_job.start',{jobId:job.id});
+  assert.equal(proposal.preview.resources.batch.maximumRequests,6);
+  await a.confirm(proposal);
+  await eventually(async()=>a.meta.calls.length,n=>n===3);
+  const working=await a.status(job.id);
+  assert.equal(working.status,'running');assert.equal(working.progress.failed,1);
+  assert.equal(working.progress.running,1);assert.equal(working.progress.queued,1);assert.equal(working.progress.canceled,undefined);
+  assert.equal(working.errors[0].code,scenario.code);assert.equal(working.errors[0].sourceId,first);
+  assert.match(working.errors[0].message,/after two attempts/);assert.match(working.errors[0].message,/not saved/);
+  release();const final=await a.done(job.id);
+  assert.equal(final.status,'needs_attention');assert.equal(final.progress.succeeded,2);assert.equal(final.progress.failed,1);
+  assert.equal(final.progress.canceled,undefined);assert.equal(final.coverage.missing,1);assert.equal(final.coverage.verified,0);
+  assert.equal(a.meta.calls.length,4);
+  assert.equal((await a.database.query('select count(*)::int n from translations where source_string_id=$1',[first])).rows[0].n,0);
+  const usage=(await a.database.query("select outcome,metadata from usage_events where metadata->>'localizationJobId'=$1 order by occurred_at",[job.id])).rows;
+  assert.deepEqual(usage.map(u=>u.outcome),['failed','succeeded','succeeded']);assert.equal(usage[0].metadata.attempts.length,2);
+  assert.equal((await a.database.query('select count(*)::int n from job_quality_runs where job_id=$1',[job.id])).rows[0].n,0);
+  const retry=await a.draft('Only the remaining translation');
+  const next=await a.preview('localization_job.start',{jobId:retry.id});
+  assert.equal(next.preview.resources.batch.pairs,1);assert.equal(next.preview.resources.batch.preservedPairs,2);
+  assert.equal(a.meta.calls.length,4);
+});
+
+test('a validation failure on the last item settles with saved drafts preserved',options,async t=>{
+  const a=await setup(t,2),job=await a.draft();
+  a.meta.control.beforeResponse=()=>{a.meta.control.text=a.meta.calls.length===1?'Bonjour {name}':'Salut {name}';};
+  await a.confirm(await a.preview('localization_job.start',{jobId:job.id}));
+  const final=await a.done(job.id);
+  assert.equal(final.status,'needs_attention');assert.equal(final.progress.succeeded,1);assert.equal(final.progress.failed,1);
+  assert.equal(final.progress.queued,undefined);assert.equal(final.progress.running,undefined);assert.equal(a.meta.calls.length,3);
+});
+
+test('one start confirmation queues all 200 strings × 14 locales and replay cannot create another batch', { ...options, timeout: 180000 }, async t => {
+  const a = await setup(t, 200);
+  const targetLocales = ['fr','de','es','it','pt','nl','pl','sv','da','fi','ja','ko','uk','ru'];
+  for (const locale of targetLocales.slice(1)) await a.database.query('insert into locales(project_id,locale) values($1,$2)', [a.project.id, locale]);
+  const job = (await a.confirm(await a.preview('localization_job.create', { projectSlug: a.project.slug, name: 'Fourteen-language launch', targetLocales, steps: ['machine_translation','review'] }))).result.job;
+  const before = Date.now();
+  const proposal = await a.preview('localization_job.start', { jobId: job.id });
+  t.diagnostic(`2,800-pair preview: ${Date.now()-before} ms`);
+  const batch = proposal.preview.resources.batch;
+  assert.equal(batch.pairs, 2800); assert.equal(batch.remainingPairs, 0); assert.equal(batch.sourceCount, 200);
+  assert.equal(batch.maximumRequests, 5600); assert.equal(a.meta.calls.length, 0);
+  let release; const gate = new Promise(resolve => { release=resolve; }); t.after(release);
+  a.meta.control.beforeResponse = () => gate;
+  const started = Date.now();
+  await a.confirm(proposal);
+  t.diagnostic(`2,800-pair revalidation and queue: ${Date.now()-started} ms`);
+  assert.equal((await a.confirm(proposal)).replayed, true);
+  const rows = (await a.database.query('select locale,count(*)::int n from localization_job_items where job_id=$1 group by locale', [job.id])).rows;
+  assert.equal(rows.length, 14); assert(rows.every(r=>r.n===200));
+  await eventually(async()=>a.meta.calls.length, n=>n===1);
+  await a.confirm(await a.preview('localization_job.cancel', {jobId:job.id})); release();
+  const final = await eventually(()=>a.status(job.id), j=>j && !j.progress.running);
+  assert.equal(final.status,'canceled'); assert.equal(final.progress.canceled,2800); assert.equal(a.meta.calls.length,1);
+});
+
 test('bounded translation starts only on confirmation; replay cannot spend twice; Meta saves review drafts with Library provenance', options, async t => {
   const a = await setup(t), { database, request, meta } = a;
   const job = await a.draft();

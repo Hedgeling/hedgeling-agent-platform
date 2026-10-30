@@ -1,4 +1,5 @@
-import { translationJobProgress } from './translation-jobs.js';
+import { translationJobProgress, jobQualityPanel } from './translation-jobs.js';
+import { contextProgress } from './context-enrichment.js';
 import { openDocumentUpload, fileCard } from './documents.js';
 import { renderChatMarkdown } from "./chat-markdown.js";
 import { request, element, proposalCard, Workspace, typewriterComposer } from "./agent-components.js";
@@ -191,10 +192,29 @@ function receive(item, { replay = false } = {}) {
     confirmed.add(data.proposalId);
     const card = shell.querySelector(`[data-proposal-id="${data.proposalId}"]`);
     if (card) card.replaceChildren(element("p", "agent-receipt", "✓ Change confirmed"));
+    if (data.uiTarget?.action === 'repositories.connect') {
+      message('assistant', `${data.repository} is connected. We can now preview a scan of your selected paths.`, { replay });
+      if (!replay) for (const panel of document.querySelectorAll('[data-project-id]')) {
+        if (panel.dataset.projectId === data.uiTarget.resource?.id) panel.dispatchEvent(new Event('repository-refresh'));
+      }
+    }
     const resource = data.organization || data.businessUnit || data.project || data.job;
+    if (data.qualityRun) {
+      message('assistant', data.qualityRun.status === 'applied' ? `${data.qualityRun.verified} passing translations verified after your confirmation.` : data.qualityRun.status === 'cancelled' ? 'Remaining quality checks stopped.' : 'AI quality check queued. Findings appear below; verification requires a separate confirmation.', { replay });
+      $('agentMessages').append(jobQualityPanel({ jobId:data.qualityRun.jobId,runId:data.qualityRun.id,request,open:true,onPreview:async(action,input)=>{
+        if(run?.status!=='awaiting_input') throw new Error('Finish the current chat turn first, or use the job controls in Projects.');
+        await request(`/api/agent/runs/${run.id}/messages`,{controllerId,text:`Please prepare ${action} with ${JSON.stringify(input)}. Show the findings and wait for my confirmation.`});
+      } }));
+    }
+    if(data.pullRequest) { const receipt=element('p','agent-receipt','Translation PR ready: '), link=element('a','',`PR #${data.pullRequest.number}`);link.href=data.pullRequest.url;link.target='_blank';link.rel='noopener noreferrer';receipt.append(link,document.createTextNode(' · Merge and deployment remain separate.'));$('agentMessages').append(receipt); }
+    if (data.contextRun) $('agentMessages').append(contextProgress({ runId: data.contextRun.id, request, onReview: async contextRun => {
+      if (run?.status !== 'awaiting_input') throw new Error('Finish the current chat turn first, or review the analysis in Projects.');
+      await request(`/api/agent/runs/${run.id}/messages`, { controllerId, text: `Review context enrichment ${contextRun.id}. Summarize the suggestions and prepare accepting them; wait for my approval.` });
+    } }));
+    if (data.uiTarget?.action === 'context.enrich' && data.accepted) message('assistant', `${data.accepted} context suggestions accepted for future translations. Existing translations and enforced limits are unchanged.`, { replay });
     if (data.library) message('assistant', data.library.status === 'submitted' ? `${data.library.label} was submitted for review. Active guidance is unchanged.` : data.library.status === 'rejected' ? `${data.library.label}: suggestion rejected.` : `${data.library.label} saved${data.library.active ? ' and active for future revisions' : ' as inactive guidance'}.`, { replay });
     if (data.job && data.job.status !== 'draft') {
-      message('assistant', data.job.status === 'canceled' ? `${data.job.name} is stopping. Saved drafts remain for review.` : `${data.job.name} is queued for translation. I’ll show its progress below; generated drafts still need your review.`, { replay });
+      message('assistant', data.job.status === 'canceled' ? `${data.job.name} is stopping. Saved drafts remain for review.` : `${data.job.name} is queued for translation. I’ll show its workflow and coverage below.`, { replay });
       $('agentMessages').append(translationJobProgress({ jobId: data.job.id, request,
         onStop: async jobId => {
           if (run?.status !== 'awaiting_input') throw new Error('Finish the current chat turn before requesting a job stop, or use Stop job in Projects.');

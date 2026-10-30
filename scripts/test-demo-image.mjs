@@ -14,5 +14,5 @@ try {
   run(['run', '--rm', '--network', 'host', '--mount', `type=bind,source=${tls},target=/run/hedgeling-test-tls,readonly`,
     '-e', 'HEDGELING_TEST_TLS_DIRECTORY=/run/hedgeling-test-tls', '-e', `TEST_DATABASE_URL=${database}`, '-e', 'HEDGELING_REQUIRE_AGENT_TEST_DATABASE=true', image,
     'node', '--test', 'packages/web-console/test/agent-console.integration.mjs', 'packages/web-console/test/project-locales.integration.mjs', 'packages/web-console/test/library.integration.mjs',
-    'packages/web-console/test/documents.integration.mjs', 'packages/web-console/test/document-parsers.test.js', 'packages/web-console/test/translation-jobs.integration.mjs']);
+    'packages/web-console/test/context-enrichment.integration.mjs', 'packages/web-console/test/documents.integration.mjs', 'packages/web-console/test/document-parsers.test.js', 'packages/web-console/test/translation-jobs.integration.mjs']);
 } finally { rmSync(tls, { recursive: true, force: true }); }

@@ -1,13 +1,78 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "169064fc112f359a6d8e176f00e56beff5101711",
+  "revision": "7d3c8c50d63c97f3c463bc8b6845765420dc1d01",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
     {
+      "source": "src/job-scope.js",
+      "destination": "job-scope.js",
+      "sha256": "0acd3d24361541d8617311236bb9d3404bd920aa71f8e3717d0da5b6060d1308"
+    },
+    {
+      "source": "src/job-review-analysis.js",
+      "destination": "job-review-analysis.js",
+      "sha256": "7e25f4690e558fc95dcc80873ae6637dad1765ab500faae898d0770b8202d6b0"
+    },
+    {
+      "source": "src/job-review.js",
+      "destination": "job-review.js",
+      "sha256": "81a45103899000526452c3c7ad2791e660c232bc7628407364ef91cffd51651d"
+    },
+    {
+      "source": "src/job-review-actions.js",
+      "destination": "job-review-actions.js",
+      "sha256": "99e94a8fd82b76d74daeff6ad8923bc7f0de51063ffa7f7190a771506bf199c6"
+    },
+    {
+      "source": "src/job-delivery.js",
+      "destination": "job-delivery.js",
+      "sha256": "4d9774de5d03dcf9e0bf95b37683aad4a43f545244af10998f54d86b2afb6a8d"
+    },
+    {
+      "source": "src/job-delivery-actions.js",
+      "destination": "job-delivery-actions.js",
+      "sha256": "fd82acf7d5427e308743a33b068ff5f348269c7f40eb4d319cb853e89018d52f"
+    },
+    {
+      "source": "src/github-source.js",
+      "destination": "github-source.js",
+      "sha256": "6e7b39f34673729ea8b733c71bcb97e73127ca2e3bb89a938a5700eaef93e0db"
+    },
+    {
+      "source": "src/github-identity.js",
+      "destination": "github-identity.js",
+      "sha256": "c3dc6691f32739307dc7cd466ac1538ccb10605528dfdbb8beff7a22564152f5"
+    },
+    {
+      "source": "src/repositories.js",
+      "destination": "repositories.js",
+      "sha256": "36856b29c2fcec51c7834e9a03ad9282cf17ebca200f361eae9cb218e493ce3b"
+    },
+    {
+      "source": "src/repository-actions.js",
+      "destination": "repository-actions.js",
+      "sha256": "0c5bcb7b35cb221b8fb4026e01756f5aa9b49929155ad82a9bf2af14886155fd"
+    },
+    {
+      "source": "src/context-enrichment.js",
+      "destination": "context-enrichment.js",
+      "sha256": "547e0fc29d3a8ccced6f47414ae1e05a76177eecb0c09e41983f3d4f57a060d8"
+    },
+    {
+      "source": "src/context-analysis.js",
+      "destination": "context-analysis.js",
+      "sha256": "53269e9a7b2f1119199abd6b6b40d5bbc354af2afdf13eae0dffbe488c829950"
+    },
+    {
+      "source": "src/context-actions.js",
+      "destination": "context-actions.js",
+      "sha256": "ac5592b07d0ac8b483b747a054571df9cb6656aee922a91165957565f64c8891"
+    },
+    {
       "source": "src/documents.js",
       "destination": "documents.js",
-      "sha256": "176dc945442cf2c48926faad55aca1ed18ab65d934feecfd0026915fb0ab5e3f"
+      "sha256": "b98686596e5ff6b4505230e2d0e9563fccfa52ec4271a23be26a2f93977f07be"
     },
     {
       "source": "src/document-parser.js",
@@ -27,7 +92,7 @@
     {
       "source": "src/document-actions.js",
       "destination": "document-actions.js",
-      "sha256": "d85e735c5b25546cbd764cebf5843444ac1cecad1282e433d45b26fa3a14b676"
+      "sha256": "9975f3fa301710a8533bcba0253f82e3ced43aae64c05738825ab82e20ee63e6"
     },
     {
       "source": "src/tuning-gemini.js",
@@ -52,32 +117,42 @@
     {
       "source": "src/http.js",
       "destination": "http.js",
-      "sha256": "0c7b3b785f32aeb7134fa183e3b02874fca584e75e09706d3b9bf3363f8e3682"
+      "sha256": "3cce9cfa7778a8ccf3934da1fd91baf14505ba3df985cfd850a68963e988eb6d"
     },
     {
       "source": "src/engine-client.js",
       "destination": "engine-client.js",
-      "sha256": "46ca15165bd5182aa7af068cd47ca2336fca5f38cdb2b164221fc06916641a6d"
+      "sha256": "456848de285d33f7d6677b2739f30b59a3042f52d8793a73ff9b511d4d2009f8"
     },
     {
       "source": "src/engine-status.js",
       "destination": "engine-status.js",
-      "sha256": "b8f220225a754cc5dc5cf309a6727098c2cbc4494546795c47c06cfc97811aa2"
+      "sha256": "ded1e3ce0a751245876ebbf88f049c6b2a7f7db9cce99eda0a9c1ace1c220b96"
     },
     {
       "source": "src/engine-operations.js",
       "destination": "engine-operations.js",
-      "sha256": "37ac1286dd7e48d8eaa8a2a25d762b61d9d1a698869e74f5ba4ff76b72ed3ce7"
+      "sha256": "3d10c906d0082b0873afd8914f88fca4a6ffe5caa7833e9266cbab024666ce91"
+    },
+    {
+      "source": "src/translation-output-errors.js",
+      "destination": "translation-output-errors.js",
+      "sha256": "755c9ec4041d7a1ec7253e56af9699988e2068b9a7937f4e8c7b90453b02d1bf"
+    },
+    {
+      "source": "src/translation-job-limits.js",
+      "destination": "translation-job-limits.js",
+      "sha256": "01a5c392e50dece01d3d00d8f202eef495c7c77a82dc64636acb105e3ce5c6ec"
     },
     {
       "source": "src/translation-jobs.js",
       "destination": "translation-jobs.js",
-      "sha256": "012373fa52d1957c4c4841302974a0441871092a48f5fbbb2a51535e16286b2b"
+      "sha256": "361c7d6c02645c5a1b17236dfb9ecf72ab8d3272743dbbfd21358b233b2c072b"
     },
     {
       "source": "src/translation-job-actions.js",
       "destination": "translation-job-actions.js",
-      "sha256": "5b6c3ef001b9f4499cf50df6aab51b95dd949f0fa797cff248941124a78cac3e"
+      "sha256": "86fe5baaff49666574080be60bcb6f3fa7160e4b5c89e343eadb6bf4423a5549"
     },
     {
       "source": "src/chat-limits.js",
@@ -122,12 +197,12 @@
     {
       "source": "src/extraction-catalog.js",
       "destination": "extraction-catalog.js",
-      "sha256": "53c899ec169142503fbeef822723606b0f99a22f585323735ce03cc1b2950a01"
+      "sha256": "277339bf417c45ef059191dc372a3b0789e55b1dd2e91b0c3d5557818360efa6"
     },
     {
       "source": "src/extraction-workflow.js",
       "destination": "extraction-workflow.js",
-      "sha256": "04dba72ac5bacd653b62123bfec703f01ad4dd98d8769b0799c06bb470315ffe"
+      "sha256": "2d546d02b1b3023a22ce753af6f49a7e57b86926fb9a07189cebd2214c595a49"
     },
     {
       "source": "LICENSE",
@@ -140,9 +215,84 @@
       "sha256": "91424905df6ef3e602591ed759c25d56369ea5f2549ca2fa10a3e16ac7dfb18f"
     },
     {
+      "source": "src/translation-job-limits.js",
+      "destination": "../../../api-contract/translation-job-limits.js",
+      "sha256": "01a5c392e50dece01d3d00d8f202eef495c7c77a82dc64636acb105e3ce5c6ec"
+    },
+    {
+      "source": "src/translation-job-limits.js",
+      "destination": "../public/translation-job-limits.js",
+      "sha256": "01a5c392e50dece01d3d00d8f202eef495c7c77a82dc64636acb105e3ce5c6ec"
+    },
+    {
+      "source": "src/job-review-actions.js",
+      "destination": "../../../api-contract/job-review-actions.js",
+      "sha256": "99e94a8fd82b76d74daeff6ad8923bc7f0de51063ffa7f7190a771506bf199c6"
+    },
+    {
+      "source": "src/job-delivery-actions.js",
+      "destination": "../../../api-contract/job-delivery-actions.js",
+      "sha256": "fd82acf7d5427e308743a33b068ff5f348269c7f40eb4d319cb853e89018d52f"
+    },
+    {
+      "source": "contracts/202610292200_job_review_delivery.sql",
+      "destination": "../../db/migrations/202610292200_job_review_delivery.sql",
+      "sha256": "4450bac47f77d32ca603835ad758373a5361594a315d3a79ebd20276585bd8d0"
+    },
+    {
+      "source": "src/repository-actions.js",
+      "destination": "../../../api-contract/repository-actions.js",
+      "sha256": "0c5bcb7b35cb221b8fb4026e01756f5aa9b49929155ad82a9bf2af14886155fd"
+    },
+    {
+      "source": "contracts/202610292000_repository_connections.sql",
+      "destination": "../../db/migrations/202610292000_repository_connections.sql",
+      "sha256": "5cff7c8b3ba5c4d9b9382365e27d85a62e0fb36d4b839ed018148381e54b7199"
+    },
+    {
+      "source": "ui/repositories.js",
+      "destination": "../public/repositories.js",
+      "sha256": "bdb0e68cf6021dbeee30e1eee1a6ce0b37ece0fa8207b8b079bcfaf320857c96"
+    },
+    {
+      "source": "ui/github-callback.html",
+      "destination": "../public/github-callback.html",
+      "sha256": "059f302b1045afe4d009837969d9e56c4b3c3f8581c7bd17da861dd3aa075c45"
+    },
+    {
+      "source": "ui/github-callback.js",
+      "destination": "../public/github-callback.js",
+      "sha256": "e266ae0819272c2daa854475c01f93d4ba9f9b4b2075fc3b12e0874cfae4eb52"
+    },
+    {
+      "source": "src/context-actions.js",
+      "destination": "../../../api-contract/context-actions.js",
+      "sha256": "ac5592b07d0ac8b483b747a054571df9cb6656aee922a91165957565f64c8891"
+    },
+    {
+      "source": "contracts/202610291600_context_enrichment.sql",
+      "destination": "../../db/migrations/202610291600_context_enrichment.sql",
+      "sha256": "93429d6bc3f80f8a644c2cf0aff1ba2d1ee7686f56fc1edb2a76563f2d7784b1"
+    },
+    {
+      "source": "contracts/202610291601_context_retention.sql",
+      "destination": "../../db/migrations/202610291601_context_retention.sql",
+      "sha256": "8334c275843edb9751b0719c9f9ce7cc8a0c842ebb343edfbffda5e28874933f"
+    },
+    {
+      "source": "ui/context-enrichment.js",
+      "destination": "../public/context-enrichment.js",
+      "sha256": "1e3f0f103a4d7c7ae0803767803b1e63a2f7ac52da25af2d80ac2dfc95770111"
+    },
+    {
+      "source": "ui/context-enrichment.css",
+      "destination": "../public/context-enrichment.css",
+      "sha256": "8de7780761d6901975bca8074130c2f61e2cac4b49cb15ff85308ca448a87a92"
+    },
+    {
       "source": "src/document-actions.js",
       "destination": "../../../api-contract/document-actions.js",
-      "sha256": "d85e735c5b25546cbd764cebf5843444ac1cecad1282e433d45b26fa3a14b676"
+      "sha256": "9975f3fa301710a8533bcba0253f82e3ced43aae64c05738825ab82e20ee63e6"
     },
     {
       "source": "contracts/202610290100_document_jobs.sql",
@@ -172,7 +322,7 @@
     {
       "source": "src/translation-job-actions.js",
       "destination": "../../../api-contract/translation-job-actions.js",
-      "sha256": "5b6c3ef001b9f4499cf50df6aab51b95dd949f0fa797cff248941124a78cac3e"
+      "sha256": "86fe5baaff49666574080be60bcb6f3fa7160e4b5c89e343eadb6bf4423a5549"
     },
     {
       "source": "contracts/202610281800_translation_jobs.sql",
@@ -182,12 +332,12 @@
     {
       "source": "ui/translation-jobs.css",
       "destination": "../public/translation-jobs.css",
-      "sha256": "614c36c9c82f96fe83a15f2b8859e69842538619690e17dadfad6d8c9e38a14c"
+      "sha256": "daa4db80786ca673d798305c3c3e13f96c31fd9a5a1867ce946806b6f921dd20"
     },
     {
       "source": "ui/translation-jobs.js",
       "destination": "../public/translation-jobs.js",
-      "sha256": "6ad49793c482a35cafbe840f325d3f603e829d4f739dd4c2e8155b56af5ae75a"
+      "sha256": "2ebaaf979b8da28b31456db27dd34a7b148d2bb8a81382ed7e0c45fb30a32e74"
     },
     {
       "source": "src/chat-limits.js",
@@ -257,12 +407,12 @@
     {
       "source": "ui/extraction.js",
       "destination": "../public/extraction.js",
-      "sha256": "57d7887305279e78c8ab056e509537f81b1bdd6a87c4c86ec5eeac9db1660cb9"
+      "sha256": "9c1b9d725a18211c2ad8f3b1b8f5e497e1764a1639f2919df20c157c876856c2"
     },
     {
       "source": "ui/extraction.css",
       "destination": "../public/extraction.css",
-      "sha256": "0fd2c3748e957ef60dea8b428e3c73d6af35d2f1ee9f7ac2749df6544725bd50"
+      "sha256": "55b74c908624c470c8bb6dffa56780db17545a5f0358d143e0b88b72f1f568f7"
     }
   ]
 }

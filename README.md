@@ -31,6 +31,8 @@ DATABASE_URL=postgresql://platform:local-demo-only@127.0.0.1:55477/platform npm 
 
 Open the printed localhost login URL and paste the expiring token printed in your terminal. Keep that token private. The command migrates the local database and creates a named organization owner and a synthetic project. Stop with Ctrl+C; restart to issue a new session. Set `PORT` if port 8080 is occupied.
 
+For persistent local feature testing with background start/stop, server reloads, private configuration and synthetic plan access, use the [local development setup](docs/LOCAL-DEVELOPMENT.md). Keep feature batches on a development branch until ready to release them together.
+
 The default agent uses a deterministic fixture and the real platform API. **No AWS account, model key, production login, or paid inference is required.** This is a scripted demonstration, not a general language model. Select **Set up demo workspace** or type that phrase, then inspect and confirm each proposal. Existing integration/browser tests exercise the rest of the workflow with synthetic data.
 
 For real model chat, choose server-side Meta or Gemini configuration; see [demo hosting and Meta setup](docs/AWS-DEMO.md). The Meta Responses adapter supports tool calls, encrypted conversation replay, usage accounting, cancellation and bounded errors. **Organization Meta BYOK now supports contextual translation; chat remains managed. Bedrock and separate context-enrichment passes remain planned.** Keep keys on the server and configure an accessible model explicitly. The example environment file documents available settings; the local launcher expects exported environment variables and does not load `.env` automatically.

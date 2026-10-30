@@ -75,7 +75,11 @@ Bounded translation execution: event-authored start/status/stop API and MCP acti
 
 Event-owned tuning mode, broker, request limits, source disclosure, progress and report contracts are vendored from the standalone submission. The host adds selected Meta/Gemini BYOK access, usage reservation/settlement and the existing authenticated approval UI. The existing private tuner remains in the separate engine container; no extractor, prompts or npm release enter this repository.
 
-Human approval authorizes at most 80 candidate texts, one round and four requests (64 KiB prompt and 8192 output tokens each). Provider/permission changes stop processing; ambiguous inference outcomes are never redispatched. Saving accepted settings with re-extraction and importing the catalog each need their own confirmation. Chat and manual UI expose the same provider and scope. Context enrichment and character-limit calculation remain future integrations.
+Human approval authorizes at most 80 candidate texts, one round and four requests (64 KiB prompt and 8192 output tokens each). Provider/permission changes stop processing; ambiguous inference outcomes are never redispatched. Saving accepted settings with re-extraction and importing the catalog each need their own confirmation. Chat and manual UI expose the same provider and scope.
+
+### Local milestone: translator context (October 29)
+
+The event-authored context workflow generates descriptions and advisory character-count suggestions from imported source/code metadata. Manual UI, API and MCP share preview/confirm actions. One generation confirmation covers at most 20 strings, four context variants each, 64 KiB prompt bytes and 8,192 output tokens in one organization BYOK call. A separate acceptance confirmation enables the selected guidance in future translations. Existing translations and enforced limits remain unchanged; stale evidence excludes guidance until refreshed. The private engine adapter attaches bounded excerpts from its supplied snapshot, without moving extractor code into the public project. These changes are on local development branches and have not been deployed.
 
 ### Document translation and file delivery
 

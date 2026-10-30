@@ -36,7 +36,7 @@ try {
   await save.getByRole('button',{name:'Save settings and re-extract',exact:true}).click();
   await expect(chat.locator('.extraction-progress')).toHaveCount(2);assert.equal((await app.database.query('select count(*)::int n from source_strings')).rows[0].n,0);
   await expect(chat.locator('#agentInput')).toBeEnabled({timeout:20000});await chat.getByRole('button',{name:'Minimize chat',exact:true}).click();
-  await page.evaluate(()=>window.HedgelingConsole.openWorkspace());const panel=page.locator('.extraction-panel');await panel.locator('summary').click();
+  await page.evaluate(()=>window.HedgelingConsole.openWorkspace());const panel=page.locator('.extraction-panel');await panel.locator(':scope > summary').click();
   await panel.getByRole('button',{name:'View extraction config',exact:true}).click();await expect(panel.locator('.extraction-config')).toContainText('trackDebug');
   const downloadPromise=page.waitForEvent('download');await panel.getByRole('button',{name:'Download saved config',exact:true}).click();const download=await downloadPromise;
   assert.equal(download.suggestedFilename(),'extract.config.json');const config=JSON.parse(await fs.readFile(await download.path(),'utf8'));assert.deepEqual(config.excludeCallees,['trackDebug']);assert.deepEqual(config.scanRoots,['src']);

@@ -13,6 +13,7 @@ export async function engineStatus(env = process.env, options = {}) {
   if (typeof capabilities.sourceConfigured !== 'boolean' || !Array.isArray(capabilities.operations)
       || !Number.isSafeInteger(page.total) || page.total < 0) throw new Error('Engine capability response was invalid.');
   return { configured: true, reachable: true, sourceConfigured: capabilities.sourceConfigured,
-    status: capabilities.sourceConfigured ? 'ready' : 'github_setup_required',
-    operations: capabilities.operations.filter(value => ['extract', 'transform-preview'].includes(value)), connectionCount: page.total };
+    snapshotConfigured: capabilities.snapshotConfigured === true,
+    status: capabilities.sourceConfigured || capabilities.snapshotConfigured === true ? 'ready' : 'github_setup_required',
+    operations: capabilities.operations.filter(value => ['extract', 'transform-preview', 'tune', 'tune-llm'].includes(value)), connectionCount: page.total };
 }

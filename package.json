@@ -15,6 +15,10 @@
     "packages/web-console"
   ],
   "scripts": {
+    "local:start": "node packages/web-console/scripts/dev-site.js start",
+    "local:stop": "node packages/web-console/scripts/dev-site.js stop",
+    "local:status": "node packages/web-console/scripts/dev-site.js status",
+    "local:open": "node packages/web-console/scripts/dev-site.js open",
     "build": "npm run build --workspaces",
     "lint": "npm run lint --workspaces",
     "test": "npm test --workspaces",

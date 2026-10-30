@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { AgentError } from './errors.js';
 
-export function serverUrl(value, label) {
+export function serverUrl(value, label, { allowLoopbackHttp = false } = {}) {
   let url;
   try { url = new URL(value); } catch { throw new AgentError(503, `${label} must be configured with an HTTPS URL.`); }
-  if (url.protocol !== 'https:' || url.username || url.password || url.hash || url.search) {
+  const local = allowLoopbackHttp && url.protocol === 'http:' && url.hostname === '127.0.0.1';
+  if (!local && url.protocol !== 'https:' || url.username || url.password || url.hash || url.search) {
     throw new AgentError(503, `${label} requires HTTPS without embedded credentials, query parameters, or fragments.`);
   }
   return url;

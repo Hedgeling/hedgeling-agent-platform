@@ -13,6 +13,13 @@ const route = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(ne
 const active = new Map();
 const running = ["planning", "reading", "executing"];
 const activityLabels = {
+  console_propose_job_quality_check: 'Preparing an AI quality check',
+  console_get_job_quality_check: 'Reading quality findings',
+  console_propose_job_verification: 'Preparing verification of passing translations',
+  console_propose_job_quality_cancel: 'Preparing to stop quality checks',
+  console_get_job_delivery_options: 'Finding translation delivery files',
+  console_propose_translation_pull_request: 'Preparing a translation pull request',
+
   console_list_documents: 'Finding uploaded documents',
   console_get_document: 'Reading document sections',
   console_propose_document_job: 'Preparing a document translation job',
@@ -29,6 +36,10 @@ const activityLabels = {
   console_propose_library_review: 'Preparing a Library review',
   console_get_project_locales: 'Checking the project’s languages',
   console_propose_project_locales: 'Preparing new target languages',
+  console_inspect_repository: 'Exploring repository source paths',
+  console_list_repository_branches: 'Finding repository branches',
+  console_read_repository_file: 'Inspecting a source file',
+  console_propose_repository_connection: 'Reviewing repository access and scope',
   console_get_extraction_config: 'Reading extraction configuration',
   console_get_extraction_settings: 'Reading saved project settings',
   console_propose_extraction_tuning: 'Preparing an extraction tuning preview',

@@ -4,8 +4,8 @@ import { requestJson, serverUrl } from './http.js';
 
 // Operator/server verification only. This is not an end-user authorization layer.
 // Write methods live only in the separate authenticated workflow adapter.
-export function engineReader({ url, token, fetchImpl = fetch }) {
-  const base = serverUrl(url, 'HEDGELING_ENGINE_URL');
+export function engineReader({ url, token, fetchImpl = fetch, allowLoopbackHttp = false }) {
+  const base = serverUrl(url, 'HEDGELING_ENGINE_URL', { allowLoopbackHttp });
   if (!token) throw new AgentError(503, 'HEDGELING_ENGINE_TOKEN is required.');
   base.pathname = base.pathname.replace(/\/$/, '') + '/';
   const read = (path, signal) => requestJson(new URL(path, base), { token, signal, fetchImpl });

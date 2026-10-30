@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { repositoryPanel } from './repositories.js';
 // Host-owned request/confirmation functions keep identity and approvals out of
 // this display component. Repository strings are always rendered as text.
 const node = (tag, text, className) => {
@@ -87,7 +88,7 @@ export function extractionPanel({ project, request, confirmation, controllerId, 
   panel.dataset.projectId = project.id;
   panel.append(node('summary', 'Source extraction'));
   const content = node('div'); const review = node('div'); const history = node('div'); const info = node('p'); info.setAttribute('role', 'status');
-  panel.append(content, review, history, info);
+  panel.append(repositoryPanel({project,request,confirmation,controllerId,onConnected:async()=>{loaded=false;await loadConnections();}}),content, review, history, info);
   let loaded = false, offset = 0;
   async function propose(name, input) {
     const result = await action(request, name, input);
@@ -114,12 +115,12 @@ export function extractionPanel({ project, request, confirmation, controllerId, 
     offset = page.nextOffset; more.hidden = offset == null; history.append(more);
   }
   more.addEventListener('click', async () => { more.disabled = true; try { await jobs(); } catch (e) { info.textContent = e.message; } finally { more.disabled = false; } });
-  panel.addEventListener('toggle', async () => {
+  async function loadConnections() {
     if (!panel.open || loaded) return;
-    loaded = true; info.textContent = 'Loading connected sources…';
+    loaded = true; content.replaceChildren(); info.textContent = 'Loading connected sources…';
     try {
       const result = await action(request, 'extraction.connections', { projectSlug: project.slug });
-      if (!result.connections.length) { content.append(node('p', 'No repository is connected to this project yet. A workspace operator can connect an allowed repository.')); info.textContent = ''; return; }
+      if (!result.connections.length) { content.append(node('p', 'Connect a repository above to choose a branch and source paths.')); info.textContent = ''; return; }
       content.append(node('p', 'Bring source strings into this project from a connected repository. You’ll approve extraction first, then review the import.'));
       const form = document.createElement('form'); const fields = document.createElement('fieldset'); fields.className = 'workspace-form-fields';
       const select = document.createElement('select'); select.name = 'connectionId'; select.setAttribute('aria-label', 'Connected repository');
@@ -151,6 +152,8 @@ export function extractionPanel({ project, request, confirmation, controllerId, 
       });
       await jobs(true); info.textContent = '';
     } catch (e) { info.textContent = e.message; loaded = false; }
-  });
+  }
+  panel.addEventListener('toggle',loadConnections);
+  panel.addEventListener('repository-refresh',()=>{loaded=false;void loadConnections();});
   return panel;
 }

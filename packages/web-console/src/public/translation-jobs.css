@@ -1,9 +1,17 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 .translation-job-controls { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .translation-job-controls > div, .translation-job-controls > section, .translation-job-controls > .agent-error { flex: 1 0 100%; min-width: 0; }
+.translation-job-controls > details { flex: 1 0 100%; min-width: 0; }
 .translation-job-progress { margin: 16px 0; padding: 18px; border: 1px solid var(--line-soft); border-radius: 12px; color: var(--text-main); background: var(--background-pane); overflow-wrap: anywhere; }
 .translation-job-progress h4 { margin: 0 0 8px; font-size: 17px; }
 .translation-job-progress p { line-height: 1.5; }
 .translation-job-progress button, .translation-job-progress a { margin: 8px 8px 0 0; min-height: 44px; }
 .translation-job-progress a { display: inline-flex; align-items: center; color: var(--text-accent); }
 .translation-job-progress [hidden] { display: none; }
+.translation-job-progress summary { cursor: pointer; font-weight: 650; padding: 8px 0; }
+.translation-job-progress form { display: flex; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
+.translation-job-progress label { display: flex; flex-direction: column; gap: 6px; flex: 1 1 240px; }
+.translation-job-progress input, .translation-job-progress select, .translation-job-progress textarea { color: var(--text-main); background: var(--background-pane); border: 1px solid var(--line-soft); border-radius: 6px; padding: 10px; min-width: 0; max-width: 100%; font: inherit; }
+.translation-job-progress .job-quality-finding { padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.translation-job-progress .job-quality-finding summary { font-size: 14px; font-weight: 500; }
+.translation-job-progress button { color: var(--text-main); background: var(--background-pane); border: 1px solid var(--line-soft); border-radius: 6px; padding: 8px 12px; cursor: pointer; }

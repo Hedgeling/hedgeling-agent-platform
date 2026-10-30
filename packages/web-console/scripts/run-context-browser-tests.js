@@ -1,0 +1,46 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import assert from 'node:assert/strict';
+import { chromium, expect } from '@playwright/test';
+import { setupTranslationJobs } from '../test-support/translation-jobs.mjs';
+const cleanup = [], app = await setupTranslationJobs({after:fn => cleanup.push(fn)},1);
+const artifacts = await fs.mkdtemp(path.join(os.tmpdir(),'hedgeling-context-browser-'));
+await app.database.query(`insert into context_variants(source_string_id,file_path,code_context,raw) values($1,'src/welcome.tsx','<h1>Hello {name}</h1>',$2)`,[app.sources[0],{codeEvidence:{text:'<h1>Hello {name}</h1>',startLine:1,endLine:1}}]);
+app.meta.control.beforeResponse = ({body}) => { if (!body) return; app.meta.control.text = JSON.stringify({items:JSON.parse(body.input).items.map(s => ({id:s.id,description:'Welcome heading personalized with the user’s name.',evidence:'code',confidence:'high',suggestedMaxCharacters:null,limitReason:'No fixed width is available.'}))}); };
+let browser,page;
+try {
+  browser = await chromium.launch({headless:true,...(process.env.HEDGELING_E2E_CHROMIUM_EXECUTABLE ? {executablePath:process.env.HEDGELING_E2E_CHROMIUM_EXECUTABLE} : {})});
+  const context = await browser.newContext({viewport:{width:1440,height:1000},colorScheme:'light',reducedMotion:'reduce'});
+  const at = app.cookie.indexOf('='); await context.addCookies([{name:app.cookie.slice(0,at),value:app.cookie.slice(at+1),url:app.origin,httpOnly:true,sameSite:'Strict'}]);
+  page = await context.newPage(); page.setDefaultTimeout(15000); const errors = []; page.on('pageerror',e => errors.push(e.message));
+  await page.goto(app.origin);
+  const chat = page.locator('#hedgelingAgent'); await expect(chat.locator('#agentInput')).toBeEnabled();
+  await chat.getByRole('button',{name:'Minimize chat',exact:true}).click();
+  await page.evaluate(async org => { await window.HedgelingAgent.browseWorkspace(org);window.HedgelingConsole.openWorkspace(); },app.org);
+  await expect(page.getByRole('heading',{name:'Your projects',exact:true})).toBeVisible();
+  const jobForm = page.locator('[data-workspace-action="localization_job.create"]');
+  await expect(jobForm.locator('option[value="machine_translation,review"]')).toHaveText('AI Translation → Human review');
+  const panel = page.locator(`.context-panel[data-project-slug="${app.project.slug}"]`);
+  await panel.locator('summary').first().click(); await panel.getByRole('button',{name:'Browse string context',exact:true}).click();
+  await expect(panel).toContainText('Code excerpt available');
+  await panel.getByRole('button',{name:'Preview context enrichment',exact:true}).click();
+  await expect(panel.locator('.workspace-confirmation')).toContainText('one request continues',{ignoreCase:true});
+  assert.equal(app.meta.calls.length,0);
+  await panel.getByRole('button',{name:'Generate context suggestions',exact:true}).click();
+  await expect(panel.locator('.context-progress')).toContainText('Context ready to review'); assert.equal(app.meta.calls.length,1);
+  await panel.getByRole('button',{name:'Review and accept context',exact:true}).click();
+  await expect(panel).toContainText('No fixed width is available.');
+  await expect(panel).toContainText('Suggested length: 17 Unicode characters · formula estimate · not enforced');
+  await panel.getByRole('button',{name:'Preview accepting selected context',exact:true}).click();
+  await expect(panel.locator('.workspace-confirmation')).toContainText('Preserve existing translations');
+  await expect(panel.locator('.workspace-confirmation')).toContainText('Suggested length: 17 Unicode characters · formula estimate · not enforced');
+  await panel.getByRole('button',{name:'Accept selected context',exact:true}).click();
+  await expect(panel).toContainText('Accepted context is current'); assert.equal(app.meta.calls.length,1);
+  await panel.scrollIntoViewIfNeeded(); await page.screenshot({path:path.join(artifacts,'desktop.png')});
+  await page.setViewportSize({width:390,height:844}); await panel.scrollIntoViewIfNeeded();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
+  await page.screenshot({path:path.join(artifacts,'mobile.png')}); await page.emulateMedia({colorScheme:'dark'}); await page.screenshot({path:path.join(artifacts,'dark.png')});
+  assert.deepEqual(errors,[]);console.log('Context browser flow passed. Artifacts: '+artifacts);
+} catch(e) { await page?.screenshot({path:path.join(artifacts,'failure.png')});console.error('Artifacts: '+artifacts);throw e; }
+finally {await browser?.close();for(const fn of cleanup.reverse()) await fn();}

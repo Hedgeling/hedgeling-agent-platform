@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { validateLocalDatabase } from "../src/local-auth.js";
@@ -13,12 +14,12 @@ await migrateDatabase();
 const userId = process.env.HEDGELING_LOCAL_USER_ID || await withTransaction(async (client) => {
   const organization = await client.query(
     `insert into organizations(slug, name) values('hedgeling-local', 'Local troubleshooting')
-     on conflict(slug) do update set name = excluded.name returning id`,
+     on conflict(slug) do update set slug = excluded.slug returning id`,
   );
   const orgId = organization.rows[0].id;
   const unit = await client.query(
     `insert into business_units(organization_id, slug, name) values($1, 'default', 'Default')
-     on conflict(organization_id, slug) do update set name = excluded.name returning id`, [orgId],
+     on conflict(organization_id, slug) do update set slug = excluded.slug returning id`, [orgId],
   );
   await client.query(
     `insert into projects(slug, name, business_unit_id) values('hedgeling-local', 'Local project', $1)
@@ -45,6 +46,10 @@ const userId = process.env.HEDGELING_LOCAL_USER_ID || await withTransaction(asyn
   );
   return row.id;
 });
+if (process.env.HEDGELING_LOCAL_SITE_SEED === 'true') {
+  const { seedLocalSite } = await import('./seed-local-site.js');
+  await seedLocalSite(userId);
+}
 await pool.end();
 
 const token = crypto.randomBytes(32).toString("base64url");
@@ -62,8 +67,13 @@ for (const key of Object.keys(env)) {
 }
 console.log(`Local console: http://127.0.0.1:${port}/local-login`);
 console.log(`User: ${userId}; session expires ${expiresAt}`);
-console.log(`Local login token (keep private): ${token}`);
-const child = spawn(process.execPath, [fileURLToPath(new URL("../src/server.js", import.meta.url))], {
+if (process.env.HEDGELING_LOCAL_SESSION_FILE) {
+  const filename = process.env.HEDGELING_LOCAL_SESSION_FILE;
+  fs.writeFileSync(filename, JSON.stringify({ origin: env.HEDGELING_PUBLIC_ORIGIN, userId, token, expiresAt }, null, 2) + '\n', { mode: 0o600 });
+  fs.chmodSync(filename, 0o600);
+  console.log('Local login token saved in the private session file.');
+} else console.log(`Local login token (keep private): ${token}`);
+const child = spawn(process.execPath, [...(process.env.HEDGELING_LOCAL_WATCH === 'true' ? ['--watch'] : []), fileURLToPath(new URL("../src/server.js", import.meta.url))], {
   env, stdio: "inherit",
 });
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));

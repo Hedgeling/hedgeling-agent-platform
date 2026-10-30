@@ -1,5 +1,8 @@
+import { jobReview, jobDelivery } from './job-workflows-integration.js';
+import { repositories } from './repositories-integration.js';
 import { translationJobs } from './translation-jobs-integration.js';
 import { documents } from './documents-integration.js';
+import { contextEnrichment } from './context-integration.js';
 import crypto from "node:crypto";
 import { WORKSPACE_ACTIONS, validateActionInput } from "@hedgeling/api-contract";
 import { query, withTransaction } from "./db.js";
@@ -22,6 +25,7 @@ function canonical(value) {
   return value;
 }
 export const fingerprint = (value) => crypto.createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
+const reviewActions = ['localization_job.review','localization_job.verify','localization_job.review_cancel'];
 const db = { query };
 export async function authorizationStamp(auth, database = db) {
   // Include time-dependent validity: a grant expiring is an access change even
@@ -118,7 +122,11 @@ async function creationLimits(client, organizationId, action, input) {
 }
 async function prepare(action, input, auth, context = {}, database = db) {
   const userId = await activeUser(auth, database);
+  if (action.name.startsWith('repositories.')) return repositories.prepare(action.name,input,auth,context,database,database !== db);
+  if (action.name.startsWith('context.')) return contextEnrichment.prepare(action.name, input, auth, context, database, database !== db);
   if (action.name === 'documents.job') return documents.prepare(input, auth, context, database, database !== db);
+  if (reviewActions.includes(action.name)) return jobReview.prepare(action.name,input,auth,context,database,database !== db);
+  if (action.name === 'localization_job.pull_request') return jobDelivery.prepare(action.name,input,auth,context,database,database !== db);
   if (['localization_job.start', 'localization_job.cancel'].includes(action.name)) return translationJobs.prepare(action.name, input, auth, context, database, database !== db);
   if (action.name.startsWith('library.')) return library.prepare(action.name, input, auth, context, database, database !== db);
   if (action.name === 'project.locales.add') return projectLocales.prepare(input, auth, context, database, database !== db);
@@ -167,10 +175,14 @@ export async function executeWorkspaceAction(name, input, auth, context = {}) {
   const action = WORKSPACE_ACTIONS.find((a) => a.name === name);
   if (!action) throw fail(404, "Unknown workspace action");
   input = normalizeInput(action, input);
+  if (name.startsWith('repositories.') && action.readOnly) return repositories.read(name,input,auth,context);
+  if (name.startsWith('context.') && action.readOnly) return contextEnrichment.read(name, input, auth, context);
   if (name.startsWith('documents.') && action.readOnly) return documents.read(name, input, auth, context);
   if (name.startsWith('library.') && action.readOnly) { const result = await library.read(name, input, auth, context); return { ...result, uiTarget: { view: 'library', projectSlug: input.projectSlug, kind: input.kind || null, action: 'library.read' } }; }
   if (name === 'project.locales.get') return projectLocales.read(input, auth, context);
   if (name.startsWith('extraction.') && action.readOnly) return extractionWorkflow.read(name, input, auth, context);
+  if (name === 'localization_job.review_status') return jobReview.read(name,input,auth,context);
+  if (name === 'localization_job.delivery_options') return jobDelivery.read(name,input,auth,context);
   if (name === 'localization_job.status') return translationJobs.read(input, auth, context);
   if (name === "organizations.list") {
     let organizations = (await accessibleOrganizations(auth)).filter((o) => !Object.hasOwn(context, "organizationId") || context.organizationId === null || o.id === context.organizationId);
@@ -205,7 +217,11 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     if (expectedFingerprint !== proposal.fingerprint) throw fail(409, "The displayed proposal has changed");
     if (proposal.status === "confirmed") {
       await assertRunScope(auth, proposal.organization_id);
-      if (proposal.action === 'documents.job') await documents.replay(proposal.input, auth, {}, client);
+      if (proposal.action.startsWith('repositories.')) await repositories.replay(proposal.input,auth,{},client);
+      else if (proposal.action.startsWith('context.')) await contextEnrichment.replay(proposal.input, auth, {}, client);
+      else if (reviewActions.includes(proposal.action)) await jobReview.replay(proposal.input,auth,{},client);
+      else if (proposal.action === 'localization_job.pull_request') await jobDelivery.replay(proposal.input,auth,{},client);
+      else if (proposal.action === 'documents.job') await documents.replay(proposal.input, auth, {}, client);
       else if (['localization_job.start', 'localization_job.cancel'].includes(proposal.action)) await translationJobs.replay(proposal.input, auth, {}, client);
       else if (proposal.action.startsWith('library.')) await library.replay(proposal.input, auth, {}, client, proposal.result);
       else if (proposal.action === 'project.locales.add') await projectLocales.replay(proposal.input, auth, {}, client);
@@ -227,7 +243,15 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     const input = proposal.input;
     let result;
     let organizationId = prepared.organizationId;
-    if (action.name === 'documents.job') {
+    if (action.name.startsWith('repositories.')) {
+      result = await repositories.apply(action.name,prepared,proposal,auth,client);
+    } else if (action.name.startsWith('context.')) {
+      result = await contextEnrichment.apply(action.name, prepared, proposal, auth, client);
+    } else if (reviewActions.includes(action.name)) {
+      result = await jobReview.apply(action.name,prepared,proposal,auth,client);
+    } else if (action.name === 'localization_job.pull_request') {
+      result = await jobDelivery.apply(action.name,prepared,proposal,auth,client);
+    } else if (action.name === 'documents.job') {
       result = await documents.apply(prepared, proposal, auth, client);
     } else if (['localization_job.start', 'localization_job.cancel'].includes(action.name)) {
       result = await translationJobs.apply(action.name, prepared, proposal, auth, client);

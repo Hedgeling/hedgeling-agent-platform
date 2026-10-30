@@ -3,7 +3,7 @@ import { query } from './db.js';
 import { projectPermissions } from './authorization.js';
 import { effectiveOrganizationAccess } from './entitlements.js';
 import { createExtractionWorkflow } from './hackathon-engine/extraction-workflow.js';
-import { engineOperations } from './hackathon-engine/engine-operations.js';
+import { repositories,sourceEngine } from './repositories-integration.js';
 import { fail } from './action-errors.js';
 import { tuningModels } from './tuning-models-integration.js';
 
@@ -15,10 +15,10 @@ function canonical(value) {
   return value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])])) : value;
 }
 export const extractionWorkflow = createExtractionWorkflow({
-  models: tuningModels,
+  models: tuningModels, repositories,
   database: { query },
   fingerprint: value => crypto.createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex'),
-  engine: () => engineOperations({ url: process.env.HEDGELING_ENGINE_URL, token: process.env.HEDGELING_ENGINE_TOKEN }),
+  engine: sourceEngine,
   authorize: async (auth, project) => {
     const permissions = await projectPermissions(auth, project);
     if (!['strings.view', 'imports.run'].every(p => permissions.includes(p))) throw fail(403, 'You need source-view and import access to use this project’s extraction connection.', 'extraction_access_denied');

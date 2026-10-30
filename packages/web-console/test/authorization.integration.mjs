@@ -356,6 +356,10 @@ try {
       "202610281800_translation_jobs.sql",
       "202610282100_tuning_models.sql",
       "202610290100_document_jobs.sql",
+      "202610291600_context_enrichment.sql",
+      "202610291601_context_retention.sql",
+      "202610292000_repository_connections.sql",
+      "202610292200_job_review_delivery.sql",
     ],
   );
   assert.equal(

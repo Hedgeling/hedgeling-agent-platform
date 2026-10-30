@@ -35,7 +35,7 @@ try {
   const row = page.locator(`[data-resource-type="job"][data-resource-id="${job.id}"]`);
   await row.getByRole('button', { name: 'Preview translation start', exact: true }).click();
   await row.locator('.workspace-confirmation').getByRole('button', { name: 'Start translation', exact: true }).click();
-  await expect(row.locator('.translation-job-progress')).toContainText('Drafts ready for review', { timeout: 20000 });
+  await expect(row.getByRole('region', { name: 'Translation job progress', exact: true })).toContainText('Drafts ready for review', { timeout: 20000 });
   await row.locator('.document-export summary').click();
   await row.getByLabel('Translation status', { exact: true }).selectOption('drafts');
   await row.getByLabel('Format', { exact: true }).selectOption('csv');
