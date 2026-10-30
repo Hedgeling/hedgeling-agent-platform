@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "3968a01f5b06bbefb965a263f3a8b02e021e6206",
+  "revision": "7d3c8c50d63c97f3c463bc8b6845765420dc1d01",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -135,6 +135,11 @@
       "sha256": "3d10c906d0082b0873afd8914f88fca4a6ffe5caa7833e9266cbab024666ce91"
     },
     {
+      "source": "src/translation-output-errors.js",
+      "destination": "translation-output-errors.js",
+      "sha256": "755c9ec4041d7a1ec7253e56af9699988e2068b9a7937f4e8c7b90453b02d1bf"
+    },
+    {
       "source": "src/translation-job-limits.js",
       "destination": "translation-job-limits.js",
       "sha256": "01a5c392e50dece01d3d00d8f202eef495c7c77a82dc64636acb105e3ce5c6ec"
@@ -142,12 +147,12 @@
     {
       "source": "src/translation-jobs.js",
       "destination": "translation-jobs.js",
-      "sha256": "e0259f335f23208fb880568487359b8a7f58c61d2c7b4b1ee6072cb55bca7d32"
+      "sha256": "361c7d6c02645c5a1b17236dfb9ecf72ab8d3272743dbbfd21358b233b2c072b"
     },
     {
       "source": "src/translation-job-actions.js",
       "destination": "translation-job-actions.js",
-      "sha256": "9489f46f4e77bb179439cf66b4ea8eb08bf95e30ac2de80d7a2b923ecb652b9e"
+      "sha256": "86fe5baaff49666574080be60bcb6f3fa7160e4b5c89e343eadb6bf4423a5549"
     },
     {
       "source": "src/chat-limits.js",
@@ -317,7 +322,7 @@
     {
       "source": "src/translation-job-actions.js",
       "destination": "../../../api-contract/translation-job-actions.js",
-      "sha256": "9489f46f4e77bb179439cf66b4ea8eb08bf95e30ac2de80d7a2b923ecb652b9e"
+      "sha256": "86fe5baaff49666574080be60bcb6f3fa7160e4b5c89e343eadb6bf4423a5549"
     },
     {
       "source": "contracts/202610281800_translation_jobs.sql",
@@ -332,7 +337,7 @@
     {
       "source": "ui/translation-jobs.js",
       "destination": "../public/translation-jobs.js",
-      "sha256": "379e4eb8f27ad743835aad10357654c9f7e3aaa12c0f7ca4a54ac26ded851db7"
+      "sha256": "2ebaaf979b8da28b31456db27dd34a7b148d2bb8a81382ed7e0c45fb30a32e74"
     },
     {
       "source": "src/chat-limits.js",

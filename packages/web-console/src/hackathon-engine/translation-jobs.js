@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { fail } from './errors.js';
 import { isAiOnly,jobCoverage } from './job-scope.js';
 import { TRANSLATION_JOB_LIMITS } from './translation-job-limits.js';
+import { TRANSLATION_OUTPUT_ERRORS } from './translation-output-errors.js';
 export { TRANSLATION_JOB_LIMITS } from './translation-job-limits.js';
 
 const active = ['queued', 'running'];
@@ -25,7 +26,7 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
   async function read(input, auth, context = {}, db = database) {
     const { p, job } = await load(input, auth, context, db);
     const counts = (await db.query('select status,count(*)::int as count from localization_job_items where job_id=$1 group by status', [job.id])).rows;
-    const errors = (await db.query(`select locale,error_code as code,error_message as message from localization_job_items
+    const errors = (await db.query(`select source_string_id as "sourceId",locale,error_code as code,error_message as message from localization_job_items
       where job_id=$1 and error_code is not null order by ordinal limit 5`, [job.id])).rows;
     return { job: { id: job.id, name: job.name, status: job.status, projectSlug: p.slug,
       targetLocales: job.target_locales, steps: job.steps, documentId: job.source_document_id || null, progress: Object.fromEntries(counts.map(r => [r.status, r.count])),
@@ -93,7 +94,8 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
         isAiOnly(job) ? 'Save AI-only translations. There is no review, verification or QA workflow step. Basic generation integrity checks still apply. These translations are not marked human-verified.' : 'Save generated drafts with placeholder, glossary and length checks. Human review, approval and publication remain separate.',
         isAiOnly(job) ? 'Complete the job when all source/language pairs are present. A bounded batch with missing pairs remains partially translated. Opening a PR is a separate confirmation.' : 'Human review and publication require separate actions.',
         'Continue in the background if you close or pause chat. Use Stop job to cancel remaining work.',
-        'If inputs or access change, or a request fails, stop and keep any drafts already saved.'] } };
+        'Flag individual translations that fail output, placeholder, glossary or hard-length checks after two attempts; keep them unsaved and continue the remaining approved work.',
+        'If inputs or access change, a budget blocks work, or a provider request fails, stop and keep any drafts already saved.'] } };
   }
   async function apply(name, prepared, proposal, auth, db) {
     const { p, job } = prepared;
@@ -159,10 +161,11 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
     } catch (error) {
       await transaction(async db => {
         await db.query('select id from localization_jobs where id=$1 for update', [job.id]);
-        const code = ['job_stopped','job_inputs_changed','byok_key_missing','job_access_denied','job_entitlement_required'].includes(error.code) ? error.code : 'job_translation_failed';
-        const message = code === 'job_translation_failed' ? 'Translation could not finish. Check provider access, usage limits and source constraints before starting a new batch.' : error.message;
+        const outputFailure = Object.hasOwn(TRANSLATION_OUTPUT_ERRORS, error.code);
+        const code = outputFailure || ['job_stopped','job_inputs_changed','byok_key_missing','job_access_denied','job_entitlement_required'].includes(error.code) ? error.code : 'job_translation_failed';
+        const message = outputFailure ? TRANSLATION_OUTPUT_ERRORS[code] : code === 'job_translation_failed' ? 'Translation could not finish. Check provider access, usage limits and source constraints before starting a new batch.' : error.message;
         await db.query("update localization_job_items set status=$3,error_code=$4,error_message=$5,finished_at=now() where id=$1 and lease_token=$2 and status='running'", [item.id, token, code === 'job_stopped' ? 'canceled' : 'failed', code, message]);
-        await db.query("update localization_job_items set status='canceled',finished_at=now() where job_id=$1 and status='queued'", [job.id]);
+        if (!outputFailure) await db.query("update localization_job_items set status='canceled',finished_at=now() where job_id=$1 and status='queued'", [job.id]);
         await settle(db, job.id);
       });
     }

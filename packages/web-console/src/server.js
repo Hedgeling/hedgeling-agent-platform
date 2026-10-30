@@ -7,6 +7,7 @@ import { generateGeminiTuning } from './hackathon-engine/tuning-gemini.js';
 import { registerTuningProvider, tuningModels } from './tuning-models-integration.js';
 import { registerContextProvider, contextEnrichment } from './context-integration.js';
 import { TRANSLATION_JOB_LIMITS } from './hackathon-engine/translation-jobs.js';
+import { TRANSLATION_OUTPUT_ERRORS } from './hackathon-engine/translation-output-errors.js';
 import { fingerprint } from './workspace-actions.js';
 import actionsRouter from "./actions.js";
 import { engineStatus } from "./hackathon-engine/engine-status.js";
@@ -2001,6 +2002,7 @@ async function reviseTranslation(req, res, jobExecution = null) {
   let revised = "";
   let providerResult = null;
   let validationError = "";
+  let validationCode = null;
   const providerAttempts = [];
   const recordRevisionUsage = async ({
     client,
@@ -2114,20 +2116,31 @@ async function reviseTranslation(req, res, jobExecution = null) {
     revised = cleanGeminiTranslation(providerResult.text);
     providerAttempts.push(providerResult);
     validationError = "";
-    if (isInvalidTranslationText(revised)) validationError = "invalid or bracketed placeholder output";
-    else if (!placeholdersPreserved(source.sourceText, revised)) validationError = "required placeholders were not preserved";
+    validationCode = null;
+    if (isInvalidTranslationText(revised)) {
+      validationError = "invalid or bracketed placeholder output";
+      validationCode = 'job_output_invalid';
+    } else if (!placeholdersPreserved(source.sourceText, revised)) {
+      validationError = "required placeholders were not preserved";
+      validationCode = 'job_placeholders_invalid';
+    }
     else if (source.limitChars && revised.length > source.limitChars) {
       validationError = `character limit exceeded: ${revised.length}/${source.limitChars}`;
+      validationCode = 'job_length_invalid';
     }
     else {
       const glossaryMismatch = glossaryViolation(source.sourceText, revised, req.params.locale, glossary);
-      if (glossaryMismatch) validationError = `glossary mismatch: ${glossaryMismatch}`;
+      if (glossaryMismatch) {
+        validationError = `glossary mismatch: ${glossaryMismatch}`;
+        validationCode = 'job_glossary_invalid';
+      }
     }
     if (!validationError) break;
   }
 
   if (validationError) {
     await recordRevisionUsage({ outcome: "failed" });
+    if (jobExecution) throw fail(422, TRANSLATION_OUTPUT_ERRORS[validationCode], validationCode);
     return res.status(502).json({ error: `${providerLabel} revision rejected: ${validationError}` });
   }
 

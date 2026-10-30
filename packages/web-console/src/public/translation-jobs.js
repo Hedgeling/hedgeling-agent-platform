@@ -22,9 +22,10 @@ export function translationJobProgress({ jobId, request, onStop = null, onSettle
       const job = result.job, count = job.progress.succeeded || 0;
       if (job.documentId && !exportsAdded) { card.append(documentExports({ job, request })); exportsAdded = true; }
       title.textContent = job.name;
-      status.textContent = `${names[job.status] || job.status}${job.batch ? ` · ${count} of ${job.batch.pairs} drafts saved` : ''}`;
+      status.textContent = `${names[job.status] || job.status}${job.batch ? ` · ${count} of ${job.batch.pairs} drafts saved` : ''}${job.progress.failed ? ` · ${job.progress.failed} need attention` : ''}`;
       detail.textContent = `${job.workflow}. ${job.coverage ? `${job.coverage.saved} of ${job.coverage.total} translations present · ${job.coverage.missing} missing · ${job.coverage.verified} verified. ` : ''}` + (job.steps.length===1&&job.steps[0]==='machine_translation' ? 'AI-only output has no review, verification or QA step. Opening a PR is separate.' : 'Review, verification and opening a PR are separate actions.');
       if (job.errors.length) error.textContent = job.errors.map(e => `${e.locale}: ${e.message}`).join(' ');
+      if (job.progress.failed && ['queued','running'].includes(job.status)) error.textContent += ' The remaining translations are continuing.';
       review.href = `/?project=${encodeURIComponent(job.projectSlug)}#review`; review.hidden = !count;
       review.onclick = async event => { if (window.HedgelingConsole?.openProject) { event.preventDefault(); try { await window.HedgelingConsole.openProject(job.projectSlug, { manual: true }); } catch(e) { error.textContent = e.message; } } };
       stop.hidden = !onStop || !['queued', 'running'].includes(job.status);
