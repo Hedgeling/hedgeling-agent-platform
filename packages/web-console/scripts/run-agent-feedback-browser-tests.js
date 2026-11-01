@@ -86,6 +86,22 @@ try {
   assert.equal(await page.evaluate(() => window.chimes), 0, 'Replayed history must not play sounds');
   await expect(page.locator('.agent-notifications')).toBeHidden();
   await shell.locator('#agentSound').click();
+  // A slow history restore must honor the saved minimized layout immediately.
+  await shell.getByRole('button', { name: 'Minimize chat', exact: true }).click();
+  let releaseHistory;
+  const historyGate = new Promise(resolve => { releaseHistory = resolve; });
+  const historyRoute = async route => { await historyGate; await route.continue(); };
+  await page.route('**/api/agent/runs/*', historyRoute, { times: 1 });
+  const restoring = page.waitForRequest(request => new URL(request.url()).pathname === `/api/agent/runs/${run}`);
+  try {
+    await page.reload(); await restoring;
+    await expect(shell).toHaveAttribute('data-mode', 'minimized');
+    await expect(shell).toBeHidden();
+    await expect(page.getByRole('button', { name: /Open Hedgeling assistant/ })).toBeVisible();
+  } finally { releaseHistory(); }
+  await page.getByRole('button', { name: /Open Hedgeling assistant/ }).click();
+  await expect(shell).toHaveAttribute('data-mode', 'panel');
+  await expect(shell.locator('#agentInput')).toBeEnabled();
   // Old repository file events must remain invisible when replayed.
   await emit('files', { files: [{ path: 'src/Game.tsx', bytes: 120 }] });
   await emit('github_connection', { reason: 'pr_delivery' });

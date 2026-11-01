@@ -408,6 +408,10 @@ async function initialize() {
   [config, brand] = await Promise.all([request("/api/agent/config"), request("/design-system/brand.json")]);
   userId = (await request("/api/me")).auth.user.id;
   document.body.append(shell, launcher);
+  // Honor the saved layout before restoring history. Otherwise both the chat
+  // and its launcher appear while loading, allowing a stale open to race a
+  // user's minimize/navigation and cover their workspace on smaller screens.
+  setMode(["overlay", "panel", "minimized"].includes(mode) ? mode : "overlay", false);
   panelResizer($('agentResizeHandle'));
   notifications = agentNotifications({ launcher, soundButton: $('agentSound'),
     isReading: () => !document.hidden && document.hasFocus() && mode !== 'minimized' && nearLatest(),
@@ -523,6 +527,6 @@ async function initialize() {
 initialize().then(markInitialized).catch((error) => {
   markInitialized();
   if (error.status === 404) return;
-  if (shell.isConnected) { showError(new Error("The assistant could not connect. Reload to retry, or continue manually.")); setMode("panel", false); }
+  if (shell.isConnected) { showError(new Error("The assistant could not connect. Reload to retry, or continue manually.")); setMode(mode, false); }
   console.warn("Assistant could not initialize");
 });
