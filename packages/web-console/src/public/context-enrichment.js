@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { workflowProgress } from './workflow-progress.js';
 const node = (tag,text = '',cls = '') => { const n = document.createElement(tag); n.textContent = text; n.className = cls; return n; };
 const button = text => { const n = node('button',text); n.type = 'button'; return n; };
 const errorText = { context_cancelled:'Remaining batches were stopped. Completed suggestions are available for review.',context_stale:'The source or accepted guidance changed. Request a fresh analysis.',context_provider_changed:'The provider settings changed. Request a fresh analysis.',context_prompt_changed:'The analysis format changed. Review saved suggestions, then preview a fresh run.',context_request_uncertain:'Processing was interrupted. This request will not be retried automatically. Completed suggestions are preserved.' };
@@ -28,15 +29,18 @@ function resultCard(result) {
 }
 export function contextProgress({ runId,request,onReview,onStop }) {
   const root = node('section','','context-progress'), status = node('p','Preparing context analysis…'), results = node('div'), error = node('p','','agent-error');
-  root.dataset.contextRunId = runId; status.setAttribute('role','status'); error.setAttribute('role','alert'); root.append(status,results,error);
-  let busy = false, nextOffset = null;
+  root.dataset.contextRunId = runId; status.setAttribute('role','status'); error.setAttribute('role','alert'); const progress = workflowProgress('Context suggestions saved'); root.append(progress.root,status,results,error);
+  let busy = false, nextOffset = null, timer;
   const more = button('More suggestions'); more.hidden = true; root.append(more);
   async function refresh(append = false) {
     if (!root.isConnected) return;
-    if (busy) return; busy = true; more.disabled = true;
+    if (busy) return; clearTimeout(timer); busy = true; more.disabled = true;
     try {
       const { run, page } = (await request('/api/actions/context.results',{ runId, offset: append ? nextOffset : 0 })).result;
       status.textContent = `${({ queued:'Queued',running:'Writing context',awaiting_review:'Context ready to review',applied:'Context accepted',failed:'Analysis stopped',uncertain:'Result uncertain' })[run.status]} · ${run.completedStrings ?? run.results.length} / ${run.strings} strings · ${run.completedRequests ?? 0} / ${run.requests ?? 1} requests completed · ${run.provider} / ${run.model}`;
+      progress.update({ state: run.status, title: ({ queued:'Context queued', running:'Writing context', awaiting_review:'Suggestions ready for review', applied:'Context accepted', failed:'Context analysis stopped', uncertain:'Result uncertain' })[run.status] || run.status,
+        completed: run.completedStrings ?? run.results.length, total: run.strings, unit: 'suggestions saved',
+        detail: `${run.acceptedStrings ?? run.acceptedIds.length} accepted · ${run.completedRequests ?? 0} of ${run.requests ?? 1} requests completed. Saved suggestions need your approval before use.` });
       if (!append) results.replaceChildren();
       results.querySelectorAll('[data-context-control]').forEach(n => n.remove());
       error.textContent = run.error ? contextFailureMessage(run) : '';
@@ -46,10 +50,11 @@ export function contextProgress({ runId,request,onReview,onStop }) {
       nextOffset = page?.nextOffset ?? null; more.hidden = nextOffset === null;
       if (['awaiting_review','failed','uncertain'].includes(run.status) && (run.completedStrings ?? run.results.length) > run.acceptedIds.length && onReview) { const review = button('Review and accept context'); review.dataset.contextControl = ''; review.onclick = async () => { review.disabled = true; try { await onReview(run); } catch(e) { error.textContent = e.message; } finally { review.disabled = false; } }; results.append(review); }
       if (['queued','running'].includes(run.status) && onStop) { const stop = button('Stop remaining batches'); stop.dataset.contextControl = ''; stop.onclick = () => Promise.resolve(onStop(run)).catch(e => { error.textContent = e.message; }); results.append(stop); }
-      if (['queued','running'].includes(run.status)) setTimeout(refresh,2000);
-    } catch(e) { error.textContent = e.message; }
+      if (['queued','running'].includes(run.status)) timer = setTimeout(refresh,2000);
+    } catch(e) { progress.update({ state:'unavailable', title:'Context progress unavailable', detail:'Saved work is preserved. Refresh to check the latest status.' }); error.textContent = e.message; }
     finally { busy = false; more.disabled = false; }
   }
+  const retry = button('Refresh context progress'); retry.onclick = () => refresh(); root.append(retry);
   more.onclick = () => refresh(true);
   setTimeout(refresh,0); return root;
 }

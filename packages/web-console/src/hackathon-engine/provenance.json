@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "dc82135292ba676f8429fa730dbeb539ea9e444d",
+  "revision": "c87a64273dadb09bd6151fa5cf274a437206cae3",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -287,7 +287,7 @@
     {
       "source": "ui/context-enrichment.js",
       "destination": "../public/context-enrichment.js",
-      "sha256": "341753ba19872025e79b4ddc9548dfe1807700c1aafb311669d45eace954c013"
+      "sha256": "698cddd4ffd223249a184bc34f9052d463b8da39ddcc7bc29451a4ddbab5283f"
     },
     {
       "source": "ui/context-enrichment.css",
@@ -307,7 +307,7 @@
     {
       "source": "ui/documents.js",
       "destination": "../public/documents.js",
-      "sha256": "2f3b37e684c80110d0ee5cc8806c95dd28db3973adaec33e20598f0af0867d3b"
+      "sha256": "30c4cc0d9d3bca5a393a44f589e44cc8ce7eb2143495ab87d19bbec6808d02f8"
     },
     {
       "source": "ui/documents.css",
@@ -342,7 +342,7 @@
     {
       "source": "ui/translation-jobs.js",
       "destination": "../public/translation-jobs.js",
-      "sha256": "e5e7b7b3b35c8bfab0093616d6a2edd789613a215fd5f6458d46957c881d0017"
+      "sha256": "839937bb78229354b65728e00b03f686eab7058fb566c5dbf1768fc156f801ee"
     },
     {
       "source": "ui/job-review-messages.js",
@@ -417,7 +417,7 @@
     {
       "source": "ui/extraction.js",
       "destination": "../public/extraction.js",
-      "sha256": "9c1b9d725a18211c2ad8f3b1b8f5e497e1764a1639f2919df20c157c876856c2"
+      "sha256": "1a1d7db168b131ce57e767f64b3b0548340a382550cc595804b30c1c73ae4b9b"
     },
     {
       "source": "ui/extraction.css",
@@ -433,6 +433,16 @@
       "source": "src/context-results.js",
       "destination": "context-results.js",
       "sha256": "99689e5b52348cd3efe6fe615e8b13da246517ee3ee941207c14a2c3a33c6987"
+    },
+    {
+      "source": "ui/workflow-progress.js",
+      "destination": "../public/workflow-progress.js",
+      "sha256": "89a07dbdb749d193a9f1f85b4bee576f380305232d519f4f1c223dab466f092f"
+    },
+    {
+      "source": "ui/workflow-progress.css",
+      "destination": "../public/workflow-progress.css",
+      "sha256": "d3b619b24f59da40e329ecb57e1b8ed0567c0d8ce1fbd29a75b2e4d198268e1d"
     }
   ]
 }

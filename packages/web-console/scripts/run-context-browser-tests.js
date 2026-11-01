@@ -19,7 +19,8 @@ try {
   await chat.getByRole('button',{name:'Minimize chat',exact:true}).click();
   await page.evaluate(async org => { await window.HedgelingAgent.browseWorkspace(org);window.HedgelingConsole.openWorkspace(); },app.org);
   await expect(page.getByRole('heading',{name:'Your projects',exact:true})).toBeVisible();
-  const jobForm = page.locator('[data-workspace-action="localization_job.create"]');
+  await page.getByRole('button', { name: 'Open business unit: Default', exact: true }).click();
+  const jobForm = page.locator(`.workspace-project-view[data-resource-id="${app.project.id}"] [data-workspace-action="localization_job.create"]`);
   await expect(jobForm.locator('option[value="machine_translation,review"]')).toHaveText('AI Translation → Human review');
   const panel = page.locator(`.context-panel[data-project-slug="${app.project.slug}"]`);
   await panel.locator('summary').first().click(); await panel.getByRole('button',{name:'Browse string context',exact:true}).click();
@@ -32,6 +33,7 @@ try {
   await panel.getByRole('button',{name:'Generate context suggestions',exact:true}).click();
   await expect(panel.locator('.context-progress')).toContainText('Context ready to review'); assert.equal(app.meta.calls.length,2);
   await expect(panel.locator('.context-progress')).toContainText('25 / 25 strings · 2 / 2 requests completed');
+  await expect(panel.getByRole('progressbar', { name: 'Context suggestions saved' })).toHaveAttribute('value', '25');
   await expect(panel.locator('.context-progress .context-suggestion')).toHaveCount(20);
   await panel.getByRole('button',{name:'More suggestions',exact:true}).click();
   await expect(panel.locator('.context-progress .context-suggestion')).toHaveCount(25);
@@ -59,6 +61,7 @@ try {
   await panel.locator('.workspace-confirmation').getByRole('button',{name:'Stop remaining batches',exact:true}).click(); release();
   await expect(panel.locator('.context-progress')).toContainText('Remaining batches were stopped');
   await expect(panel.locator('.context-progress')).toContainText('20 / 25 strings');
+  await expect(panel.getByRole('progressbar', { name: 'Context suggestions saved' })).toHaveAttribute('value', '20');
   await expect(panel.getByRole('button',{name:'Review and accept context',exact:true})).toBeVisible();
   app.meta.control.beforeResponse=({body}) => {
     respond({body}); const result=JSON.parse(app.meta.control.text); result.items.pop(); app.meta.control.text=JSON.stringify(result);
@@ -74,5 +77,5 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
   await page.screenshot({path:path.join(artifacts,'mobile.png')}); await page.emulateMedia({colorScheme:'dark'}); await page.screenshot({path:path.join(artifacts,'dark.png')});
   assert.deepEqual(errors,[]);console.log('Context browser flow passed. Artifacts: '+artifacts);
-} catch(e) { await page?.screenshot({path:path.join(artifacts,'failure.png')});console.error('Artifacts: '+artifacts);throw e; }
+} catch(e) { console.error(e); await page?.screenshot({path:path.join(artifacts,'failure.png'),timeout:3000}).catch(() => {});console.error('Artifacts: '+artifacts);throw e; }
 finally {await browser?.close();for(const fn of cleanup.reverse()) await fn();}

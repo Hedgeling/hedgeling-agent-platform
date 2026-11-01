@@ -77,13 +77,13 @@ export class AgentAttention {
     let target;
     if (action.startsWith('library.')) target = [...document.querySelectorAll('[data-library-kind]')].find(node => node.getClientRects().length)?.querySelector('.library-editor:not(:empty), .library-heading') || document.getElementById('libraryCards');
     if (!action.startsWith("library.") && resource && ["organization", "business_unit", "project", "job"].includes(resource.type)) {
-      target = [...document.querySelectorAll("#workspaceRoot [data-resource-id]")].find((node) => node.dataset.resourceType === resource.type && node.dataset.resourceId === resource.id);
+      target = [...document.querySelectorAll("#workspaceRoot [data-resource-id]")].find((node) => node.dataset.resourceType === resource.type && node.dataset.resourceId === resource.id && node.getClientRects().length);
     }
     if (action === 'project.locales.add' && resource?.type === 'project') {
       const languages = [...document.querySelectorAll('#workspaceRoot .project-languages')].find(node => node.dataset.projectId === resource.id);
       target = languages?.querySelector('summary') || target;
     }
-    if (!target && action !== "read") target = [...document.querySelectorAll("#workspaceRoot [data-workspace-action]")].find((node) => node.dataset.workspaceAction === action)?.querySelector("summary");
+    if (!target && action !== "read") target = [...document.querySelectorAll("#workspaceRoot [data-workspace-action]")].find((node) => node.dataset.workspaceAction === action && node.getClientRects().length)?.querySelector("summary");
     if (!target && action === "read") target = document.querySelector("#workspaceRoot .workspace-heading");
     if (target?.getClientRects().length) target.scrollIntoView({ block: "nearest", behavior: "instant" });
     this.mark(target, label, phase, 0);

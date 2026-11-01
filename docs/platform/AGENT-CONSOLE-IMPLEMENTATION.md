@@ -357,3 +357,14 @@ and leave final review/publication to separately confirmed human decisions.
 Then extend translation/review, asset management, reporting packages and remote
 MCP according to the approved specification. Organization-owned translation
 keys and the first account-wide reporting packages are included in this foundation.
+
+
+## Console polish, November 1
+
+Projects now opens with compact business-unit cards. A selected unit occupies the full content width, with separate project workflow cards, quick links, a translation-editor entry point, and an explicit return to the overview. Semantic agent destinations reveal the corresponding unit before highlighting a resource; hidden actions cannot receive attention highlights. Switching units preserves in-page drafts. Existing authorization and confirmation flows remain in place.
+
+Console selects use themed browser pickers and prominent chevrons via customizable-select CSS. Native form semantics, keyboard behavior and validation are retained. Browsers without customizable-select support keep their system menu and receive the clearer closed-control arrow; see [the browser implementation guidance](https://developer.chrome.com/docs/modern-web-guidance/guides/forms/branded-select-styling). The home heading is “Your app. In any language.”
+
+The event-owned workflow-progress component extends the existing translation progress display to context, QA, extraction, document inspection and pending confirmations, including the same workflow cards in chat. Percentages use known completed/total counts; unknown totals are indeterminate. Stopped work retains measured partial progress, and unavailable reads are labeled. Generation, review and verification are separate stages. No model calls are made for progress updates.
+
+The running workers and server configuration do not need a restart for these frontend changes. Detailed requirements and the remaining backlog live in the event repository's `docs/UI-POLISH-SPEC.md`. The new `run-workspace-polish-browser-tests.js` covers themed dropdowns, focused navigation, draft preservation, name saves, progress states, keyboard access and mobile layout using an isolated synthetic workspace.

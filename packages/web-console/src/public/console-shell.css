@@ -30,6 +30,8 @@
 .context-label { display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 3px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .context-path { display: flex; align-items: center; gap: 12px; font-size: 13px; }
 .context-path strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.picker-chevron { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 5px; color: var(--text-accent); background: var(--teal-soft); font-size: 22px; font-weight: 800; }
+.workspace-picker[open] .picker-chevron { rotate: 180deg; }
 .workspace-menu, .account-popover { position: absolute; top: calc(100% + 16px); left: 0; width: min(380px, calc(100vw - 32px)); max-height: min(65vh, 600px); overflow: auto; padding: 12px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--background-pane); box-shadow: 0 12px 40px color-mix(in srgb, var(--text-main) 12%, transparent); }
 .workspace-menu input { font-size: 12px; margin-bottom: 12px; }
 .workspace-menu button { display: block; width: 100%; padding: 9px; text-align: left; background: transparent; border: 0; font-size: 12px; font-weight: 500; }

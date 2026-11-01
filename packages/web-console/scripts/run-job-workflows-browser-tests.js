@@ -23,6 +23,7 @@ try {
   await expect(chat.locator('#agentInput')).toBeEnabled();
   await chat.getByRole('button', { name: 'Minimize chat', exact: true }).click();
   await page.evaluate(async org => { await window.HedgelingAgent.browseWorkspace(org); window.HedgelingConsole.openWorkspace(); }, app.org);
+  await page.getByRole('button', { name: 'Open business unit: Default', exact: true }).click();
   const row = page.locator(`[data-resource-type="job"][data-resource-id="${job.id}"]`);
   await expect(row).toContainText('AI-only translations');
   await row.getByRole('button',{name:'Preview translation start',exact:true}).click();
@@ -40,6 +41,8 @@ try {
   await page.screenshot({path:path.join(artifacts,'01-quality-preview.png')});
   await review.getByRole('button',{name:'Run AI quality check',exact:true}).click();
   await expect(quality).toContainText('2 pass',{timeout:20000});
+  await expect(quality.getByRole('progressbar', { name: 'Translations checked' })).toHaveAttribute('value', '2');
+  await expect(quality.getByRole('progressbar', { name: 'Translations checked' })).toHaveAttribute('max', '2');
   await quality.getByRole('button',{name:'Preview verification of passing translations',exact:true}).click();
   await expect(review).toContainText('Mark 2 passing translations verified');
   await expect(review).not.toContainText('tell me');

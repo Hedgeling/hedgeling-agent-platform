@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { workflowProgress } from './workflow-progress.js';
 import {qualityFailureMessage} from './job-review-messages.js';
 import { documentExports } from './documents.js';
 import { TRANSLATION_JOB_LIMITS, defaultTranslationBatchSize } from './translation-job-limits.js';
@@ -126,16 +127,18 @@ export function jobQualityPanel({jobId,request,onPreview=null,runId=null,open=fa
   const panel=node('details','','translation-job-progress job-quality');panel.open=open;panel.append(node('summary','AI quality check & verification'));
   const body=node('div'),status=node('p','Open to view quality findings.'),results=node('div'),error=node('p','','agent-error');error.setAttribute('role','alert');status.setAttribute('role','status');
   const refresh=node('button','Refresh findings'),more=node('button','More findings'),verify=node('button','Preview verification of passing translations'),cancel=node('button','Stop quality check');for(const b of [refresh,more,verify,cancel])b.type='button';more.hidden=verify.hidden=cancel.hidden=true;
+  const progress=workflowProgress('Translations checked');
   let currentId=runId,nextOffset=null,timer,busy=false;
   const load=async(append=false)=>{if(busy)return;busy=true;clearTimeout(timer);error.textContent='';refresh.disabled=true;
     try{const {result}=await request('/api/actions/localization_job.review_status',{jobId,...(currentId?{runId:currentId}:{}),offset:append?nextOffset:0});const r=result.qualityRun;
       if(!append)results.replaceChildren();if(!r){status.textContent='No AI quality check yet. Checks produce findings; verification needs your separate confirmation.';return;}
+      progress.update({state:r.status,title: ['queued','running'].includes(r.status)?'Checking translation quality':['ready','applied'].includes(r.status)?'Quality findings ready':'Quality check stopped',completed:r.checked,total:r.total,unit:'translations checked',detail:`${r.counts.pass} passing · ${r.counts.needs_changes} need changes · ${r.counts.uncertain} uncertain. ${r.accepted} verified after confirmation.`});
       currentId=r.id;status.textContent=`${r.status} · ${r.checked}/${r.total} checked · ${r.counts.pass} pass · ${r.counts.needs_changes} need changes · ${r.counts.uncertain} uncertain · ${r.accepted} verified from this check. ${r.targetLocales.join(', ')}.`;
       if(r.error)error.textContent=qualityFailureMessage(r);
       for(const finding of r.results){const item=node('details','','job-quality-finding');item.append(node('summary',`${finding.locale} · ${finding.verdict.replaceAll('_',' ')}${finding.accepted?' · verified':''} · ${finding.source}`));item.append(node('p',`Translation: ${finding.translation}`));for(const issue of finding.issues)item.append(node('p',issue));results.append(item);}
       nextOffset=result.page.nextOffset;more.hidden=nextOffset===null;verify.hidden=!onPreview||!['ready','applied'].includes(r.status)||r.counts.pass<=r.accepted;cancel.hidden=!onPreview||!['queued','running'].includes(r.status);
       if(['queued','running'].includes(r.status))timer=setTimeout(()=>{if(panel.isConnected&&panel.open)void load();},2500);
-    }catch(e){error.textContent=e.message;}finally{busy=false;refresh.disabled=false;}
+    }catch(e){progress.update({state:'unavailable',title:'Quality progress unavailable',detail:'Refresh findings to check the latest status.'});error.textContent=e.message;}finally{busy=false;refresh.disabled=false;}
   };
   const propose=async(button,action,input)=>{button.disabled=true;try{await onPreview(action,{jobId,...input});}catch(e){error.textContent=e.message;}finally{button.disabled=false;}};
   if(onPreview){const form=node('form'),selection=node('select');selection.setAttribute('aria-label','Translations to check');for(const [value,label]of [['in_review','In review (pending + needs-review)'],['all','All existing translations']]){const option=node('option',label);option.value=value;selection.append(option);}
@@ -144,7 +147,7 @@ export function jobQualityPanel({jobId,request,onPreview=null,runId=null,open=fa
     form.addEventListener('submit',event=>{event.preventDefault();const targetLocales=locales.value.split(',').map(s=>s.trim()).filter(Boolean);void propose(start,'localization_job.review',{selection:selection.value,...(targetLocales.length?{targetLocales}:{})});});body.append(form,node('p','Uses your organization’s selected Meta or Gemini key. Up to 1,000 translations per check; narrow the languages for larger jobs. AI-only jobs do not need this optional check.'));
   }
   verify.onclick=()=>propose(verify,'localization_job.verify',{runId:currentId});cancel.onclick=()=>propose(cancel,'localization_job.review_cancel',{runId:currentId});refresh.onclick=()=>{currentId=runId;void load();};more.onclick=()=>load(true);
-  body.append(status,results,refresh,more,verify,cancel,error);panel.append(body);panel.addEventListener('toggle',()=>{if(panel.open)void load();else clearTimeout(timer);});return panel;
+  body.append(progress.root,status,results,refresh,more,verify,cancel,error);panel.append(body);panel.addEventListener('toggle',()=>{if(panel.open)void load();else clearTimeout(timer);});return panel;
 }
 
 function jobDeliveryPanel({job,request,onPreview}){

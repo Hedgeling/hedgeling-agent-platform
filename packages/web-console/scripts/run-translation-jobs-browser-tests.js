@@ -23,6 +23,7 @@ try {
   await expect(chat.locator('#agentInput')).toBeEnabled();
   await chat.getByRole('button', { name: 'Minimize chat', exact: true }).click();
   await page.evaluate(async org => { await window.HedgelingAgent.browseWorkspace(org); window.HedgelingConsole.openWorkspace(); }, app.org);
+  await page.getByRole('button', { name: 'Open business unit: Default', exact: true }).click();
   const row = page.locator(`[data-resource-type="job"][data-resource-id="${job.id}"]`);
   await expect(row.getByLabel('Maximum translations in this batch')).toHaveValue('2');
   await expect(row.getByLabel('Maximum translations in this batch')).toHaveAttribute('max','10000');
@@ -73,6 +74,7 @@ try {
   await page.reload();
   await page.waitForFunction(()=>Boolean(window.HedgelingAgent?.browseWorkspace&&window.HedgelingConsole?.openWorkspace));
   await page.evaluate(async org=>{await window.HedgelingAgent.browseWorkspace(org);window.HedgelingConsole.openWorkspace();},app.org);
+  await page.getByRole('button', { name: 'Open business unit: Default', exact: true }).click();
   const flaggedRow=page.locator(`[data-resource-type="job"][data-resource-id="${flagged.id}"]`);
   await flaggedRow.getByRole('button',{name:'Preview translation start',exact:true}).click();
   await flaggedRow.locator('.workspace-confirmation').getByRole('button',{name:'Start translation',exact:true}).click();

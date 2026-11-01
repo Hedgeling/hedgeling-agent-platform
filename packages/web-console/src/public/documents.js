@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { workflowProgress } from './workflow-progress.js';
 const node = (tag, text = '', cls = '') => { const n = document.createElement(tag); n.textContent = text; n.className = cls; return n; };
 const button = text => { const n = node('button', text); n.type = 'button'; return n; };
 const field = (label, control) => { const n = node('label', label); control.setAttribute('aria-label', label); n.append(control); return n; };
@@ -41,10 +42,11 @@ export function documentPanel({ project, request, confirmation, controllerId, on
   const form = node('form'), input = node('input'); input.type = 'file'; input.accept = '.md,.markdown,.txt,.docx,.pdf'; input.required = true;
   const submit = node('button', 'Upload and inspect'); submit.type = 'submit';
   const status = node('p'); status.setAttribute('role', 'status');
+  const progress = workflowProgress('Document upload and inspection');
   const error = node('p', '', 'agent-error'); error.setAttribute('role', 'alert');
   const inspect = node('div'), history = node('div'), refresh = button('Browse uploaded documents'), more = button('More documents'); more.hidden = true;
   const policy = node('p', `Source language: ${project.sourceLocale || 'project language'}. Maximum 5 MiB, 200 text sections, or 30 PDF pages. Text translation only; no OCR or preserved Word/PDF layout. Uploading stores a preview; translation needs your confirmation.`);
-  form.append(field('Document', input), submit); root.append(policy, form, status, error, inspect, refresh, history, more);
+  form.append(field('Document', input), submit); root.append(policy, form, progress.root, status, error, inspect, refresh, history, more);
   let cursor = null;
   async function select(documentId) {
     inspect.replaceChildren(); error.textContent = '';
@@ -84,13 +86,14 @@ export function documentPanel({ project, request, confirmation, controllerId, on
     };
   }
   form.onsubmit = async event => {
-    event.preventDefault(); submit.disabled = true; error.textContent = ''; status.textContent = 'Reading document…';
+    event.preventDefault(); submit.disabled = true; error.textContent = ''; status.textContent = 'Reading document…'; progress.update({state:'running',title:'Uploading and inspecting document'});
     try {
       const file = input.files[0]; if (!file || file.size > 5 * 1024 * 1024) throw new Error('Choose a document no larger than 5 MiB.');
       const response = await fetch(`/api/documents/upload?project=${encodeURIComponent(project.slug)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Document-Name': encodeURIComponent(file.name) }, body: file });
       const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Upload failed.');
+      progress.update({state:'ready',title:'Document ready to inspect',completed:1,total:1,unit:'documents inspected',detail:'Review the document before creating a translation job.'});
       status.textContent = 'Upload ready to inspect. Nothing has been imported or translated.'; input.value = ''; root.dataset.documentDirty = 'false'; await select(result.document.id);
-    } catch(e) { status.textContent = ''; error.textContent = e.message; } finally { submit.disabled = false; }
+    } catch(e) { progress.update({state:'failed',title:'Document inspection stopped'}); status.textContent = ''; error.textContent = e.message; } finally { submit.disabled = false; }
   };
   const list = async reset => {
     refresh.disabled = more.disabled = true; error.textContent = '';

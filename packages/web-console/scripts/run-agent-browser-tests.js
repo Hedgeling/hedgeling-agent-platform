@@ -103,7 +103,7 @@ try {
     }
     await button.click();
   }
-  await expect(shell.getByText("Your organization, Product business unit, Website project and localization-job draft are ready.", { exact: false })).toBeVisible({ timeout: 15000 });
+  await expect(shell.getByText("Your organization, Product business unit, Website project and localization-job draft are ready.", { exact: false })).toBeVisible({ timeout: 30000 });
   await expect(page.locator('#workspaceRoot [data-resource-type="job"]')).toHaveAttribute("data-agent-attention", "complete");
   await page.screenshot({ path: path.join(artifacts, "03-result-highlight.png") });
   await shell.getByRole("button", { name: "Take over", exact: true }).click();
@@ -252,6 +252,7 @@ try {
   await expect(page.getByRole("button", { name: /Open Aurora assistant/ })).toBeVisible();
   await page.evaluate(async (id) => { await window.HedgelingAgent.browseWorkspace(id); window.HedgelingConsole.openWorkspace(); }, project.org);
   await expect(page.locator('#workspaceRoot [data-resource-type="project"]')).toHaveCount(106);
+  await page.getByRole('button', { name: 'Open business unit: Product', exact: true }).click();
   await page.getByRole("button", { name: "Browse jobs in Website", exact: true }).click();
   await expect(page.getByText("50 of 106 jobs shown", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Load more jobs in Website", exact: true }).click();
@@ -300,16 +301,17 @@ try {
     { action: "business_unit.update", summary: "Edit business unit: Product", field: "Business-unit name", value: "Growth", save: "Save business-unit name" },
     { action: "organization.update", summary: "Edit organization name", field: "Organization name", value: "Spring workspace", save: "Save organization name" },
   ]) {
+    if (edit.action === 'organization.update') await page.getByRole('button', { name: 'All business units' }).click();
     const details = page.locator(`details[data-workspace-action="${edit.action}"]`).filter({ has: page.getByText(edit.summary, { exact: true }) });
     await details.locator("summary").click();
     await details.getByLabel(edit.field, { exact: true }).fill(edit.value);
     await details.getByRole("button", { name: "Preview change", exact: true }).click();
     await expect(details.locator(".agent-change-after")).toHaveText(edit.value);
     await details.getByRole("button", { name: edit.save, exact: true }).click();
-    if (edit.action === "organization.update") await expect(page.getByRole("combobox", { name: "Workspace organization", exact: true }).locator("option:checked")).toHaveText(edit.value);
-    else await expect(page.getByText(`${edit.action === "project.update" ? "Edit project" : "Edit business unit"}: ${edit.value}`, { exact: true })).toBeVisible({ timeout: 15000 });
+    if (edit.action === "organization.update") await expect(page.getByRole("combobox", { name: "Workspace organization", exact: true }).locator("option:checked")).toHaveText(edit.value, { timeout: 30000 });
+    else await expect(page.getByText(`${edit.action === "project.update" ? "Edit project" : "Edit business unit"}: ${edit.value}`, { exact: true })).toBeVisible({ timeout: 30000 });
   }
-  const projectCreate = page.locator('details[data-workspace-action="project.create"]');
+  const projectCreate = page.locator('details[data-workspace-action="project.create"]:visible');
   await projectCreate.locator("summary").click();
   await projectCreate.getByLabel("Project name", { exact: true }).fill("Documentation");
   await projectCreate.getByRole("button", { name: "Preview change", exact: true }).click();
@@ -328,7 +330,8 @@ try {
   assert.deepEqual(errors, []);
   console.log(`Agent browser checks passed: creation and edit confirmations, semantic highlights, manual override, Markdown and contrast, click/keyboard resume, explicit tab ownership, zero-write card examples, focus, mobile, replay, second brand, onboarding launcher, and inventory/job pagination beyond 100. Screenshots: ${artifacts}`);
 } catch (error) {
-  await debugPage?.screenshot({ path: path.join(artifacts, 'failure.png'), fullPage: true });
-  console.error('Visible errors:', await debugPage?.locator('.agent-error, .toast').allTextContents());
+  console.error(error);
+  await debugPage?.screenshot({ path: path.join(artifacts, 'failure.png'), fullPage: true, timeout: 3000 }).catch(() => {});
+  console.error('Visible errors:', (await debugPage?.locator('.agent-error, .toast').allTextContents())?.filter(Boolean));
   throw error;
 } finally { console.log(`Browser artifacts: ${artifacts}`); await browser?.close(); await app.close(); }

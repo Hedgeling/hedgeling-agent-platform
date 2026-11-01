@@ -1,6 +1,7 @@
 @import url("/translation-jobs.css");
 @import url("/documents.css");
 @import url("/context-enrichment.css");
+@import url("/console-controls.css");
 .agent-document-upload { align-self:flex-start; font:inherit; font-size:13px; padding:5px 9px; border:1px solid var(--line); border-radius:6px; color:var(--text-main); background:var(--surface); cursor:pointer; }
 @font-face { font-family: "Courier Prime"; src: url("/design-system/assets/courier-prime-regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "Courier Prime"; src: url("/design-system/assets/courier-prime-bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
@@ -94,6 +95,41 @@ body[data-agent-mode="panel"] { padding-right: var(--agent-panel-width); }
 .workspace-inline-edit summary { color: var(--text-accent); font-weight: 500; overflow-wrap: anywhere; }
 .workspace-heading .workspace-inline-edit { max-width: 360px; }
 .workspace-heading .workspace-inline-edit[open] { max-width: 680px; }
+.workspace-unit-card { display: grid; gap: 12px; min-width: 0; text-align: left; padding: 24px; border: 1px solid var(--line-soft); border-radius: 16px; background: var(--background-pane); color: var(--text-main); }
+.workspace-unit-card > strong { font-size: 24px; letter-spacing: -.6px; }
+.workspace-unit-card .agent-eyebrow { margin: 0; }
+.workspace-unit-count, .workspace-unit-preview { font-size: 13px; line-height: 1.6; color: var(--text-muted); font-weight: 400; overflow-wrap: anywhere; }
+.workspace-unit-open { padding-top: 12px; margin-top: 4px; border-top: 1px solid var(--line-soft); color: var(--text-accent); font-size: 13px; }
+.workspace-unit-card:hover { border-color: var(--text-accent); }
+.workspace-focused > .workspace-heading { margin-bottom: 24px; }
+.workspace-focused > .workspace-heading > :is(h1, p, .agent-eyebrow, .workspace-inline-edit) { display: none; }
+.workspace-unit-view { width: 100%; min-width: 0; }
+.workspace-unit-view > h2 { font-size: clamp(28px, 3vw, 42px); letter-spacing: -1px; margin: 12px 0; }
+.workspace-back { padding: 8px 0; margin-bottom: 24px; border: 0; background: transparent; color: var(--text-accent); font-size: 13px; }
+.workspace-unit-description { color: var(--text-muted); font-size: 14px; line-height: 1.7; max-width: 720px; }
+.workspace-project-view { padding-block: 28px; border-top: 1px solid var(--line-soft); margin-top: 28px; min-width: 0; }
+.workspace-project-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
+.workspace-project-heading h3 { font-size: 24px; margin: 6px 0 0; letter-spacing: -.5px; }
+.workspace-open-editor { background: var(--surface-accent); color: var(--text-inverse); padding: 10px 16px; font-size: 13px; }
+.workspace-steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.workspace-step { position: relative; padding: clamp(18px, 2.5vw, 30px); border: 1px solid var(--line-soft); border-radius: 14px; background: var(--background-pane); min-width: 0; overflow-wrap: anywhere; }
+.workspace-step > h4 { font-size: 19px; margin: 0 42px 8px 0; }
+.workspace-step-number { position: absolute; inset: 22px 24px auto auto; color: var(--text-accent); font: 12px var(--font-code); }
+.workspace-step-help { margin: 0 0 20px; color: var(--text-muted); font-size: 13px; line-height: 1.6; }
+.workspace-step > :is(.context-panel, .document-panel) { margin: 0; border: 0; padding: 0; }
+.workspace-unit-view > .workspace-inline-edit { max-width: 680px; }
+.workspace-step .workspace-job { border: 1px solid var(--line-soft); border-radius: 10px; padding: 18px; margin: 0 0 16px; }
+.workspace-step .workspace-job > strong { font-size: 17px; }
+.workspace-step .workspace-job > span { line-height: 1.6; }
+.workspace-step .workspace-form { margin-top: 16px; }
+.workspace-steps :is(input, select, textarea) { max-width: 100%; }
+.console-layout .workspace-unit-card { border-color: var(--line-soft); border-radius: 14px; }
+.console-layout .workspace-unit-card:hover { border-color: var(--text-accent); }
+.workspace-step-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; }
+.workspace-step-links button { background: var(--background-pane); color: var(--text-accent); font-size: 12px; padding: 8px 12px; }
+.workspace-step { scroll-margin-top: 20px; }
+.workspace-step > .project-languages { border: 0; padding: 0; margin: 0; }
+.workspace-step > .project-languages > h3 { display: none; }
 .workspace-step-options { margin: 0; padding: 10px; border: 1px solid var(--line-soft); border-radius: 4px; }
 .workspace-step-options label { display: flex; flex-direction: row; align-items: center; gap: 8px; margin-top: 8px; }
 .workspace-step-options input { width: auto; }

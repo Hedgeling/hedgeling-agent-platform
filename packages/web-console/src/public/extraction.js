@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { workflowProgress } from './workflow-progress.js';
 import { repositoryPanel } from './repositories.js';
 // Host-owned request/confirmation functions keep identity and approvals out of
 // this display component. Repository strings are always rendered as text.
@@ -22,6 +23,7 @@ export function extractionProgress({ projectSlug, extractionId, request, onImpor
   card.append(node('p', 'SOURCE EXTRACTION', 'extraction-eyebrow'));
   const title = node('h4', 'Checking progress…'); const status = node('p'); status.setAttribute('role', 'status');
   const details = node('div'); const error = node('p', null, 'agent-error'); error.setAttribute('role', 'alert');
+  const progress = workflowProgress('Source extraction');
   const retry = button('Refresh status');
   const phases = { queued: 'Waiting for the engine', resolving_commit: 'Pinning the source revision', fetching_source: 'Reading selected source files', processing: 'Processing source', awaiting_model: 'Classifying candidate strings with your selected provider' };
   let timer, busy = false, polls = 0;
@@ -34,6 +36,9 @@ export function extractionProgress({ projectSlug, extractionId, request, onImpor
       const job = result.extraction;
       title.textContent = ['tune', 'tune-llm'].includes(job.operation) ? (job.status === 'succeeded' ? 'Your tuning preview is ready' : 'Hedgeling is checking extraction settings') : job.importedAt ? 'Source strings imported' : job.status === 'succeeded' ? 'Your strings are ready to review' : ['failed', 'cancelled'].includes(job.status) ? 'Extraction stopped' : 'Hedgeling is reading your source';
       status.textContent = phases[job.phase] || ({ succeeded: 'Extraction complete', failed: 'Extraction failed', cancelled: 'Extraction cancelled' }[job.status]) || 'Processing';
+      progress.update({ state: job.status, title: status.textContent,
+        ...(job.status === 'succeeded' ? { completed: 1, total: 1, unit: 'extractions completed' } : {}),
+        detail: job.importedAt ? 'Imported into this project.' : job.status === 'succeeded' ? 'Review the result before importing strings or saving settings.' : ['queued', 'running'].includes(job.status) ? 'The engine reports stages, so a completion percentage is not available yet.' : 'Review the details below before starting another request.' });
       details.replaceChildren();
       if (job.message) details.append(node('p', job.message));
       if (job.commitSha) details.append(node('p', 'Source commit: ' + job.commitSha, 'extraction-commit'));
@@ -72,12 +77,12 @@ export function extractionProgress({ projectSlug, extractionId, request, onImpor
         if (++polls < 120) timer = setTimeout(update, 3000);
         else status.textContent += ' · Select Refresh status to keep checking.';
       }
-    } catch (e) { error.textContent = e.message; }
+    } catch (e) { progress.update({ state: 'unavailable', title: 'Extraction progress unavailable', detail: 'Refresh to check the latest status.' }); error.textContent = e.message; }
     finally { busy = false; retry.disabled = false; }
   }
   retry.addEventListener('click', () => { polls = 0; void update(); });
   card.addEventListener('extraction-refresh', () => { void update(); });
-  card.append(title, status, details, retry, error);
+  card.append(title, progress.root, status, details, retry, error);
   setTimeout(update, 0);
   return card;
 }

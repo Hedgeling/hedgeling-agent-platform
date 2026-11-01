@@ -151,7 +151,7 @@ async function follow(target, { phase = "working", card, label = "Looking at thi
     attention.show({ action: target.action || 'library.read', resource: target.resource, phase, card, label });
   }
   if (target.view === "workspace") {
-    await workspace.refresh(target.organizationId, target.resource?.type === "job" ? target.resource.id : null);
+    await workspace.refresh(target.organizationId, target.resource?.type === "job" ? target.resource.id : null, target.resource);
     if (generation !== attentionGeneration || !$("agentFollow").checked || ["paused", "cancelled"].includes(run?.status)) return;
     window.HedgelingConsole?.openWorkspace();
     attention.show({ action: target.action || "read", resource: target.resource, phase, card, label });
@@ -392,7 +392,7 @@ async function initialize() {
     try {
       setMode("minimized");
       window.HedgelingConsole?.navigate("workspace", { manual: true, load: false });
-      await workspace.refresh(detail.organizationId);
+      await workspace.refresh(detail.organizationId, null, { type: 'project', id: detail.projectSlug });
       const panel = [...document.querySelectorAll('.project-languages')].find(node => node.dataset.projectSlug === detail.projectSlug);
       const details = panel?.querySelector('details');
       if (details) { details.open = true; details.querySelector('input')?.focus(); panel.scrollIntoView({ block: 'center' }); }
