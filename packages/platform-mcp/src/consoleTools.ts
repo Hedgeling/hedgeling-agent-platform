@@ -1,13 +1,13 @@
 import { CONSOLE_ACTIONS, validateActionInput, normalizeLibraryToolInput, ACTION_CONTRACT_VERSION } from "@hedgeling/api-contract";
 import { consoleClientFromEnv } from "@hedgeling/platform-client";
 
-export const consoleTools = CONSOLE_ACTIONS.map((action) => ({
+export const consoleTools = CONSOLE_ACTIONS.filter(action => !action.consoleOnly).map((action) => ({
   name: action.toolName, description: action.description, inputSchema: action.inputSchema,
   annotations: { readOnlyHint: action.readOnly, destructiveHint: false, idempotentHint: action.readOnly, openWorldHint: true },
 }));
 
 export async function callConsoleTool(name: string, input: unknown) {
-  const action = CONSOLE_ACTIONS.find((candidate) => candidate.toolName === name);
+  const action = CONSOLE_ACTIONS.find((candidate) => candidate.toolName === name && !candidate.consoleOnly);
   if (!action) return null;
   input = normalizeLibraryToolInput(action.toolName, input);
   const invalid = validateActionInput(action, input);

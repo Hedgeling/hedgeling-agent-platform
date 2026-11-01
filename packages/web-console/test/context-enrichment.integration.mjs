@@ -12,18 +12,35 @@ async function setup(t,count = 2) {
     if (body?.instructions?.startsWith('You write translator context')) a.meta.control.text = JSON.stringify({items:JSON.parse(body.input).items.map(s => ({id:s.id,description:'A personalized welcome heading. Preserve the name placeholder.',evidence:'code',confidence:'high',suggestedMaxCharacters:null,limitReason:'The heading has no measurable character budget.'}))});
     else a.meta.control.text = 'Bonjour {name}';
   };
-  a.contextStatus = async runId => (await a.request('/api/actions/context.status',{runId})).body.result?.run;
+  a.contextStatus = async runId => (await a.request('/api/actions/context.results',{runId})).body.result?.run;
   a.contextDone = runId => eventually(() => a.contextStatus(runId),r => r && !['queued','running'].includes(r.status),15000);
   a.enrich = async () => { const r = (await a.confirm(await a.preview('context.enrich',{projectSlug:a.project.slug}))).result.contextRun; return a.contextDone(r.id); };
   return a;
 }
 test('enrichment and acceptance require separate human approvals; accepted fresh context reaches translation and detail UI',options,async t => {
   const a = await setup(t), preview = await a.preview('context.enrich',{projectSlug:a.project.slug});
+  const summary = async () => (await a.request('/api/actions/context.summary',{projectSlug:a.project.slug})).body.result;
+  assert.deepEqual((await summary()).counts,{totalStrings:2,withAcceptedContext:0,withoutAcceptedContext:2,currentContext:0,staleContext:0,needsContext:2});
+  assert.equal((await summary()).freshnessComplete,true);
+  assert(!JSON.stringify(await summary()).includes('Hello'));
   assert.equal(preview.preview.resources.stringsWithCode,2); assert.equal(a.meta.calls.length,0);
   assert.equal(preview.preview.resources.provider.maximumRequests,1);
   assert.equal((await a.request(`/api/agent/proposals/${preview.id}/confirm`,{fingerprint:preview.fingerprint,controllerId:crypto.randomUUID()},{authorization:`Bearer ${a.token}`})).status,403);
   const [one,two] = await Promise.all([a.confirm(preview),a.confirm(preview)]); assert(one.replayed || two.replayed);
   const result = await a.contextDone(one.result.contextRun.id); assert.equal(result.status,'awaiting_review',JSON.stringify(result));
+  const status=(await a.request('/api/actions/context.status',{runId:result.id})).body.result;
+  assert.equal(status.run.completedStrings,2); assert.equal(status.run.awaitingAcceptance,2); assert.equal(status.run.acceptedStrings,0);
+  assert.equal(status.run.results,undefined); assert.equal(status.run.acceptedIds,undefined);
+  const runs=(await a.request('/api/actions/context.runs',{projectSlug:a.project.slug})).body.result;
+  assert.equal(runs.runs[0].acceptedIds,undefined); assert.equal(runs.runs[0].awaitingAcceptance,2);
+  const inspected=(await a.request('/api/actions/context.inspect',{projectSlug:a.project.slug,stringIds:[a.sources[0]],runId:result.id})).body.result;
+  assert.equal(inspected.strings.length,1); assert.equal(inspected.strings[0].id,a.sources[0]);
+  assert.match(inspected.strings[0].suggestion.description,/personalized welcome/);
+  assert.equal(inspected.strings[0].suggestionCurrent,true);
+  assert.equal(inspected.strings[0].accepted,null);
+  assert.equal((await a.request('/api/actions/context.inspect',{projectSlug:a.project.slug})).status,400);
+  assert.equal((await a.request('/api/actions/context.inspect',{projectSlug:a.project.slug,query:'Hello',stringIds:[a.sources[0]]})).status,400);
+  assert.equal((await a.request('/api/actions/context.inspect',{projectSlug:a.project.slug,query:'%_'})).body.result.strings.length,0,'Queries are literal, not wildcard expressions.');
   assert.equal(a.meta.calls.length,1); assert.match(a.meta.calls[0].body.input,/<h1>/);
   const format=a.meta.calls[0].body.text.format;
   assert.equal(format.type,'json_schema'); assert.equal(format.strict,true);
@@ -34,6 +51,9 @@ test('enrichment and acceptance require separate human approvals; accepted fresh
   const suggestion = approval.preview.fields.strings[0];
   assert.equal(suggestion.suggestionSource,'formula'); assert.equal(suggestion.suggestedMaxCharacters,17);
   await a.confirm(approval); await a.confirm(approval);
+  assert.deepEqual((await summary()).counts,{totalStrings:2,withAcceptedContext:1,withoutAcceptedContext:1,currentContext:1,staleContext:0,needsContext:1});
+  const accepted=(await a.request('/api/actions/context.inspect',{projectSlug:a.project.slug,stringIds:[a.sources[0]]})).body.result;
+  assert.match(accepted.strings[0].accepted.description,/personalized welcome/);
   assert.equal(a.meta.calls.length,1); assert.equal((await a.contextStatus(result.id)).status,'awaiting_review');
   const detail = await a.request(`/api/strings/${a.sources[0]}`); assert.match(detail.body.acceptedContext.description,/personalized welcome/);
   assert.equal(detail.body.acceptedContext.suggestedMaxCharacters,17);
@@ -48,6 +68,8 @@ test('enrichment and acceptance require separate human approvals; accepted fresh
   assert(translations.some(row => row.text === longTranslation), 'Exceeding the advisory target must neither reject nor truncate the translation.');
   assert.equal((await a.database.query('select count(*)::int n from source_strings where limit_chars is not null')).rows[0].n,0);
   await a.database.query("update context_variants set code_context='<footer>Hello {name}</footer>' where source_string_id=$1",[a.sources[0]]);
+  assert.deepEqual((await summary()).counts,{totalStrings:2,withAcceptedContext:1,withoutAcceptedContext:1,currentContext:0,staleContext:1,needsContext:2});
+  assert.equal((await a.request('/api/actions/context.inspect',{projectSlug:a.project.slug,stringIds:[a.sources[0]],runId:result.id})).body.result.strings[0].suggestionCurrent,false);
   assert.equal((await a.request(`/api/strings/${a.sources[0]}`)).body.acceptedContext,null);
   const list = (await a.request('/api/actions/context.strings',{projectSlug:a.project.slug})).body.result;
   assert.equal(list.strings.find(s => s.id===a.sources[0]).current,false);
@@ -106,6 +128,9 @@ test('provider failures and invalid output save no guidance; tenant boundaries p
   await a.database.query('update context_enrichment_runs set project_id=$2 where id=$1',[result.id,otherProject]);
   assert.equal((await a.request('/api/actions/context.status',{runId:result.id})).status,403);
   assert.equal((await a.request('/api/actions/context.strings',{projectSlug:'private-context'})).status,403);
+  assert.equal((await a.request('/api/actions/context.summary',{projectSlug:'private-context'})).status,403);
+  assert.equal((await a.request('/api/actions/context.inspect',{projectSlug:'private-context',query:'Hello'})).status,403);
+  assert.equal((await a.request('/api/actions/context.inspect',{projectSlug:a.project.slug,query:'Hello',runId:result.id})).status,404);
 });
 test('revocation during inference prevents saving results and does not dispatch again',options,async t => {
   const a = await setup(t,1), respond = a.meta.control.beforeResponse;
@@ -115,6 +140,9 @@ test('revocation during inference prevents saving results and does not dispatch 
 });
 test('one bulk approval processes all missing context in bounded batches, meters each call and accepts more than 20 results',options,async t => {
   const a = await setup(t,45);
+  const match=(await a.request('/api/actions/context.inspect',{projectSlug:a.project.slug,query:'Hello'})).body.result;
+  assert.equal(match.strings.length,5); assert.equal(match.hasMoreMatches,true);
+  assert.equal((await a.request('/api/actions/context.inspect',{projectSlug:a.project.slug,stringIds:a.sources.slice(0,6)})).status,400);
   const preview = await a.preview('context.enrich',{projectSlug:a.project.slug,allMissing:true});
   assert.equal(preview.preview.fields.stringCount,45);
   assert.equal(preview.preview.resources.provider.maximumRequests,3);
@@ -128,13 +156,13 @@ test('one bulk approval processes all missing context in bounded batches, meters
   assert.equal(run.results.length,20);
   const pages = [];
   for (const offset of [0,20,40]) {
-    const response = (await a.request('/api/actions/context.status',{runId:run.id,offset})).body.result;
+    const response = (await a.request('/api/actions/context.results',{runId:run.id,offset})).body.result;
     assert.equal(response.page.total,45); assert.equal(response.page.offset,offset);
     assert.equal(response.page.nextOffset,offset===40?null:offset+20);
     pages.push(...response.run.results);
   }
   assert.deepEqual(pages.map(s=>s.id).sort(),[...a.sources].sort());
-  for (const offset of [-1,0.5,46]) assert.equal((await a.request('/api/actions/context.status',{runId:run.id,offset})).status,400);
+  for (const offset of [-1,0.5,46]) assert.equal((await a.request('/api/actions/context.results',{runId:run.id,offset})).status,400);
   assert.deepEqual(a.meta.calls.map(c => JSON.parse(c.body.input).items.length),[20,20,5]);
   assert.equal(new Set(a.meta.calls.flatMap(c => JSON.parse(c.body.input).items.map(s => s.id))).size,45);
   const usage = (await a.database.query("select idempotency_key from usage_events where operation='context_enrichment'")).rows;

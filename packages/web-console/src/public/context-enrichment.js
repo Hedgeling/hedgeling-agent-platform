@@ -35,7 +35,7 @@ export function contextProgress({ runId,request,onReview,onStop }) {
     if (!root.isConnected) return;
     if (busy) return; busy = true; more.disabled = true;
     try {
-      const { run, page } = (await request('/api/actions/context.status',{ runId, offset: append ? nextOffset : 0 })).result;
+      const { run, page } = (await request('/api/actions/context.results',{ runId, offset: append ? nextOffset : 0 })).result;
       status.textContent = `${({ queued:'Queued',running:'Writing context',awaiting_review:'Context ready to review',applied:'Context accepted',failed:'Analysis stopped',uncertain:'Result uncertain' })[run.status]} · ${run.completedStrings ?? run.results.length} / ${run.strings} strings · ${run.completedRequests ?? 0} / ${run.requests ?? 1} requests completed · ${run.provider} / ${run.model}`;
       if (!append) results.replaceChildren();
       results.querySelectorAll('[data-context-control]').forEach(n => n.remove());
@@ -77,7 +77,7 @@ export function contextPanel({ project,request,confirmation,controllerId }) {
     // into the assistant's request. Nothing is accepted by these paged reads.
     const all = []; let offset = 0;
     do {
-      const result = (await request('/api/actions/context.status',{runId:run.id,offset})).result;
+      const result = (await request('/api/actions/context.results',{runId:run.id,offset})).result;
       run = result.run; all.push(...run.results); offset = result.page?.nextOffset ?? null;
     } while (offset !== null);
     const selection = node('fieldset'); selection.append(node('legend','Choose context to accept'));

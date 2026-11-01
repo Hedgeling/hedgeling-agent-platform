@@ -14,6 +14,10 @@ const route = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(ne
 const active = new Map();
 const running = ["planning", "reading", "executing"];
 const activityLabels = {
+  console_get_context_summary: 'Checking context coverage',
+  console_inspect_string_context: 'Reading the selected string context',
+  console_list_context_runs: 'Finding context analyses',
+  console_get_context_run: 'Checking context progress',
   console_propose_job_quality_check: 'Preparing an AI quality check',
   console_get_job_quality_check: 'Reading quality findings',
   console_propose_job_verification: 'Preparing verification of passing translations',

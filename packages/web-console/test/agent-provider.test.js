@@ -16,13 +16,13 @@ test('fresh and resumed chats can read a bulk context run without exhausting the
   t.mock.method(pool,'query',async()=>({rows:[]}));
   let calls=0;
   t.mock.method(globalThis,'fetch',async(_url,init)=>{
-    calls++; assert(Buffer.byteLength(init.body)<150000,'The request contains one results page, not the whole saved analysis.');
+    calls++; assert(Buffer.byteLength(init.body)<100000,'Routine status requests contain counts only.');
     const body=JSON.parse(init.body);
     const response=process.env.HEDGELING_AGENT_PROVIDER==='meta'
       ? JSON.parse(body.input.find(i=>i.type==='function_call_output').output)
       : body.contents.find(c=>c.parts.some(p=>p.functionResponse)).parts[0].functionResponse.response;
-    assert.equal(response.run.completedStrings,723); assert.equal(response.run.results.length,20);
-    assert.equal(response.page.nextOffset,20); assert.equal(response.page.total,723);
+    assert.equal(response.run.completedStrings,723); assert.equal(response.run.results,undefined);
+    assert.equal(response.run.awaitingAcceptance,723); assert.equal(response.page,undefined);
     return Response.json(process.env.HEDGELING_AGENT_PROVIDER==='meta'
       ? {status:'completed',output:[{type:'message',role:'assistant',content:[{type:'output_text',text:'Saved context is ready to review.'}]}],usage:{input_tokens:5,output_tokens:3,total_tokens:8}}
       : {candidates:[{content:{role:'model',parts:[{text:'Saved context is ready to review.'}]}}],usageMetadata:{totalTokenCount:8}});

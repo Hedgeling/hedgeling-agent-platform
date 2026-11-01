@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "741f16b42c87f08c27231babe989a264cae7bb27",
+  "revision": "dc82135292ba676f8429fa730dbeb539ea9e444d",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -57,7 +57,7 @@
     {
       "source": "src/context-enrichment.js",
       "destination": "context-enrichment.js",
-      "sha256": "460c82debd9bc9ed50e65f5787a7fa8bbc3bbc34ed7d5a0121809765fb6ded97"
+      "sha256": "bd64e38aa7c3c1a92d0f03bb3e158c5dfd9cf04d3ff4949360ae22b307e11285"
     },
     {
       "source": "src/context-analysis.js",
@@ -67,7 +67,7 @@
     {
       "source": "src/context-actions.js",
       "destination": "context-actions.js",
-      "sha256": "65809cb9690b91cb20397770f16c4548cb0979b1f9bb76e4f22ef842ddb02a8b"
+      "sha256": "17710340468140b3811cc8f5acf161bf2c5d683ae39002e80ac1e6156b8bbe03"
     },
     {
       "source": "src/documents.js",
@@ -272,7 +272,7 @@
     {
       "source": "src/context-actions.js",
       "destination": "../../../api-contract/context-actions.js",
-      "sha256": "65809cb9690b91cb20397770f16c4548cb0979b1f9bb76e4f22ef842ddb02a8b"
+      "sha256": "17710340468140b3811cc8f5acf161bf2c5d683ae39002e80ac1e6156b8bbe03"
     },
     {
       "source": "contracts/202610291600_context_enrichment.sql",
@@ -287,7 +287,7 @@
     {
       "source": "ui/context-enrichment.js",
       "destination": "../public/context-enrichment.js",
-      "sha256": "27c3e31d17142c86cea96841b384a8783f8dc1e5406714ed072dc73b682ae84f"
+      "sha256": "341753ba19872025e79b4ddc9548dfe1807700c1aafb311669d45eace954c013"
     },
     {
       "source": "ui/context-enrichment.css",
@@ -432,7 +432,7 @@
     {
       "source": "src/context-results.js",
       "destination": "context-results.js",
-      "sha256": "9ce919f8ab1fb127b8794e38ac39c87ec06e05d884eb1a6e96ee89539c6c808d"
+      "sha256": "99689e5b52348cd3efe6fe615e8b13da246517ee3ee941207c14a2c3a33c6987"
     }
   ]
 }

@@ -10,7 +10,8 @@ const batchesFor = r => r.provider_plan.batches || [{ stringIds: r.snapshot.map(
 const completedBatches = r => { const done = new Set(r.results.map(s => s.id)); return batchesFor(r).filter(b => b.stringIds.every(id => done.has(id))).length; };
 const safeRun = r => ({ id: r.id, status: r.status, strings: r.snapshot.length, completedStrings: r.results.length,
   requests: batchesFor(r).length, completedRequests: completedBatches(r), createdAt: r.created_at, finishedAt: r.finished_at,
-  provider: r.provider_plan.provider, model: r.provider_plan.model, acceptedIds: r.accepted_ids, error: r.error_code, failure: r.error_detail || null });
+  provider: r.provider_plan.provider, model: r.provider_plan.model, acceptedStrings: r.accepted_ids.length,
+  awaitingAcceptance: r.results.length - r.accepted_ids.length, error: r.error_code, failure: r.error_detail || null });
 // Older pending analyses gain the same reviewable fallback without another
 // paid request. Accepted results remain exactly as the person approved them.
 const reviewResults = r => r.results.map(result => r.accepted_ids.includes(result.id) ? result
@@ -45,6 +46,47 @@ export function createContextEnrichment({ database, transaction, authorize, insp
   async function read(name, input, auth, scope = {}) {
     const p = await project(input, auth, scope, database);
     const uiTarget = target(p);
+    if (name === 'context.summary') return transaction(async db => {
+      await db.query('set transaction isolation level repeatable read, read only');
+      const currentProject = await project(input, auth, scope, db);
+      const counts = (await db.query(`select count(*)::int as total, count(e.source_string_id)::int as accepted
+        from source_strings s left join source_context_enrichments e on e.source_string_id=s.id where s.project_id=$1`, [p.id])).rows[0];
+      // Freshness uses exactly the same evidence fingerprint as generation and
+      // translation. Never equate an existing row with current guidance.
+      const complete = counts.accepted <= CONTEXT_LIMITS.scanStrings;
+      let current = 0, cursor = null;
+      if (complete) do {
+        const rows = (await db.query(`select s.id from source_strings s join source_context_enrichments e on e.source_string_id=s.id
+          where s.project_id=$1 and ($2::uuid is null or s.id>$2) order by s.id limit 100`,[p.id,cursor])).rows;
+        if (!rows.length) break;
+        current += (await sources(currentProject,db,{ids:rows.map(s=>s.id)})).filter(s=>s.current).length;
+        cursor = rows.length===100 ? rows.at(-1).id : null;
+      } while (cursor);
+      return { counts: { totalStrings:counts.total,withAcceptedContext:counts.accepted,withoutAcceptedContext:counts.total-counts.accepted,
+        currentContext:complete?current:null,staleContext:complete?counts.accepted-current:null,needsContext:complete?counts.total-current:null },
+        freshnessComplete:complete,...(!complete?{notice:'Freshness was not scanned because accepted context exceeds the 10,000-string summary limit. Accepted/missing totals are exact; current/stale counts are unavailable.'}:{}),uiTarget };
+    });
+    if (name === 'context.inspect') {
+      if (Boolean(input.query) === Boolean(input.stringIds) || input.query && input.query.trim().length < 2
+        || input.stringIds && (!input.stringIds.length || input.stringIds.length > 5)) throw fail(400,'Specify up to five string IDs or a literal search of at least two characters.','context_selection_invalid');
+      const matches = (await database.query(`select id from source_strings where project_id=$1
+        and ($2::uuid[] is null or id=any($2::uuid[])) and ($3::text is null or strpos(lower(source_text),lower($3))>0)
+        order by id limit 6`,[p.id,input.stringIds||null,input.query?.trim()||null])).rows;
+      if (input.stringIds && matches.length!==input.stringIds.length) throw fail(404,'Some selected strings are unavailable in this project.','context_not_found');
+      const selected = matches.length ? await sources(p,database,{ids:matches.slice(0,5).map(s=>s.id)}) : [];
+      let analysis = null;
+      if (input.runId) {
+        analysis = await run(input.runId,database);
+        if (analysis.project_id!==p.id) throw fail(404,'Enrichment run not found in this project.','context_not_found');
+      }
+      const saved = analysis ? reviewResults(analysis) : [];
+      const page = contextResultPage(selected.map(s=>({id:s.id,source:s.source,current:s.current,accepted:s.accepted,
+        hardLimit:s.evidence.hardLimit,contextCount:s.evidence.contexts.length,
+        ...(analysis?{suggestion:saved.find(r=>r.id===s.id)||null,suggestionAccepted:analysis.accepted_ids.includes(s.id),
+          suggestionCurrent:Boolean(saved.some(r=>r.id===s.id)&&analysis.source_locale===p.sourceLocale&&analysis.snapshot.find(r=>r.id===s.id)?.version===s.version)}:{})})));
+      return { strings:page.results,hasMoreMatches:matches.length>5||page.page.nextOffset!==null,
+        ...(matches.length>5||page.page.nextOffset!==null?{notice:'Only a narrow selection is shown. Refine the literal text or select specific IDs for other strings.'}:{}),uiTarget };
+    }
     if (name === 'context.strings') {
       const rows = await sources(p, database, { cursor: input.cursor });
       return { strings: rows.slice(0, 20).map(s => ({ id: s.id, source: s.source, current: s.current, accepted: s.accepted,
@@ -59,10 +101,11 @@ export function createContextEnrichment({ database, transaction, authorize, insp
       return { runs: rows.slice(0,20).map(safeRun), page: { nextCursor: rows.length > 20 ? rows[19].id : null }, uiTarget };
     }
     const r = await run(input.runId, database);
+    if (name === 'context.status') return { run:safeRun(r),uiTarget };
     const offset = input.offset ?? 0;
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > r.results.length) throw fail(400, 'Invalid context result offset.', 'context_page_invalid');
     const page = contextResultPage(reviewResults(r).map(result => ({ ...result, source: r.snapshot.find(s => s.id === result.id)?.source })), offset);
-    return { run: { ...safeRun(r), results: page.results }, page: page.page, uiTarget };
+    return { run: { ...safeRun(r), acceptedIds:r.accepted_ids, results: page.results }, page: page.page, uiTarget };
   }
   async function prepare(name, input, auth, scope = {}, db = database, lock = false) {
     const p = await project(input, auth, scope, db, true, lock), uiTarget = target(p);

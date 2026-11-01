@@ -30,7 +30,7 @@ test("standalone MCP discovers only platform tools and dispatches authenticated 
   t.after(() => client.close());
   await client.connect(transport);
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map((tool) => tool.name), CONSOLE_ACTIONS.map((action) => action.toolName));
+  assert.deepEqual(tools.map((tool) => tool.name), CONSOLE_ACTIONS.filter(action => !action.consoleOnly).map((action) => action.toolName));
   assert.ok(tools.every((tool) => !/process_file|confirm|approve/.test(tool.name)));
   assert.ok(tools.some(tool => tool.name === 'console_propose_extraction'));
   assert.ok(tools.some(tool => tool.name === 'console_propose_extraction_import'));
