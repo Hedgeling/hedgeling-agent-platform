@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { randomUUID } from 'node:crypto';
 import { fail } from './errors.js';
+import { contextResultPage } from './context-results.js';
 import { CONTEXT_LIMITS, CONTEXT_VERSION, contextEvidence, enrichmentPrompt, enrichmentBatches, parseEnrichment, withLengthSuggestion } from './context-analysis.js';
 const projectSql = `select p.id,p.slug,p.name,p.source_locale as "sourceLocale",p.business_unit_id as "businessUnitId",b.organization_id as "organizationId"
   from projects p join business_units b on b.id=p.business_unit_id where p.data_purged_at is null and `;
@@ -58,7 +59,10 @@ export function createContextEnrichment({ database, transaction, authorize, insp
       return { runs: rows.slice(0,20).map(safeRun), page: { nextCursor: rows.length > 20 ? rows[19].id : null }, uiTarget };
     }
     const r = await run(input.runId, database);
-    return { run: { ...safeRun(r), results: reviewResults(r).map(result => ({ ...result, source: r.snapshot.find(s => s.id === result.id)?.source })) }, uiTarget };
+    const offset = input.offset ?? 0;
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > r.results.length) throw fail(400, 'Invalid context result offset.', 'context_page_invalid');
+    const page = contextResultPage(reviewResults(r).map(result => ({ ...result, source: r.snapshot.find(s => s.id === result.id)?.source })), offset);
+    return { run: { ...safeRun(r), results: page.results }, page: page.page, uiTarget };
   }
   async function prepare(name, input, auth, scope = {}, db = database, lock = false) {
     const p = await project(input, auth, scope, db, true, lock), uiTarget = target(p);

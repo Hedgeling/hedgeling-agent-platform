@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "eead4f7bbe96f0780178a632c3fd385e61050652",
+  "revision": "741f16b42c87f08c27231babe989a264cae7bb27",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -57,7 +57,7 @@
     {
       "source": "src/context-enrichment.js",
       "destination": "context-enrichment.js",
-      "sha256": "2486f421196a954f026061985d0e6f25cb2b5e35338d42fe7aa1fe9bc9272bdf"
+      "sha256": "460c82debd9bc9ed50e65f5787a7fa8bbc3bbc34ed7d5a0121809765fb6ded97"
     },
     {
       "source": "src/context-analysis.js",
@@ -67,7 +67,7 @@
     {
       "source": "src/context-actions.js",
       "destination": "context-actions.js",
-      "sha256": "0d80295898bfaeffa33f0f6f6ccf0e924cd7033e596af36e533ffd33567934d3"
+      "sha256": "65809cb9690b91cb20397770f16c4548cb0979b1f9bb76e4f22ef842ddb02a8b"
     },
     {
       "source": "src/documents.js",
@@ -272,7 +272,7 @@
     {
       "source": "src/context-actions.js",
       "destination": "../../../api-contract/context-actions.js",
-      "sha256": "0d80295898bfaeffa33f0f6f6ccf0e924cd7033e596af36e533ffd33567934d3"
+      "sha256": "65809cb9690b91cb20397770f16c4548cb0979b1f9bb76e4f22ef842ddb02a8b"
     },
     {
       "source": "contracts/202610291600_context_enrichment.sql",
@@ -287,7 +287,7 @@
     {
       "source": "ui/context-enrichment.js",
       "destination": "../public/context-enrichment.js",
-      "sha256": "752e9a326cdd005eb2ac0eccf9be0d7188eb4df54f88f1ba4bb78544a34ab431"
+      "sha256": "27c3e31d17142c86cea96841b384a8783f8dc1e5406714ed072dc73b682ae84f"
     },
     {
       "source": "ui/context-enrichment.css",
@@ -428,6 +428,11 @@
       "source": "contracts/202610310100_context_diagnostics.sql",
       "destination": "../../db/migrations/202610310100_context_diagnostics.sql",
       "sha256": "db6dc6d577788a6368479268e8db24993e49eca3a3f4d0ad2cdc41b5f62ada8b"
+    },
+    {
+      "source": "src/context-results.js",
+      "destination": "context-results.js",
+      "sha256": "9ce919f8ab1fb127b8794e38ac39c87ec06e05d884eb1a6e96ee89539c6c808d"
     }
   ]
 }

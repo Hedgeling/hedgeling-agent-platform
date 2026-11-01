@@ -29,21 +29,28 @@ function resultCard(result) {
 export function contextProgress({ runId,request,onReview,onStop }) {
   const root = node('section','','context-progress'), status = node('p','Preparing context analysis…'), results = node('div'), error = node('p','','agent-error');
   root.dataset.contextRunId = runId; status.setAttribute('role','status'); error.setAttribute('role','alert'); root.append(status,results,error);
-  async function refresh() {
+  let busy = false, nextOffset = null;
+  const more = button('More suggestions'); more.hidden = true; root.append(more);
+  async function refresh(append = false) {
     if (!root.isConnected) return;
+    if (busy) return; busy = true; more.disabled = true;
     try {
-      const { run } = (await request('/api/actions/context.status',{ runId })).result;
+      const { run, page } = (await request('/api/actions/context.status',{ runId, offset: append ? nextOffset : 0 })).result;
       status.textContent = `${({ queued:'Queued',running:'Writing context',awaiting_review:'Context ready to review',applied:'Context accepted',failed:'Analysis stopped',uncertain:'Result uncertain' })[run.status]} · ${run.completedStrings ?? run.results.length} / ${run.strings} strings · ${run.completedRequests ?? 0} / ${run.requests ?? 1} requests completed · ${run.provider} / ${run.model}`;
-      results.replaceChildren();
+      if (!append) results.replaceChildren();
+      results.querySelectorAll('[data-context-control]').forEach(n => n.remove());
       error.textContent = run.error ? contextFailureMessage(run) : '';
       for (const item of run.results || []) {
         const detail = node('details'); detail.append(node('summary',item.source || item.id),resultCard(item)); results.append(detail);
       }
-      if (['awaiting_review','failed','uncertain'].includes(run.status) && run.results.some(s => !run.acceptedIds.includes(s.id)) && onReview) { const review = button('Review and accept context'); review.onclick = () => Promise.resolve(onReview(run)).catch(e => { error.textContent = e.message; }); results.append(review); }
-      if (['queued','running'].includes(run.status) && onStop) { const stop = button('Stop remaining batches'); stop.onclick = () => Promise.resolve(onStop(run)).catch(e => { error.textContent = e.message; }); results.append(stop); }
+      nextOffset = page?.nextOffset ?? null; more.hidden = nextOffset === null;
+      if (['awaiting_review','failed','uncertain'].includes(run.status) && (run.completedStrings ?? run.results.length) > run.acceptedIds.length && onReview) { const review = button('Review and accept context'); review.dataset.contextControl = ''; review.onclick = async () => { review.disabled = true; try { await onReview(run); } catch(e) { error.textContent = e.message; } finally { review.disabled = false; } }; results.append(review); }
+      if (['queued','running'].includes(run.status) && onStop) { const stop = button('Stop remaining batches'); stop.dataset.contextControl = ''; stop.onclick = () => Promise.resolve(onStop(run)).catch(e => { error.textContent = e.message; }); results.append(stop); }
       if (['queued','running'].includes(run.status)) setTimeout(refresh,2000);
     } catch(e) { error.textContent = e.message; }
+    finally { busy = false; more.disabled = false; }
   }
+  more.onclick = () => refresh(true);
   setTimeout(refresh,0); return root;
 }
 export function contextPanel({ project,request,confirmation,controllerId }) {
@@ -65,9 +72,16 @@ export function contextPanel({ project,request,confirmation,controllerId }) {
       } }));
     } catch(e) { error.textContent = e.message; generate.disabled = generateAll.disabled = false; }
   }
-  function review(run) {
+  async function review(run) {
+    // The browser can review every saved suggestion without putting them all
+    // into the assistant's request. Nothing is accepted by these paged reads.
+    const all = []; let offset = 0;
+    do {
+      const result = (await request('/api/actions/context.status',{runId:run.id,offset})).result;
+      run = result.run; all.push(...run.results); offset = result.page?.nextOffset ?? null;
+    } while (offset !== null);
     const selection = node('fieldset'); selection.append(node('legend','Choose context to accept'));
-    for (const result of run.results.filter(s => !run.acceptedIds.includes(s.id))) {
+    for (const result of all.filter(s => !run.acceptedIds.includes(s.id))) {
       const label = node('label'), check = node('input'); check.type = 'checkbox'; check.value = result.id; check.checked = true; check.setAttribute('aria-label',`Accept context: ${result.source}`);
       label.append(check,resultCard(result)); selection.append(label);
     }

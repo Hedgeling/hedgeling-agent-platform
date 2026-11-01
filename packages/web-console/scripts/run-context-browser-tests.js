@@ -32,7 +32,12 @@ try {
   await panel.getByRole('button',{name:'Generate context suggestions',exact:true}).click();
   await expect(panel.locator('.context-progress')).toContainText('Context ready to review'); assert.equal(app.meta.calls.length,2);
   await expect(panel.locator('.context-progress')).toContainText('25 / 25 strings · 2 / 2 requests completed');
+  await expect(panel.locator('.context-progress .context-suggestion')).toHaveCount(20);
+  await panel.getByRole('button',{name:'More suggestions',exact:true}).click();
+  await expect(panel.locator('.context-progress .context-suggestion')).toHaveCount(25);
+  await expect(panel.getByRole('button',{name:'More suggestions',exact:true})).toBeHidden();
   await panel.getByRole('button',{name:'Review and accept context',exact:true}).click();
+  await expect(panel.getByRole('checkbox',{name:/^Accept context:/})).toHaveCount(25);
   await expect(panel).toContainText('No fixed width is available.');
   await expect(panel).toContainText('Suggested length: 17 Unicode characters · formula estimate · not enforced');
   await panel.getByRole('button',{name:'Preview accepting selected context',exact:true}).click();

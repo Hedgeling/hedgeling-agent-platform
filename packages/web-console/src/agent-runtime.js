@@ -1,4 +1,5 @@
 import { CHAT_LIMITS } from './hackathon-engine/chat-limits.js';
+import { contextChatResult } from './hackathon-engine/context-results.js';
 import express from "express";
 import { query, withTransaction } from "./db.js";
 import { isUuid } from "./validation.js";
@@ -149,7 +150,7 @@ async function runTurn(auth, runId) {
           if (result.proposal) { proposal = result.proposal; events.push(["proposal", { ...proposal, uiTarget: result.uiTarget }]); }
           else events.push(["activity", { tool, label: result.error || "Workspace information loaded", status: result.error ? "failed" : "complete", ...(result.uiTarget ? { uiTarget: result.uiTarget } : {}) }]);
         }
-        parts.push({ functionResponse: { name: call.name, ...(call.id ? { id: call.id } : {}), response: result } });
+        parts.push({ functionResponse: { name: call.name, ...(call.id ? { id: call.id } : {}), response: contextChatResult(call.name, result) } });
       }
       history.push({ role: "user", parts });
       await checkpoint(run, history, proposal ? "awaiting_confirmation" : "reading", events);

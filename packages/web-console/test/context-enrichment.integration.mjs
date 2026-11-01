@@ -125,12 +125,24 @@ test('one bulk approval processes all missing context in bounded batches, meters
   const run = await a.contextDone(one.result.contextRun.id);
   assert.equal(run.status,'awaiting_review',JSON.stringify(run));
   assert.equal(run.completedStrings,45); assert.equal(run.completedRequests,3);
+  assert.equal(run.results.length,20);
+  const pages = [];
+  for (const offset of [0,20,40]) {
+    const response = (await a.request('/api/actions/context.status',{runId:run.id,offset})).body.result;
+    assert.equal(response.page.total,45); assert.equal(response.page.offset,offset);
+    assert.equal(response.page.nextOffset,offset===40?null:offset+20);
+    pages.push(...response.run.results);
+  }
+  assert.deepEqual(pages.map(s=>s.id).sort(),[...a.sources].sort());
+  for (const offset of [-1,0.5,46]) assert.equal((await a.request('/api/actions/context.status',{runId:run.id,offset})).status,400);
   assert.deepEqual(a.meta.calls.map(c => JSON.parse(c.body.input).items.length),[20,20,5]);
   assert.equal(new Set(a.meta.calls.flatMap(c => JSON.parse(c.body.input).items.map(s => s.id))).size,45);
   const usage = (await a.database.query("select idempotency_key from usage_events where operation='context_enrichment'")).rows;
   assert.equal(usage.length,3); assert.equal(new Set(usage.map(s => s.idempotency_key)).size,3);
   assert.equal((await a.database.query('select count(*)::int n from source_context_enrichments')).rows[0].n,0);
-  await a.confirm(await a.preview('context.apply',{runId:run.id,stringIds:a.sources}));
+  const apply = await a.preview('context.apply',{runId:run.id});
+  assert.equal(apply.preview.fields.strings.length,45,'The human approval includes every result, not only the status page.');
+  await a.confirm(apply);
   assert.equal((await a.contextStatus(run.id)).status,'applied');
   assert.equal((await a.database.query('select count(*)::int n from source_context_enrichments')).rows[0].n,45);
   assert.equal((await a.request('/api/actions/context.enrich',{projectSlug:a.project.slug,allMissing:true})).body.code,'context_nothing_missing');
