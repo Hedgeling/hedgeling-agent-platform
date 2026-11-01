@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import {qualityFailureMessage} from './job-review-messages.js';
 import { documentExports } from './documents.js';
 import { TRANSLATION_JOB_LIMITS, defaultTranslationBatchSize } from './translation-job-limits.js';
 const node = (tag, text = '', className = '') => { const value = document.createElement(tag); value.textContent = text; value.className = className; return value; };
@@ -8,30 +9,73 @@ const names = { draft: 'Draft', queued: 'Queued', running: 'Translating', awaiti
 export function translationJobProgress({ jobId, request, onStop = null, onSettled = null }) {
   const card = node('section', '', 'translation-job-progress'); card.dataset.translationJobId = jobId;
   card.setAttribute('aria-label', 'Translation job progress');
-  const title = node('h4', 'Translation job'), status = node('p', 'Checking progress…'), detail = node('p'), error = node('p', '', 'agent-error');
-  status.setAttribute('role', 'status'); error.setAttribute('role', 'alert');
+  const title = node('h4', 'Translation job'), status = node('p', 'Checking progress…', 'translation-job-state'), detail = node('p'), error = node('p', '', 'agent-error');
+  const countLabel = node('p', '', 'translation-job-count'), meter = node('progress', '', 'translation-job-meter');
+  meter.setAttribute('aria-label', 'Drafts saved'); meter.hidden = true;
+  const activity = node('p', '', 'translation-job-activity'), updated = node('p', '', 'translation-job-updated');
+  const notices = node('details', '', 'translation-job-notices'), noticeSummary = node('summary'), noticeBody = node('div');
+  notices.append(noticeSummary, noticeBody); notices.hidden = true;
+  const announcement = node('p', '', 'translation-job-announcement'); announcement.setAttribute('role', 'status');
+  error.setAttribute('role', 'alert');
   const refresh = node('button', 'Refresh progress'); refresh.type = 'button';
   const review = node('a', 'Open translations to review'); review.hidden = true;
   const stop = node('button', 'Stop job'); stop.type = 'button'; stop.hidden = !onStop;
-  card.append(title, status, detail, review, refresh, stop, error);
-  let timer, busy = false, exportsAdded = false, settled = false;
+  card.append(title, status, countLabel, meter, activity, updated, notices, detail, review, refresh, stop, error, announcement);
+  let timer, busy = false, exportsAdded = false, settled = false, lastActive = false, failures = 0, lastAnnouncement = 0, lastState = '';
+  const format = value => Number(value).toLocaleString();
+  const schedule = delay => { timer = setTimeout(() => { if (card.isConnected) void load(); }, delay); };
   const load = async () => {
     if (busy) return; busy = true; clearTimeout(timer); refresh.disabled = true; error.textContent = '';
     try {
       const { result } = await request('/api/actions/localization_job.status', { jobId });
       const job = result.job, count = job.progress.succeeded || 0;
+      failures = 0; lastActive = ['queued', 'running'].includes(job.status);
+      const skipped = job.progress.failed || 0, uncertain = job.progress.uncertain || 0, queued = job.progress.queued || 0, running = job.progress.running || 0;
       if (job.documentId && !exportsAdded) { card.append(documentExports({ job, request })); exportsAdded = true; }
       title.textContent = job.name;
-      status.textContent = `${names[job.status] || job.status}${job.batch ? ` · ${count} of ${job.batch.pairs} drafts saved` : ''}${job.progress.failed ? ` · ${job.progress.failed} need attention` : ''}`;
+      status.textContent = names[job.status] || job.status;
+      card.dataset.jobState = job.status;
+      countLabel.hidden = meter.hidden = !job.batch;
+      if (job.batch) {
+        const total = job.batch.pairs, percent = total ? Math.floor(count / total * 100) : 0;
+        countLabel.textContent = `${format(count)} of ${format(total)} drafts saved · ${percent}% saved`;
+        meter.max = Math.max(1, total); meter.value = count;
+        meter.setAttribute('aria-valuetext', `${format(count)} of ${format(total)} drafts saved${skipped ? `; ${format(skipped)} skipped` : ''}`);
+      }
+      activity.textContent = lastActive
+        ? `${running ? `${format(running)} translating now` : 'Waiting for the next translation'} · ${format(queued)} queued${skipped ? ` · ${format(skipped)} skipped` : ''}. ${skipped ? 'The job is still running. No restart needed.' : 'You can keep working while this runs.'}`
+        : job.status === 'needs_attention'
+          ? `This pass has ended. ${format(skipped)} failed${uncertain ? ` · ${format(uncertain)} interrupted` : ''}. Saved drafts are preserved. Review the issues below, then create and confirm a new job for the remaining missing translations.`
+          : job.status === 'canceled' ? 'The job has stopped. Saved drafts are preserved.' : 'This translation pass has finished.';
+      updated.textContent = `Updated ${new Date().toLocaleTimeString()}${lastActive ? ' · Live updates every few seconds' : ''}`;
+      notices.hidden = !job.errors.length;
+      noticeSummary.textContent = lastActive
+        ? `${format(skipped || job.errors.length)} ${skipped === 1 ? 'translation skipped' : 'translations skipped'} — job still running`
+        : 'Review translation issues';
+      noticeBody.replaceChildren(...job.errors.map(e => node('p', `${e.locale}: ${e.message}`)));
+      if (job.errors.length && skipped + uncertain > job.errors.length) noticeBody.append(node('p', `Showing the first ${job.errors.length} issues.`));
+      const state = `${job.status}:${skipped}:${uncertain}`;
+      if (state !== lastState || Date.now() - lastAnnouncement >= 30000) {
+        announcement.textContent = `${status.textContent}. ${countLabel.textContent}${skipped ? `. ${format(skipped)} skipped.` : ''}`;
+        lastState = state; lastAnnouncement = Date.now();
+      }
       detail.textContent = `${job.workflow}. ${job.coverage ? `${job.coverage.saved} of ${job.coverage.total} translations present · ${job.coverage.missing} missing · ${job.coverage.verified} verified. ` : ''}` + (job.steps.length===1&&job.steps[0]==='machine_translation' ? 'AI-only output has no review, verification or QA step. Opening a PR is separate.' : 'Review, verification and opening a PR are separate actions.');
-      if (job.errors.length) error.textContent = job.errors.map(e => `${e.locale}: ${e.message}`).join(' ');
-      if (job.progress.failed && ['queued','running'].includes(job.status)) error.textContent += ' The remaining translations are continuing.';
       review.href = `/?project=${encodeURIComponent(job.projectSlug)}#review`; review.hidden = !count;
       review.onclick = async event => { if (window.HedgelingConsole?.openProject) { event.preventDefault(); try { await window.HedgelingConsole.openProject(job.projectSlug, { manual: true }); } catch(e) { error.textContent = e.message; } } };
-      stop.hidden = !onStop || !['queued', 'running'].includes(job.status);
-      if (['queued', 'running'].includes(job.status)) timer = setTimeout(() => { if (card.isConnected) void load(); }, 2500);
+      stop.hidden = !onStop || !lastActive;
+      if (lastActive) schedule(2500);
       else if(onSettled&&!settled){settled=true;await onSettled();}
-    } catch (e) { error.textContent = e.message; }
+    } catch (e) {
+      failures += 1;
+      const retry = lastActive && failures <= 3;
+      status.textContent = 'Progress temporarily unavailable';
+      card.dataset.jobState = 'unknown';
+      noticeSummary.textContent = 'Translation issues from the last update';
+      updated.textContent = 'Live updates interrupted — showing the last received counts.';
+      activity.textContent = 'The job may still be running. Check its latest progress before starting another job.';
+      error.textContent = `Could not refresh progress. ${retry ? 'Retrying automatically.' : 'Use Refresh progress to try again.'} ${e.message}`;
+      if (retry) schedule(5000);
+    }
     finally { busy = false; refresh.disabled = false; }
   };
   refresh.addEventListener('click', load);
@@ -77,6 +121,7 @@ export function translationJobControls({ job, request, confirmation, controllerI
   root.append(slot, error); return root;
 }
 
+
 export function jobQualityPanel({jobId,request,onPreview=null,runId=null,open=false}) {
   const panel=node('details','','translation-job-progress job-quality');panel.open=open;panel.append(node('summary','AI quality check & verification'));
   const body=node('div'),status=node('p','Open to view quality findings.'),results=node('div'),error=node('p','','agent-error');error.setAttribute('role','alert');status.setAttribute('role','status');
@@ -86,7 +131,7 @@ export function jobQualityPanel({jobId,request,onPreview=null,runId=null,open=fa
     try{const {result}=await request('/api/actions/localization_job.review_status',{jobId,...(currentId?{runId:currentId}:{}),offset:append?nextOffset:0});const r=result.qualityRun;
       if(!append)results.replaceChildren();if(!r){status.textContent='No AI quality check yet. Checks produce findings; verification needs your separate confirmation.';return;}
       currentId=r.id;status.textContent=`${r.status} · ${r.checked}/${r.total} checked · ${r.counts.pass} pass · ${r.counts.needs_changes} need changes · ${r.counts.uncertain} uncertain · ${r.accepted} verified from this check. ${r.targetLocales.join(', ')}.`;
-      if(r.error)error.textContent=`The check stopped (${r.error}). No translations were automatically verified. Review the saved findings before requesting another check.`;
+      if(r.error)error.textContent=qualityFailureMessage(r);
       for(const finding of r.results){const item=node('details','','job-quality-finding');item.append(node('summary',`${finding.locale} · ${finding.verdict.replaceAll('_',' ')}${finding.accepted?' · verified':''} · ${finding.source}`));item.append(node('p',`Translation: ${finding.translation}`));for(const issue of finding.issues)item.append(node('p',issue));results.append(item);}
       nextOffset=result.page.nextOffset;more.hidden=nextOffset===null;verify.hidden=!onPreview||!['ready','applied'].includes(r.status)||r.counts.pass<=r.accepted;cancel.hidden=!onPreview||!['queued','running'].includes(r.status);
       if(['queued','running'].includes(r.status))timer=setTimeout(()=>{if(panel.isConnected&&panel.open)void load();},2500);

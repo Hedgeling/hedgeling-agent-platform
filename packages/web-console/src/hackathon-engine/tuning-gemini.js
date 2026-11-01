@@ -3,14 +3,14 @@ import { AgentError } from './errors.js';
 
 // One dispatch, bounded through the entire response body. No API-version,
 // model or credential fallback can create an unpreviewed inference request.
-export async function generateGeminiTuning({ system, user, apiKey, model, maxOutputTokens, fetchImpl = fetch }) {
+export async function generateGeminiTuning({ system, user, apiKey, model, maxOutputTokens, responseSchema, fetchImpl = fetch }) {
   if (!apiKey || !/^[a-zA-Z0-9._-]+$/.test(model)) throw new AgentError(503, 'Configure the Gemini tuning model and organization key.', 'tuning_provider_unconfigured');
   const signal = AbortSignal.timeout(45000);
   try {
     const response = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST', redirect: 'error', signal, headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }],
-        generationConfig: { maxOutputTokens, temperature: 0.1, responseMimeType: 'application/json' } }),
+        generationConfig: { maxOutputTokens, temperature: 0.1, responseMimeType: 'application/json', ...(responseSchema?{responseJsonSchema:responseSchema}:{}) } }),
     });
     if (!response.ok || !response.body) { await response.body?.cancel(); throw new Error('provider_failed'); }
     const reader = response.body.getReader(), chunks = []; let bytes = 0;

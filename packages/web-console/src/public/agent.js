@@ -210,6 +210,9 @@ function receive(item, { replay = false } = {}) {
     if (data.contextRun) $('agentMessages').append(contextProgress({ runId: data.contextRun.id, request, onReview: async contextRun => {
       if (run?.status !== 'awaiting_input') throw new Error('Finish the current chat turn first, or review the analysis in Projects.');
       await request(`/api/agent/runs/${run.id}/messages`, { controllerId, text: `Review context enrichment ${contextRun.id}. Summarize the suggestions and prepare accepting them; wait for my approval.` });
+    }, onStop: async contextRun => {
+      if (run?.status !== 'awaiting_input') throw new Error('Finish the current chat turn first, or stop the analysis in Projects.');
+      await request(`/api/agent/runs/${run.id}/messages`, { controllerId, text: `Prepare stopping the remaining context enrichment batches for run ${contextRun.id}; wait for my confirmation.` });
     } }));
     if (data.uiTarget?.action === 'context.enrich' && data.accepted) message('assistant', `${data.accepted} context suggestions accepted for future translations. Existing translations and enforced limits are unchanged.`, { replay });
     if (data.library) message('assistant', data.library.status === 'submitted' ? `${data.library.label} was submitted for review. Active guidance is unchanged.` : data.library.status === 'rejected' ? `${data.library.label}: suggestion rejected.` : `${data.library.label} saved${data.library.active ? ' and active for future revisions' : ' as inactive guidance'}.`, { replay });

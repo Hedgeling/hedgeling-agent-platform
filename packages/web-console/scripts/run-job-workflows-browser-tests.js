@@ -47,6 +47,17 @@ try {
   await review.getByRole('button',{name:'Verify passing translations',exact:true}).click();
   await expect(row.locator('[data-translation-job-id]')).toContainText('2 verified');
   assert.equal(app.meta.calls.length,3);
+  // A rejected first batch has no findings to review and never changes approvals.
+  app.meta.control.beforeResponse=()=>{app.meta.control.text=JSON.stringify({items:[]});};
+  await quality.locator('select').first().selectOption('all');
+  await quality.getByRole('button',{name:'Preview AI quality check',exact:true}).click();
+  await review.getByRole('button',{name:'Run AI quality check',exact:true}).click();
+  await expect(quality).toContainText('The model returned 0 results; 2 were required.',{timeout:20000});
+  await expect(quality).toContainText('No findings were saved.');
+  await expect(quality).not.toContainText('Review the saved findings');
+  await expect(row.locator('[data-translation-job-id]')).toContainText('2 verified');
+  assert.equal(app.meta.calls.length,4);
+  await page.screenshot({path:path.join(artifacts,'04-invalid-quality-response.png')});
   await row.locator('.job-delivery > summary').click();
   await expect(row.locator('.job-delivery')).toContainText('Connect a repository to this project first.');
   await page.setViewportSize({width:390,height:844});

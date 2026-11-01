@@ -77,19 +77,49 @@ try {
   await flaggedRow.getByRole('button',{name:'Preview translation start',exact:true}).click();
   await flaggedRow.locator('.workspace-confirmation').getByRole('button',{name:'Start translation',exact:true}).click();
   const progress=flaggedRow.locator('[data-translation-job-id]');
-  await expect(progress).toContainText('1 need attention',{timeout:20000});
-  await expect(progress).toContainText('required glossary term');
-  await expect(progress).toContainText('The remaining translations are continuing.');
+  await expect(progress).toContainText('1 translation skipped — job still running',{timeout:20000});
+  const issues=progress.locator('.translation-job-notices');
+  await expect(issues).not.toHaveAttribute('open','');
+  await expect(progress.locator('.agent-error')).toBeEmpty();
+  await expect(progress).toContainText('The job is still running. No restart needed.');
+  await expect(progress.getByRole('progressbar',{name:'Drafts saved'})).toHaveAttribute('aria-valuetext','0 of 2 drafts saved; 1 skipped');
+  await issues.locator('summary').click();
+  await expect(issues).toContainText('required glossary term');
   await expect(progress).toContainText('Translating');
   await progress.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(artifacts,'05-glossary-flag-continues.png')});
+  // A failed status read must not leave stale "still running" claims on screen.
+  let failStatus=true;
+  await page.route('**/api/actions/localization_job.status',async route=>{
+    if(failStatus&&route.request().postDataJSON()?.jobId===flagged.id)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Temporary connection issue'})});
+    else await route.continue();
+  });
+  await progress.getByRole('button',{name:'Refresh progress',exact:true}).click();
+  await expect(progress).toContainText('Progress temporarily unavailable');
+  await expect(progress).toContainText('showing the last received counts');
+  await expect(progress).not.toContainText('No restart needed.');
+  failStatus=false;
+  await expect(progress).toContainText('The job is still running. No restart needed.',{timeout:15000});
+  // All automatic recovery requests are read-only; the held provider call is unchanged.
+  assert.equal(app.meta.calls.length,before+3);
   release();
   await expect(progress).toContainText('Needs attention',{timeout:20000});
   await expect(progress).toContainText('1 of 2 drafts saved');
-  await expect(progress).not.toContainText('The remaining translations are continuing.');
+  await expect(progress).not.toContainText('No restart needed.');
+  await expect(progress).toContainText('create and confirm a new job');
+  await expect(progress.getByRole('button',{name:'Stop job',exact:true})).toBeHidden();
+  await expect(progress.getByRole('progressbar',{name:'Drafts saved'})).toHaveJSProperty('value',1);
   assert.equal(app.meta.calls.length,before+3);
   await page.setViewportSize({width:390,height:844});
   await progress.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(artifacts,'06-mobile-validation-result.png')});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.emulateMedia({colorScheme:'dark'});
+  await page.screenshot({path:path.join(artifacts,'07-dark-mobile-progress.png')});
+  await page.setViewportSize({width:1440,height:1000});
+  await page.evaluate(()=>{document.documentElement.style.zoom='2';});
+  await progress.scrollIntoViewIfNeeded();
+  await expect(progress.getByRole('progressbar',{name:'Drafts saved'})).toBeVisible();
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.screenshot({path:path.join(artifacts,'08-zoomed-progress.png')});
   assert.deepEqual(errors, []);
   console.log('Translation job browser flow passed. Artifacts: ' + artifacts);
 } catch (error) {

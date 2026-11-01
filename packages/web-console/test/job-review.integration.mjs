@@ -13,6 +13,26 @@ async function translated(a,{count=a.sources.length,steps=['machine_translation'
 }
 const status=async(a,id)=>(await a.request('/api/actions/localization_job.review_status',{jobId:id})).body.result?.qualityRun;
 const done=(a,id)=>eventually(()=>status(a,id),r=>r&&['ready','failed','uncertain','cancelled'].includes(r.status),20000);
+for(const completedBatches of [0,1])test(`invalid quality response preserves ${completedBatches} completed batches and saves safe diagnostics without retrying`,options,async t=>{
+  const a=await setup(t,21),job=await translated(a);let calls=0;
+  a.meta.control.beforeResponse=({body})=>{
+    const input=JSON.parse(body.input),format=body.text.format;
+    assert.equal(format.type,'json_schema');assert.equal(format.strict,true);
+    assert.deepEqual(format.schema.properties.items.items.properties.id.enum,input.items.map(i=>i.id));
+    assert.equal(format.schema.properties.items.minItems,input.items.length);
+    assert.equal(format.schema.properties.items.maxItems,input.items.length);
+    a.meta.control.text=JSON.stringify({items:calls++<completedBatches?input.items.map(i=>({id:i.id,verdict:'pass',issues:[]})):[]});
+  };
+  await a.confirm(await a.preview('localization_job.review',{jobId:job.id,selection:'all'}));
+  const r=await done(a,job.id);
+  assert.equal(r.status,'failed',JSON.stringify(r));assert.equal(r.error,'review_result_invalid');
+  assert.equal(r.checked,completedBatches*20);assert.equal(r.results.length,completedBatches*20);
+  assert.deepEqual(r.failure,{reason:'item_count_mismatch',expectedItems:completedBatches?1:20,receivedItems:0,responseBytes:12,batch:completedBatches+1});
+  assert.equal(a.meta.calls.length,completedBatches+1);
+  assert.equal((await a.database.query("select count(*)::int n from translations where human_status='verified'")).rows[0].n,0);
+  assert.deepEqual((await a.database.query('select error_detail from job_quality_runs where id=$1',[r.id])).rows[0].error_detail,r.failure);
+  assert.equal((await status(a,job.id)).status,'failed');assert.equal(a.meta.calls.length,completedBatches+1);
+});
 test('AI quality checks require confirmation; findings and verification remain separate, with one-time approval',options,async t=>{
   const a=await setup(t,3),job=await translated(a);
   const rows=(await a.database.query('select id from translations order by id')).rows;

@@ -25,6 +25,10 @@ test('enrichment and acceptance require separate human approvals; accepted fresh
   const [one,two] = await Promise.all([a.confirm(preview),a.confirm(preview)]); assert(one.replayed || two.replayed);
   const result = await a.contextDone(one.result.contextRun.id); assert.equal(result.status,'awaiting_review',JSON.stringify(result));
   assert.equal(a.meta.calls.length,1); assert.match(a.meta.calls[0].body.input,/<h1>/);
+  const format=a.meta.calls[0].body.text.format;
+  assert.equal(format.type,'json_schema'); assert.equal(format.strict,true);
+  assert.deepEqual(format.schema.properties.items.items.properties.id.enum,[...a.sources].sort());
+  assert.equal(format.schema.properties.items.minItems,2); assert.equal(format.schema.properties.items.maxItems,2);
   assert.equal((await a.database.query('select count(*)::int n from source_context_enrichments')).rows[0].n,0);
   const approval = await a.preview('context.apply',{runId:result.id,stringIds:[a.sources[0]]});
   const suggestion = approval.preview.fields.strings[0];
@@ -91,6 +95,7 @@ test('stale source/provider previews are rejected before spending; stale results
 test('provider failures and invalid output save no guidance; tenant boundaries protect reads and writes',options,async t => {
   const a = await setup(t,1); a.meta.control.beforeResponse = null; a.meta.control.text='not JSON';
   const result = await a.enrich(); assert.equal(result.error,'context_result_invalid'); assert.equal(a.meta.calls.length,1);
+  assert.equal(result.failure.reason,'invalid_json'); assert.equal(result.failure.batch,1); assert.equal(result.failure.expectedItems,1);
   await a.database.query("update context_enrichment_runs set status='running',lease_token=gen_random_uuid(),lease_expires_at=now()-interval '1 minute' where id=$1",[result.id]);
   assert.equal((await a.contextDone(result.id)).status,'uncertain'); assert.equal(a.meta.calls.length,1);
   assert.equal((await a.database.query('select count(*)::int n from source_context_enrichments')).rows[0].n,0);
@@ -107,4 +112,71 @@ test('revocation during inference prevents saving results and does not dispatch 
   a.meta.control.beforeResponse = async value => { await respond(value); await a.database.query("update subscriptions set state='unpaid'"); };
   const result = await a.enrich(); assert.equal(result.status,'failed'); assert.equal(result.error,'context_plan_required');
   assert.equal(result.results.length,0); assert.equal(a.meta.calls.length,1);
+});
+test('one bulk approval processes all missing context in bounded batches, meters each call and accepts more than 20 results',options,async t => {
+  const a = await setup(t,45);
+  const preview = await a.preview('context.enrich',{projectSlug:a.project.slug,allMissing:true});
+  assert.equal(preview.preview.fields.stringCount,45);
+  assert.equal(preview.preview.resources.provider.maximumRequests,3);
+  assert.equal(preview.preview.resources.provider.maximumTotalOutputTokens,3*8192);
+  assert.equal(a.meta.calls.length,0);
+  const [one,two] = await Promise.all([a.confirm(preview),a.confirm(preview)]);
+  assert(one.replayed || two.replayed);
+  const run = await a.contextDone(one.result.contextRun.id);
+  assert.equal(run.status,'awaiting_review',JSON.stringify(run));
+  assert.equal(run.completedStrings,45); assert.equal(run.completedRequests,3);
+  assert.deepEqual(a.meta.calls.map(c => JSON.parse(c.body.input).items.length),[20,20,5]);
+  assert.equal(new Set(a.meta.calls.flatMap(c => JSON.parse(c.body.input).items.map(s => s.id))).size,45);
+  const usage = (await a.database.query("select idempotency_key from usage_events where operation='context_enrichment'")).rows;
+  assert.equal(usage.length,3); assert.equal(new Set(usage.map(s => s.idempotency_key)).size,3);
+  assert.equal((await a.database.query('select count(*)::int n from source_context_enrichments')).rows[0].n,0);
+  await a.confirm(await a.preview('context.apply',{runId:run.id,stringIds:a.sources}));
+  assert.equal((await a.contextStatus(run.id)).status,'applied');
+  assert.equal((await a.database.query('select count(*)::int n from source_context_enrichments')).rows[0].n,45);
+  assert.equal((await a.request('/api/actions/context.enrich',{projectSlug:a.project.slug,allMissing:true})).body.code,'context_nothing_missing');
+  assert.equal(a.meta.calls.length,3);
+});
+test('a later invalid batch stops bulk enrichment while preserving earlier suggestions for separate acceptance',options,async t => {
+  const a = await setup(t,45), respond = a.meta.control.beforeResponse; let calls = 0;
+  a.meta.control.beforeResponse = async value => { await respond(value); if (++calls === 2) {
+    const response=JSON.parse(a.meta.control.text); response.items.pop(); a.meta.control.text=JSON.stringify(response);
+  } };
+  const confirmed = await a.confirm(await a.preview('context.enrich',{projectSlug:a.project.slug,allMissing:true}));
+  const run = await a.contextDone(confirmed.result.contextRun.id);
+  assert.equal(run.status,'failed'); assert.equal(run.error,'context_result_invalid');
+  assert.equal(run.failure.reason,'item_count_mismatch'); assert.equal(run.failure.batch,2);
+  assert.equal(run.failure.expectedItems,20); assert.equal(run.failure.receivedItems,19);
+  const savedDetail=(await a.database.query('select error_detail from context_enrichment_runs where id=$1',[run.id])).rows[0].error_detail;
+  assert.deepEqual(savedDetail,run.failure); assert(!JSON.stringify(savedDetail).includes('Hello'));
+  assert.equal(run.completedStrings,20); assert.equal(run.completedRequests,1); assert.equal(a.meta.calls.length,2);
+  await a.confirm(await a.preview('context.apply',{runId:run.id}));
+  const stopped = await a.contextStatus(run.id);
+  assert.equal(stopped.status,'failed'); assert.equal(stopped.acceptedIds.length,20);
+  const next = await a.preview('context.enrich',{projectSlug:a.project.slug,allMissing:true});
+  assert.equal(next.preview.fields.stringCount,25); assert.equal(next.preview.resources.provider.maximumRequests,2);
+  assert.equal(a.meta.calls.length,2,'A new preview must not spend or retry the failed request.');
+});
+test('stopping a bulk run during inference keeps completed batches and prevents subsequent requests',options,async t => {
+  const a = await setup(t,45), respond = a.meta.control.beforeResponse;
+  let release, entered, calls=0;
+  const gate = new Promise(resolve => { release=resolve; }), waiting = new Promise(resolve => { entered=resolve; });
+  t.after(release);
+  a.meta.control.beforeResponse = async value => { await respond(value); if (++calls === 2) { entered(); await gate; } };
+  const confirmed = await a.confirm(await a.preview('context.enrich',{projectSlug:a.project.slug,allMissing:true}));
+  await Promise.race([waiting,new Promise((_,reject) => { const timer=setTimeout(() => reject(new Error('Second request did not start.')),12000); timer.unref(); })]);
+  const preview = await a.preview('context.cancel',{runId:confirmed.result.contextRun.id});
+  await a.confirm(preview); release();
+  const run = await a.contextDone(confirmed.result.contextRun.id);
+  assert.equal(run.error,'context_cancelled'); assert.equal(run.completedStrings,20);
+  await eventually(async () => (await a.database.query("select count(*)::int n from usage_events where operation='context_enrichment'")).rows[0].n,n => n===2,5000);
+  assert.equal(a.meta.calls.length,2);
+  await a.confirm(await a.preview('context.apply',{runId:run.id}));
+  assert.equal((await a.contextStatus(run.id)).acceptedIds.length,20);
+});
+test('bulk selections reject ambiguous scope and over-sized single prompts before provider spending',options,async t => {
+  const a = await setup(t,1);
+  assert.equal((await a.request('/api/actions/context.enrich',{projectSlug:a.project.slug,allMissing:true,stringIds:a.sources})).body.code,'context_selection_invalid');
+  await a.database.query("update context_variants set code_context=repeat('x',70000) where source_string_id=$1",[a.sources[0]]);
+  assert.equal((await a.request('/api/actions/context.enrich',{projectSlug:a.project.slug,allMissing:true})).body.code,'context_prompt_limit');
+  assert.equal(a.meta.calls.length,0);
 });

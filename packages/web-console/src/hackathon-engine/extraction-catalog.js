@@ -29,6 +29,8 @@ export function catalogState(artifact, expected) {
       || ['__proto__', 'constructor', 'prototype'].includes(item.key) || typeof item.source !== 'string' || !item.source || item.source.length > 65536) invalid();
     const contexts = item.contexts ?? [];
     if (!Array.isArray(contexts) || contexts.length > 100) invalid();
+    if (item.context !== undefined && (typeof item.context !== 'string' || !item.context.trim() || item.context.length > 256 || /[\x00-\x1f\x7f]/.test(item.context))) invalid();
+    if (item.source.includes('\u0004')) invalid();
     const variants = [];
     for (const context of contexts) {
       if (!context || typeof context !== 'object') invalid();
@@ -49,7 +51,7 @@ export function catalogState(artifact, expected) {
     }
     const first = contexts[0] || {};
     entries[item.key] = { sourceText: item.source, shape: text(first.shape), purpose: text(first.purpose), visualContext: text(first.visualContext),
-      limit: null, contextVariants: variants, analysis: {}, translations: {} };
+      limit: null, contextVariants: variants, analysis: {}, translations: {}, ...(item.context === undefined ? {} : { context: item.context }) };
   }
   return { schemaVersion: 2, sourceLocale: expected.sourceLocale, locales: [], files: { 'extracted-source': { entries } } };
 }

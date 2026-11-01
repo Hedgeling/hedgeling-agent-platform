@@ -18,7 +18,7 @@ const workflowLabels = { machine_translation: "AI Translation", human_translatio
 Object.assign(actionLabel, { 'localization_job.start': 'Start translation', 'localization_job.cancel': 'Stop job', 'localization_job.review':'Run AI quality check', 'localization_job.verify':'Verify passing translations', 'localization_job.review_cancel':'Stop quality check', 'localization_job.pull_request':'Create translation PR' });
 Object.assign(actionLabel, { 'documents.job': 'Import document and create job' });
 Object.assign(actionLabel, { 'repositories.connect': 'Connect repository' });
-Object.assign(actionLabel, { 'context.enrich': 'Generate context suggestions', 'context.apply': 'Accept selected context' });
+Object.assign(actionLabel, { 'context.enrich': 'Generate context suggestions', 'context.apply': 'Accept selected context', 'context.cancel': 'Stop remaining batches' });
 Object.assign(actionLabel, { 'project.locales.add': 'Add target languages', 'extraction.tune': 'Run tuning preview', 'extraction.tuning.apply': 'Save settings and re-extract', 'extraction.start': 'Start extraction', 'extraction.import': 'Import source strings' });
 Object.assign(actionLabel, { 'library.prompt.save': 'Save instructions', 'library.persona.save': 'Save persona', 'library.glossary.save': 'Save term', 'library.restore': 'Restore revision', 'library.review': 'Confirm review' });
 const proposalLabel = preview => preview.library?.disposition === 'submit' ? 'Submit suggestion' : preview.library?.disposition === 'reject' ? 'Reject suggestion' : preview.library?.disposition === 'approve' ? 'Approve suggestion' : actionLabel[preview.action];
@@ -85,11 +85,15 @@ function appendProposalDetails(card, preview) {
   if (preview.action.startsWith('context.')) {
     if (resources.provider) card.append(element('p','','Provider: ' + resources.provider.provider + ' / ' + resources.provider.model));
     if (resources.stringsWithCode !== undefined) card.append(element('p','',`${resources.stringsWithCode} of ${preview.fields.strings.length} strings have code evidence; the rest use available metadata.`));
-    for (const item of preview.fields.strings) {
+    if (preview.fields.requests !== undefined) card.append(element('p','',`${preview.fields.stringCount} strings · ${preview.fields.requests} requests · one approval`));
+    const strings = preview.fields.strings || [];
+    const container = strings.length > 20 ? element('details','context-bulk-selection') : card;
+    if (container !== card) { container.append(element('summary','',`${preview.action === 'context.apply' ? 'Suggestions to accept' : 'Strings included'} (${strings.length})`)); card.append(container); }
+    for (const item of strings) {
       const detail = element('details','context-suggestion'); detail.append(element('summary','',item.source));
       if (item.description) detail.append(element('p','',item.description),element('p','',characterSuggestionLabel(item)),element('p','',item.limitReason));
       else detail.append(element('p','',item.existingContext ? `Current description: ${item.existingContext}` : 'No accepted description yet.'));
-      card.append(detail);
+      container.append(detail);
     }
   }
   if (preview.changes) for (const change of preview.changes) {
