@@ -28,3 +28,26 @@ body select:focus-visible { outline: 2px solid var(--text-accent); outline-offse
   body select:not([multiple]):not([size]), body select[size="1"] { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Crect width='28' height='28' rx='5' fill='%23e7f4e8'/%3E%3Cpath d='m8 11 6 6 6-6' fill='none' stroke='%23186b39' stroke-width='2.5'/%3E%3C/svg%3E"); background-position: right .6rem center; background-repeat: no-repeat; }
 }
 @media (forced-colors: active) { body select::picker-icon, body select option::checkmark { color: ButtonText; } }
+
+/* Match control width to the decision, rather than stretching across a page. */
+.workspace-view :is(.workspace-form-fields, .job-delivery form) { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px 24px; max-width: 800px; }
+.workspace-view :is(.workspace-form, .translation-job-progress, .extraction-panel) label { min-width: 0; font: 500 13px/1.5 var(--font-ui); }
+.workspace-view :is(.workspace-form, .translation-job-progress, .extraction-panel) label:has(textarea) { grid-column: 1 / -1; }
+.workspace-view :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select:not([multiple])) { width: 100%; max-width: 32rem; min-width: 0; min-height: 42px; padding: 9px 12px; font: 400 14px/1.4 var(--font-ui); }
+.workspace-view select:not([multiple]) { max-width: 24rem; padding-inline-end: 2.75rem; }
+.workspace-view textarea { width: 100%; max-width: 50rem; min-height: 88px; padding: 10px 12px; font: 400 14px/1.5 var(--font-ui); resize: vertical; }
+.workspace-view :is(.workspace-form, .translation-job-progress) label > :is(input, select, textarea) { display: block; margin-top: 6px; }
+.workspace-view .workspace-inline-edit { max-width: 36rem; }
+.workspace-view .job-delivery form { display: grid; }
+.workspace-view :is(input, textarea)::placeholder { color: var(--text-muted); opacity: .85; }
+@supports (appearance: base-select) { .workspace-view select:not([multiple]) { padding-inline-end: .65rem; } }
+.github-connection-card { padding: 18px; margin: 16px 0; max-width: 800px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--background-pane); font: 14px/1.6 var(--font-ui); color: var(--text-main); }
+.github-connection-card h4 { margin: 0 0 10px; font-size: 16px; }
+.github-connection-card p { margin: 10px 0; }
+.github-connection-card [role="status"] { font-weight: 600; }
+.github-connection-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0; }
+.github-connection-actions a { color: var(--text-accent); font-weight: 600; font-size: 13px; padding: 10px 0; }
+.github-connection-card summary { cursor: pointer; color: var(--text-accent); }
+.github-connection-card li, .delivery-readiness li { margin-block: 8px; }
+.github-connection-card .agent-error { padding: 0; }
+.delivery-readiness { font: 14px/1.6 var(--font-ui); max-width: 800px; }

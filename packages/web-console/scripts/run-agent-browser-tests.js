@@ -53,7 +53,7 @@ try {
       const luminance = values => values.map(c => c / 255).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4).reduce((sum, c, index) => sum + c * [.2126, .7152, .0722][index], 0);
       const ratio = (a, b) => { const x = luminance(rgb(a)), y = luminance(rgb(b)); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
       const paper = getComputedStyle(node.querySelector(".agent-paper")).backgroundColor;
-      return [...[".agent-message-content", ".agent-message-author", ".agent-paper-end"].map(selector => ({ selector, contrast: ratio(getComputedStyle(node.querySelector(selector)).color, paper) })),
+      return [...[".agent-message-content", ".agent-message-author"].map(selector => ({ selector, contrast: ratio(getComputedStyle(node.querySelector(selector)).color, paper) })),
         ...[...node.querySelectorAll(".agent-window-controls button")].map(button => { const style = getComputedStyle(button); return { selector: button.getAttribute("aria-label"), contrast: ratio(style.color, style.backgroundColor) }; })];
     });
     for (const result of results) assert.ok(result.contrast >= 4.5, `${theme} ${result.selector} contrast ${result.contrast}`);

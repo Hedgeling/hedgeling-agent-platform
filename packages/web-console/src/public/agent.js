@@ -1,6 +1,11 @@
 import { translationJobProgress, jobQualityPanel } from './translation-jobs.js';
 import { contextProgress } from './context-enrichment.js';
 import { openDocumentUpload, fileCard } from './documents.js';
+import { isDocumentDownload } from './document-files.js';
+import { agentNotifications } from './agent-notifications.js';
+import { panelResizer } from './agent-resizer.js';
+import { activityGroup } from './agent-activity.js';
+import { githubConnectionCard } from './github-connection.js';
 import { renderChatMarkdown } from "./chat-markdown.js";
 import { request, element, proposalCard, Workspace, typewriterComposer } from "./agent-components.js";
 import { extractionProgress } from './extraction.js';
@@ -11,6 +16,7 @@ import { AgentAttention, actionForTool } from "./agent-attention.js";
 
 const controllerId = crypto.randomUUID();
 let config, brand, run, stream, heartbeat, workspace, userId;
+let notifications, turnHasReply = false;
 let markInitialized;
 const initialized = new Promise((resolve) => { markInitialized = resolve; });
 const hasWorkspace = Boolean(document.getElementById("workspaceRoot"));
@@ -26,6 +32,7 @@ let conversationChange = Promise.resolve();
 const drafts = new Map();
 const shell = element("section", "agent-shell"); shell.id = "hedgelingAgent"; shell.tabIndex = -1;
 shell.innerHTML = `
+  <div id="agentResizeHandle" class="agent-resize-handle" role="separator" tabindex="0" aria-label="Resize chat panel" aria-orientation="vertical" aria-controls="hedgelingAgent" title="Drag to resize. Use arrow keys when focused."></div>
   <header class="agent-header">
     <div class="agent-identity"><img class="agent-avatar" alt=""><div><strong data-agent-name>Hedgeling</strong><span id="agentStatus" role="status" aria-live="polite">Ready when you are</span></div></div>
     <div class="agent-window-controls" role="group" aria-label="Chat layout">
@@ -36,17 +43,19 @@ shell.innerHTML = `
   </header>
   <div class="agent-context"><label><span>Working in</span><select id="agentScope" aria-label="Conversation organization" disabled></select></label><button type="button" id="agentNew" disabled>New chat</button></div>
   <div id="agentPlanNotice" class="agent-plan-notice" hidden><p id="agentPlanMessage"></p><button type="button" id="agentUpgrade">View plans</button></div>
-  <div class="agent-scroll"><div class="agent-paper"><div id="agentWelcome" class="agent-welcome"><img class="agent-hero" alt=""><span class="agent-eyebrow">YOUR LOCALIZATION COPILOT</span><h1>What shall we work on?</h1><p>Build a workspace. Find the right words.<br>Keep every language moving.</p><div id="agentSuggestions" class="agent-suggestions"></div></div><div id="agentMessages" role="log" aria-label="Conversation"></div><div class="agent-paper-end" aria-hidden="true">— to be continued —</div></div></div>
+  <div class="agent-scroll"><div class="agent-paper"><div id="agentWelcome" class="agent-welcome"><img class="agent-hero" alt=""><span class="agent-eyebrow">YOUR LOCALIZATION COPILOT</span><h1>What shall we work on?</h1><p>Build a workspace. Find the right words.<br>Keep every language moving.</p><div id="agentSuggestions" class="agent-suggestions"></div></div><div id="agentMessages" role="log" aria-label="Conversation"></div></div></div>
   <div id="agentError" class="agent-error" role="alert"></div>
   <footer class="agent-footer">
   <p id="agentComposerHint" class="agent-composer-hint" role="status" aria-live="polite" hidden></p>
   ${typewriterComposer}
   <button type="button" id="agentUploadDocument" class="agent-document-upload" disabled>＋ Upload document</button>
   <div class="agent-run-controls"><button type="button" id="agentTakeControl" hidden>Take control</button><button type="button" id="agentPause">Pause</button><button type="button" id="agentTakeover">Take over</button><button type="button" id="agentCancel">Cancel task</button><label><input type="checkbox" id="agentFollow" checked> Follow along</label></div>
-  <div class="agent-footnote"><span id="agentProviderLabel">You confirm every change.</span><a id="agentCardExamples" href="/agent-preview.html" target="_blank" rel="noopener" hidden>Try card examples ↗</a><label class="agent-theme">Theme <select data-theme-preference><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><button type="button" id="agentOpaque" aria-pressed="false">Hide workspace edges</button><label class="agent-resize">Width <input id="agentWidth" type="range" min="360" max="640" value="480" aria-label="Side panel width"></label></div></footer>`;
+  <div class="agent-footnote"><span id="agentProviderLabel">You confirm every change.</span><a id="agentCardExamples" href="/agent-preview.html" target="_blank" rel="noopener" hidden>Try card examples ↗</a><label class="agent-theme">Theme <select data-theme-preference><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><button type="button" id="agentSound" aria-pressed="false" title="Play a short sound for replies and approval requests">Sound off</button><button type="button" id="agentOpaque" aria-pressed="false">Hide workspace edges</button></div></footer>`;
 const launcher = element("button", "agent-launcher"); launcher.type = "button"; launcher.setAttribute("aria-label", "Open Hedgeling assistant");
 launcher.innerHTML = '<img alt=""><span>Ask Hedgeling</span><i aria-hidden="true"></i>';
 const $ = (id) => shell.querySelector(`#${id}`);
+const activity = activityGroup($('agentMessages'));
+const nearLatest = () => { const scroller = shell.querySelector('.agent-scroll'); return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 90; };
 function scopeChat() {
   const organization = config?.organizations.find((org) => org.id === scope);
   if (organization?.agentAccess?.allowed === false) return { ...organization.agentAccess, reason: "organization_access_required" };
@@ -71,7 +80,7 @@ function setMode(next, focus = true) {
   if (next === "overlay") shell.setAttribute("aria-modal", "true"); else shell.removeAttribute("aria-modal");
   if (next === "overlay") {
     for (const node of document.body.children) {
-      if ([shell, launcher].includes(node) || ["SCRIPT", "LINK", "STYLE"].includes(node.tagName)) continue;
+      if ([shell, launcher, notifications?.region].includes(node) || ["SCRIPT", "LINK", "STYLE"].includes(node.tagName)) continue;
       if (!inertBeforeOverlay.has(node)) inertBeforeOverlay.set(node, node.inert);
       node.inert = true;
     }
@@ -89,6 +98,7 @@ function setMode(next, focus = true) {
   if (next !== "minimized" && run?.status === "awaiting_confirmation") requestAnimationFrame(() => {
     const scroller = shell.querySelector(".agent-scroll"); scroller.scrollTop = scroller.scrollHeight;
   });
+  notifications?.read();
 }
 function updateState(status) {
   if (run) run.status = status;
@@ -127,7 +137,7 @@ function updateState(status) {
   $("agentPause").disabled = !run; $("agentCancel").disabled = !run || status === "cancelled";
   for (const button of shell.querySelectorAll(".agent-proposal button")) button.disabled = switching || !chat.allowed || otherController || status !== "awaiting_confirmation";
 }
-function message(role, text, { replay = false } = {}) {
+function message(role, text, { replay = false, createdAt } = {}) {
   $("agentWelcome").hidden = true;
   const item = element("article", `agent-message agent-message-${role}`);
   const content = element("div", "agent-message-content");
@@ -135,7 +145,12 @@ function message(role, text, { replay = false } = {}) {
   else content.append(renderChatMarkdown(text));
   // Reveal formatted content as a whole: never flash raw Markdown markers.
   if (role !== "user" && !replay) content.classList.add("agent-ink-reveal");
-  item.append(element("span", "agent-message-author", role === "user" ? "You" : brand.agentName), content);
+  const header = element('header', 'agent-message-header');
+  header.append(element("span", "agent-message-author", role === "user" ? "You" : brand.agentName));
+  if (createdAt && Number.isFinite(Date.parse(createdAt))) {
+    const time = element('time', '', new Date(createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })); time.dateTime = new Date(createdAt).toISOString(); header.append(time);
+  }
+  item.append(header, content);
   $("agentMessages").append(item);
 }
 function hasUnsavedEdits() {
@@ -161,17 +176,36 @@ function receive(item, { replay = false } = {}) {
   if (seen.has(String(item.sequence))) return;
   seen.add(String(item.sequence)); cursor = Math.max(cursor, Number(item.sequence));
   const { kind, data } = item;
-  if (kind === 'files') for (const file of data.files || []) $('agentMessages').append(fileCard(file));
+  const stickToLatest = nearLatest() || kind === 'message' && data.role === 'user';
+  let notice;
+  if (kind === 'github_connection' && !$('agentMessages').querySelector('.github-connection-card')) {
+    const card = githubConnectionCard({ request }); $('agentMessages').append(card.root); void card.refresh();
+  }
+  if (kind === 'files') for (const file of (Array.isArray(data.files) ? data.files : []).filter(isDocumentDownload)) $('agentMessages').append(fileCard(file));
   if (kind === "commercial_access") { const chat = scopeChat(); chat.allowed = false; chat.message = data.message; updateState(run?.status || "paused"); }
-  if (kind === "message") message(data.role, data.text, { replay });
+  if (kind === "message") {
+    if (data.role === 'user') { activity.reset(); turnHasReply = false; }
+    else if (!replay) turnHasReply = true;
+    message(data.role, data.text, { replay, createdAt: item.createdAt });
+  }
   if (kind === "activity") {
-    const line = element("p", "agent-activity", `${data.status === "complete" ? "✓ " : "· "}${data.label}`);
-    $("agentMessages").append(line);
+    activity.add(data);
     if (!replay && data.status === "working" && actionForTool(data.tool)) void follow({ view: actionForTool(data.tool).startsWith("library.") ? "library" : "workspace", organizationId: scope, action: actionForTool(data.tool) }, { label: data.label }).catch(showError);
     if (!replay && data.status === 'complete' && data.uiTarget?.view === 'library') void follow(data.uiTarget, { label: data.label }).catch(showError);
     if (!replay && data.status === "failed") { attentionGeneration++; attention.clear(); }
   }
-  if (kind === "state") { if (run && Object.hasOwn(data, "controllerId")) run.controllerId = data.controllerId; if (data.organizationId) { scope = data.organizationId; if (run) run.organizationId = scope; if (!replay) rememberConversation(); void refreshScopes(); } updateState(data.status); }
+  if (kind === "state") {
+    const previous = run?.status;
+    if (['awaiting_input', 'awaiting_confirmation', 'paused', 'completed', 'cancelled'].includes(data.status)) activity.finish(data.status);
+    if (!replay && data.status !== previous) {
+      if (data.status === 'awaiting_confirmation') notice = 'Hedgeling needs your approval.';
+      else if (['awaiting_input', 'completed', 'paused'].includes(data.status) && turnHasReply) notice = data.status === 'paused' ? 'Hedgeling needs your attention.' : 'Hedgeling replied. Your next step is ready.';
+    }
+    if (['awaiting_input', 'awaiting_confirmation', 'paused', 'completed', 'planning'].includes(data.status)) turnHasReply = false;
+    if (run && Object.hasOwn(data, "controllerId")) run.controllerId = data.controllerId;
+    if (data.organizationId) { scope = data.organizationId; if (run) run.organizationId = scope; if (!replay) rememberConversation(); void refreshScopes(); }
+    updateState(data.status);
+  }
   if (kind === "proposal" && !confirmed.has(data.id) && !shell.querySelector(`[data-proposal-id="${data.id}"]`)) {
     $("agentWelcome").hidden = true;
     $("agentMessages").append(proposalCard(data, async (proposal) => {
@@ -250,7 +284,8 @@ function receive(item, { replay = false } = {}) {
     attentionGeneration++; attention.clear();
     const card = shell.querySelector(`[data-proposal-id="${data.proposalId}"]`); if (card) card.replaceChildren(element("p", "", "Proposal discarded."));
   }
-  const scroller = shell.querySelector(".agent-scroll"); scroller.scrollTop = scroller.scrollHeight;
+  const scroller = shell.querySelector(".agent-scroll"); if (stickToLatest || replay) scroller.scrollTop = scroller.scrollHeight;
+  if (notice) notifications?.show(notice);
 }
 function connect() {
   if (!run) return;
@@ -318,7 +353,7 @@ async function changeConversation(organizationId, { restore = false, refreshWork
     stream?.close(); stream = null; clearInterval(heartbeat); scope = organizationId;
     run = null;
     attentionGeneration++; attention.clear();
-    cursor = 0; seen.clear(); confirmed.clear(); $("agentMessages").replaceChildren(); $("agentWelcome").hidden = false; $("agentError").textContent = "";
+    cursor = 0; seen.clear(); confirmed.clear(); activity.reset(); notifications?.clear(); turnHasReply = false; $("agentMessages").replaceChildren(); $("agentWelcome").hidden = false; $("agentError").textContent = "";
     $("agentInput").value = restore ? drafts.get(scope) || "" : "";
     const saved = restore && sessionStorage.getItem(runKey(scope));
     if (saved) {
@@ -373,6 +408,14 @@ async function initialize() {
   [config, brand] = await Promise.all([request("/api/agent/config"), request("/design-system/brand.json")]);
   userId = (await request("/api/me")).auth.user.id;
   document.body.append(shell, launcher);
+  panelResizer($('agentResizeHandle'));
+  notifications = agentNotifications({ launcher, soundButton: $('agentSound'),
+    isReading: () => !document.hidden && document.hasFocus() && mode !== 'minimized' && nearLatest(),
+    open: () => { setMode(matchMedia('(max-width: 760px)').matches ? 'overlay' : 'panel'); const scroller = shell.querySelector('.agent-scroll'); scroller.scrollTop = scroller.scrollHeight; },
+  });
+  shell.querySelector('.agent-scroll').addEventListener('scroll', () => notifications.read(), { passive: true });
+  document.addEventListener('visibilitychange', () => notifications.read());
+  window.addEventListener('focus', () => notifications.read());
   shell.append(attention.status);
   window.HedgelingTheme?.syncControls();
   $("agentCardExamples").hidden = !config.demo;
@@ -445,7 +488,6 @@ async function initialize() {
     }); $("agentSuggestions").append(button);
   }
   $("agentOpaque").addEventListener("click", () => { const opaque = shell.dataset.opaque !== "true"; shell.dataset.opaque = String(opaque); $("agentOpaque").setAttribute("aria-pressed", String(opaque)); });
-  $("agentWidth").addEventListener("input", (event) => document.documentElement.style.setProperty("--agent-panel-width", `${Number(event.target.value)}px`));
   document.addEventListener("input", (event) => { if (event.target.closest("main") && !event.target.closest(".project-languages, .library-workbench, .document-panel") && (event.target.matches("textarea:not([readonly])") || event.target.closest("form"))) dirty = true; });
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "Space") { event.preventDefault(); if (mode === "minimized") void openConversation(); else setMode("minimized"); }

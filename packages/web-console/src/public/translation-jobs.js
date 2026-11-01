@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { githubConnectionCard } from './github-connection.js';
 import { workflowProgress } from './workflow-progress.js';
 import {qualityFailureMessage} from './job-review-messages.js';
 import { documentExports } from './documents.js';
@@ -153,14 +154,40 @@ export function jobQualityPanel({jobId,request,onPreview=null,runId=null,open=fa
 function jobDeliveryPanel({job,request,onPreview}){
   const root=node('details','','translation-job-progress job-delivery');root.append(node('summary','Deliver translations in a GitHub PR'));
   const text=node('p','For repositories already loading Hedgeling runtime bundles. Complete coverage is required for the selected languages. AI-only output remains unreviewed. Opening a PR does not merge or deploy it.'),form=node('form'),error=node('p','','agent-error'),receipts=node('div');error.setAttribute('role','alert');
-  const field=(title,input)=>{const label=node('label',title+' ');label.append(input);form.append(label);return input;};
+  const field=(title,input)=>{const label=node('label',title+' ');input.setAttribute('aria-label',title);label.append(input);form.append(label);return input;};
   const connection=field('Repository',node('select')),branch=field('Base branch',node('input')),extraction=field('Imported extraction',node('select')),locales=field('Languages (blank = all)',node('input'));
   const bundles=field('Bundle paths (one per line)',node('textarea')),maps=field('Source-key map paths (one per line)',node('textarea'));branch.required=true;bundles.required=maps.required=true;bundles.rows=maps.rows=2;
-  const inspect=node('button','Find runtime files'),submit=node('button','Preview translation PR');inspect.type='button';submit.type='submit';form.append(inspect,submit);let info=null,loaded=false;
+  const readiness=node('div');readiness.className='delivery-readiness';readiness.setAttribute('role','status');
+  const githubCard=githubConnectionCard({request,onChanged:async()=>{if(connection.value)await discover();}});
+  const inspect=node('button','Check PR readiness'),submit=node('button','Preview translation PR');inspect.type='button';submit.type='submit';submit.disabled=true;form.append(inspect,submit);let info=null,loaded=false;
   const populateImports=()=>{extraction.replaceChildren();for(const item of info.imports.filter(i=>i.connectionId===connection.value)){const option=node('option',`${item.ref.slice(0,12)} · ${new Date(item.importedAt).toLocaleString()}`);option.value=item.id;extraction.append(option);}extraction.required=true;};
-  const discover=async()=>{error.textContent='';inspect.disabled=true;try{const {result}=await request('/api/actions/localization_job.delivery_options',{jobId:job.id,connectionId:connection.value,...(branch.value.trim()?{baseBranch:branch.value.trim()}:{})});branch.value=result.destination.baseBranch;bundles.value=result.destination.bundlePaths.join('\n');maps.value=result.destination.sourceMapPaths.join('\n');if(!result.destination.githubWriteAccess)error.textContent='Connect GitHub with repository push access. The App also needs Contents and Pull requests read/write permissions.';}catch(e){error.textContent=e.message;}finally{inspect.disabled=false;}};
+  let discoveryVersion=0;
+  const discover=async()=>{
+    const version=++discoveryVersion;error.textContent='';inspect.disabled=submit.disabled=true;readiness.textContent='Checking repository access and saved review status…';
+    try{
+      const [delivery,status]=await Promise.all([
+        request('/api/actions/localization_job.delivery_options',{jobId:job.id,connectionId:connection.value,...(branch.value.trim()?{baseBranch:branch.value.trim()}:{})}),
+        request('/api/actions/localization_job.status',{jobId:job.id}),
+      ]);
+      if(version!==discoveryVersion)return;
+      const destination=delivery.result.destination;
+      branch.value=destination.baseBranch;bundles.value=destination.bundlePaths.join('\n');maps.value=destination.sourceMapPaths.join('\n');
+      const current=status.result.job,coverage=current.coverage,aiOnly=current.steps?.length===1&&current.steps[0]==='machine_translation';
+      const list=node('ul');
+      list.append(node('li',destination.githubWriteAccess?'Repository: your GitHub account has push access. App Contents and Pull requests write permissions are also required.':'Repository: connect GitHub with push access, then check readiness again.'));
+      if(coverage){
+        list.append(node('li',`Whole job: ${coverage.saved} of ${coverage.total} saved · ${coverage.missing} missing.`));
+        list.append(node('li',aiOnly?'Review: AI-only output can be delivered as unreviewed.':`Review: ${coverage.verified} of ${coverage.total} verified. Mark reviewed translations verified in the review workspace before delivery.`));
+      }
+      list.append(node('li',destination.bundlePaths.length&&destination.sourceMapPaths.length?'Runtime bundle and source-key map found.':'Runtime files are missing. The app needs a Hedgeling runtime bundle and source-key map before PR delivery.'));
+      const reviewLink=node('a','Open translations to verify');reviewLink.href=`/?project=${encodeURIComponent(current.projectSlug)}#review`;
+      readiness.replaceChildren(list,...(!aiOnly&&coverage&&coverage.verified<coverage.total?[reviewLink]:[]));
+      submit.disabled=!destination.githubWriteAccess;
+    }catch(e){if(version===discoveryVersion){error.textContent=e.message;readiness.textContent='Readiness could not be checked.';}}
+    finally{if(version===discoveryVersion)inspect.disabled=false;}
+  };
   connection.onchange=()=>{branch.value=info.connections.find(c=>c.connectionId===connection.value)?.defaultRef||'';populateImports();void discover();};inspect.onclick=discover;
-  root.addEventListener('toggle',async()=>{if(!root.open||loaded)return;try{const {result}=await request('/api/actions/localization_job.delivery_options',{jobId:job.id});info=result;connection.replaceChildren();for(const c of result.connections){const option=node('option',`${c.owner}/${c.repository}`);option.value=c.connectionId;connection.append(option);}for(const pr of result.pullRequests){const a=node('a',`PR #${pr.number} · ${pr.branch}`);a.href=pr.url;a.target='_blank';a.rel='noopener noreferrer';receipts.append(a);}loaded=true;if(!result.connections.length){error.textContent='Connect a repository to this project first.';return;}connection.onchange();}catch(e){error.textContent=e.message;}});
+  root.addEventListener('toggle',async()=>{if(!root.open||loaded)return;void githubCard.refresh();try{const {result}=await request('/api/actions/localization_job.delivery_options',{jobId:job.id});info=result;connection.replaceChildren();for(const c of result.connections){const option=node('option',`${c.owner}/${c.repository}`);option.value=c.connectionId;connection.append(option);}const latest=result.imports[0]?.connectionId;if(result.connections.some(c=>c.connectionId===latest))connection.value=latest;for(const pr of result.pullRequests){const a=node('a',`PR #${pr.number} · ${pr.branch}`);a.href=pr.url;a.target='_blank';a.rel='noopener noreferrer';receipts.append(a);}loaded=true;if(!result.connections.length){error.textContent='Connect a repository to this project first.';return;}connection.onchange();}catch(e){error.textContent=e.message;}});
   form.onsubmit=async event=>{event.preventDefault();submit.disabled=true;error.textContent='';try{const targetLocales=locales.value.split(',').map(s=>s.trim()).filter(Boolean);await onPreview('localization_job.pull_request',{jobId:job.id,connectionId:connection.value,extractionId:extraction.value,baseBranch:branch.value.trim(),bundlePaths:bundles.value.split('\n').map(s=>s.trim()).filter(Boolean),sourceMapPaths:maps.value.split('\n').map(s=>s.trim()).filter(Boolean),...(targetLocales.length?{targetLocales}:{})});}catch(e){error.textContent=e.message;}finally{submit.disabled=false;}};
-  root.append(text,receipts,form,error);return root;
+  root.append(text,githubCard.root,readiness,receipts,form,error);return root;
 }
