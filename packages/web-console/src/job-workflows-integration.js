@@ -7,6 +7,7 @@ import {geminiModelForPlan} from './ai-credits.js';
 import {reserveUsage,recordUsageEvent,geminiTokenMeasurements,usageActor} from './usage.js';
 import {metaTranslationConfiguration} from './hackathon-engine/meta-translation.js';
 import {createJobReview} from './hackathon-engine/job-review.js';
+import {reviewPromptBytes} from './hackathon-engine/job-review-analysis.js';
 import {createJobDelivery} from './hackathon-engine/job-delivery.js';
 import {github,githubConnection,sourceEngine} from './repositories-integration.js';
 import {fail} from './action-errors.js';
@@ -35,7 +36,7 @@ export const jobReview=createJobReview({database:{query},transaction:withTransac
     if(['version','provider','model'].some(k=>plan[k]!==run.provider_plan[k]))throw fail(409,'Provider settings changed.','review_provider_changed');
     const access=await effectiveOrganizationAccess(p.organizationId,'ai_revision');
     const scope={organizationId:p.organizationId,businessUnitId:p.businessUnitId,projectId:p.id,actor:usageActor(auth),operation:'job_quality_review',idempotencyKey:`quality:${run.id}:${run.next_batch}`,idempotencyFingerprint:fingerprint({prompt,plan}),requestId:null};
-    const inputBytes=Buffer.byteLength(prompt.system+prompt.user),estimated={ai_generation_actions:1,llm_input_tokens:inputBytes,llm_output_tokens:prompt.maxOutputTokens,llm_total_tokens:inputBytes+prompt.maxOutputTokens};
+    const inputBytes=reviewPromptBytes(prompt),estimated={ai_generation_actions:1,llm_input_tokens:inputBytes,llm_output_tokens:prompt.maxOutputTokens,llm_total_tokens:inputBytes+prompt.maxOutputTokens};
     const reservation=await reserveUsage({...scope,measurements:estimated,relevantMetrics:Object.keys(estimated),planLimits:access.limits});
     if(reservation.duplicate)throw fail(409,'This quality request was already admitted and will not be sent again.','review_request_uncertain');
     const record=async(outcome,result)=>{const measured=Number.isSafeInteger(result?.raw?.usageMetadata?.totalTokenCount);await recordUsageEvent({...scope,reservationId:reservation.id,attemptNumber:reservation.attemptNumber,outcome,provider:plan.provider,model:plan.model,providerRequestId:result?.raw?.responseId||null,measurements:measured?{ai_generation_actions:1,...geminiTokenMeasurements(result.raw.usageMetadata)}:estimated,measurementAccuracy:measured?'exact':'estimated',metadata:{qualityRunId:run.id,batch:run.next_batch,billingCategory:'organization_provider',aiCredits:0,usageEstimated:!measured}});};

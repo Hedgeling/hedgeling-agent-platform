@@ -24,12 +24,13 @@ export async function validateMetaKey(key, config = metaTranslationConfiguration
   return { checkedAt: new Date().toISOString(), model: config.model };
 }
 
-export async function generateMetaText({ system, user, apiKey, maxOutputTokens = 2048,
+export async function generateMetaText({ system, user, apiKey, maxOutputTokens = 2048, responseSchema,
   config = metaTranslationConfiguration(), fetchImpl = fetch }) {
   const endpoint = serverUrl(config.endpoint, 'HEDGELING_META_RESPONSES_URL');
   const raw = await requestJson(endpoint, { token: apiKey, fetchImpl, body: {
     model: config.model, instructions: system, input: user, store: false,
     reasoning: { effort: 'low' }, max_output_tokens: maxOutputTokens,
+    ...(responseSchema ? {text:{format:{type:'json_schema',name:'quality_review',strict:true,schema:responseSchema}}} : {}),
   } });
   const blocks = (Array.isArray(raw.output) ? raw.output : [])
     .filter(item => item.type === 'message' && item.role === 'assistant').flatMap(item => item.content || []);

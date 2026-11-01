@@ -7,6 +7,38 @@ import { CHAT_LIMITS } from '../src/hackathon-engine/chat-limits.js';
 import { AGENT_SCOPE_POLICY } from '../src/hackathon-engine/agent-scope.js';
 
 const config = { model: "configured-test-model", key: "test-only-placeholder" };
+test('fresh and resumed chats can read a bulk context run without exhausting the request budget', async t => {
+  const keys=['HEDGELING_AGENT_PROVIDER','HEDGELING_AGENT_GEMINI_MODEL','HEDGELING_GEMINI_API_KEY','HEDGELING_AGENT_META_MODEL','HEDGELING_META_API_KEY'];
+  const before=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
+  t.after(()=>{for(const [k,v] of Object.entries(before)){if(v===undefined)delete process.env[k];else process.env[k]=v;}});
+  Object.assign(process.env,{HEDGELING_AGENT_GEMINI_MODEL:config.model,HEDGELING_GEMINI_API_KEY:config.key,HEDGELING_AGENT_META_MODEL:config.model,HEDGELING_META_API_KEY:config.key});
+  t.mock.method(pool,'connect',async()=>({release(){},async query(sql){return {rows:sql.includes(' as tokens from agent_model_usage')?[{tokens:0}]:sql.startsWith('insert into agent_model_usage')?[{id:'context-size-test'}]:[]};}}));
+  t.mock.method(pool,'query',async()=>({rows:[]}));
+  let calls=0;
+  t.mock.method(globalThis,'fetch',async(_url,init)=>{
+    calls++; assert(Buffer.byteLength(init.body)<100000,'Routine status requests contain counts only.');
+    const body=JSON.parse(init.body);
+    const response=process.env.HEDGELING_AGENT_PROVIDER==='meta'
+      ? JSON.parse(body.input.find(i=>i.type==='function_call_output').output)
+      : body.contents.find(c=>c.parts.some(p=>p.functionResponse)).parts[0].functionResponse.response;
+    assert.equal(response.run.completedStrings,723); assert.equal(response.run.results,undefined);
+    assert.equal(response.run.awaitingAcceptance,723); assert.equal(response.page,undefined);
+    return Response.json(process.env.HEDGELING_AGENT_PROVIDER==='meta'
+      ? {status:'completed',output:[{type:'message',role:'assistant',content:[{type:'output_text',text:'Saved context is ready to review.'}]}],usage:{input_tokens:5,output_tokens:3,total_tokens:8}}
+      : {candidates:[{content:{role:'model',parts:[{text:'Saved context is ready to review.'}]}}],usageMetadata:{totalTokenCount:8}});
+  });
+  const results=Array.from({length:723},(_,i)=>({id:`source-${i}`,source:`Heading ${i}`,description:'d'.repeat(1100),limitReason:'r'.repeat(400)}));
+  const history=[{role:'user',parts:[{text:'Check my saved context.'}]},
+    {role:'model',parts:[{functionCall:{id:'read-context',name:'console_get_context_run',args:{runId:'run'}}}]},
+    {role:'user',parts:[{functionResponse:{id:'read-context',name:'console_get_context_run',response:{run:{id:'run',completedStrings:723,results}}}}]}];
+  const saved=JSON.stringify(history); assert(Buffer.byteLength(saved)>750000);
+  for(const provider of ['meta','gemini']){
+    process.env.HEDGELING_AGENT_PROVIDER=provider;
+    await nextAgentTurn({run:{id:'context-size-test',organization_id:null},auth:{user:{id:'synthetic'}},history,tools:[],signal:new AbortController().signal},
+      {checkAccess:async()=>({allowed:true,limits:{}})});
+  }
+  assert.equal(calls,2); assert.equal(JSON.stringify(history),saved,'Saved history and full results stay unchanged.');
+});
 test('Meta and Gemini retain server scope on fresh, resumed and untrusted tool-result turns', async t => {
   const keys = ['HEDGELING_AGENT_PROVIDER', 'HEDGELING_AGENT_GEMINI_MODEL', 'HEDGELING_GEMINI_API_KEY', 'HEDGELING_AGENT_META_MODEL', 'HEDGELING_META_API_KEY'];
   const previous = Object.fromEntries(keys.map(k => [k, process.env[k]]));

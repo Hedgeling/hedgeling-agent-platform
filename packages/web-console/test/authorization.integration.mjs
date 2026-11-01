@@ -360,6 +360,8 @@ try {
       "202610291601_context_retention.sql",
       "202610292000_repository_connections.sql",
       "202610292200_job_review_delivery.sql",
+      "202610300100_job_review_diagnostics.sql",
+      "202610310100_context_diagnostics.sql",
     ],
   );
   assert.equal(

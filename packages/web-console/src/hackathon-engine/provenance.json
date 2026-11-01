@@ -1,6 +1,6 @@
 {
   "repository": "Hedgeling/hedgeling-meta-hackathon",
-  "revision": "7d3c8c50d63c97f3c463bc8b6845765420dc1d01",
+  "revision": "c87a64273dadb09bd6151fa5cf274a437206cae3",
   "dirty": false,
   "license": "Apache-2.0",
   "files": [
@@ -12,12 +12,12 @@
     {
       "source": "src/job-review-analysis.js",
       "destination": "job-review-analysis.js",
-      "sha256": "7e25f4690e558fc95dcc80873ae6637dad1765ab500faae898d0770b8202d6b0"
+      "sha256": "4c10bc74de83c967df7850758243dc8274cce8f4e4a1ffafe8c45dc26b98aa1d"
     },
     {
       "source": "src/job-review.js",
       "destination": "job-review.js",
-      "sha256": "81a45103899000526452c3c7ad2791e660c232bc7628407364ef91cffd51651d"
+      "sha256": "7e41304e7e98ff6e05520cfe702805ffee219dbd05343d2f296273334d95af06"
     },
     {
       "source": "src/job-review-actions.js",
@@ -27,7 +27,7 @@
     {
       "source": "src/job-delivery.js",
       "destination": "job-delivery.js",
-      "sha256": "4d9774de5d03dcf9e0bf95b37683aad4a43f545244af10998f54d86b2afb6a8d"
+      "sha256": "fd1e6154a95cda04badb3d6ca2ef2486a6592c2fc17784553dbe4eb703c919ae"
     },
     {
       "source": "src/job-delivery-actions.js",
@@ -57,17 +57,17 @@
     {
       "source": "src/context-enrichment.js",
       "destination": "context-enrichment.js",
-      "sha256": "547e0fc29d3a8ccced6f47414ae1e05a76177eecb0c09e41983f3d4f57a060d8"
+      "sha256": "bd64e38aa7c3c1a92d0f03bb3e158c5dfd9cf04d3ff4949360ae22b307e11285"
     },
     {
       "source": "src/context-analysis.js",
       "destination": "context-analysis.js",
-      "sha256": "53269e9a7b2f1119199abd6b6b40d5bbc354af2afdf13eae0dffbe488c829950"
+      "sha256": "da5743fbf74b16e11be7b976c947f0f2e1ddcfd77c270834db0039c808441828"
     },
     {
       "source": "src/context-actions.js",
       "destination": "context-actions.js",
-      "sha256": "ac5592b07d0ac8b483b747a054571df9cb6656aee922a91165957565f64c8891"
+      "sha256": "17710340468140b3811cc8f5acf161bf2c5d683ae39002e80ac1e6156b8bbe03"
     },
     {
       "source": "src/documents.js",
@@ -97,7 +97,7 @@
     {
       "source": "src/tuning-gemini.js",
       "destination": "tuning-gemini.js",
-      "sha256": "b6b9e9485aba9db0551342efe93d6da2a50a50cbcd233c68940e3b31cc73a687"
+      "sha256": "a19cf19c3038cb4e52a269ab534d8aca0fbd316552b40afddb965ec4f597fc4e"
     },
     {
       "source": "src/tuning-models.js",
@@ -187,7 +187,7 @@
     {
       "source": "src/meta-translation.js",
       "destination": "meta-translation.js",
-      "sha256": "c41a28731105c203acecd14047f57a567206bff01e457ac22c7eeee9ff0d4a49"
+      "sha256": "a6b6f57d4cd0e370b0c903461dd13b8e16c080d90dafb31d2a2042d78d5f9d35"
     },
     {
       "source": "src/extraction-actions.js",
@@ -197,7 +197,7 @@
     {
       "source": "src/extraction-catalog.js",
       "destination": "extraction-catalog.js",
-      "sha256": "277339bf417c45ef059191dc372a3b0789e55b1dd2e91b0c3d5557818360efa6"
+      "sha256": "971a99398d7bdaa1295438a759b86d4669dfd365a03ae47325bee0083686b78e"
     },
     {
       "source": "src/extraction-workflow.js",
@@ -240,6 +240,11 @@
       "sha256": "4450bac47f77d32ca603835ad758373a5361594a315d3a79ebd20276585bd8d0"
     },
     {
+      "source": "contracts/202610300100_job_review_diagnostics.sql",
+      "destination": "../../db/migrations/202610300100_job_review_diagnostics.sql",
+      "sha256": "c0550fb67ef6becf06509b677ba597aa2f688d8a30ec6e06e461e5d5daad2e0a"
+    },
+    {
       "source": "src/repository-actions.js",
       "destination": "../../../api-contract/repository-actions.js",
       "sha256": "0c5bcb7b35cb221b8fb4026e01756f5aa9b49929155ad82a9bf2af14886155fd"
@@ -267,7 +272,7 @@
     {
       "source": "src/context-actions.js",
       "destination": "../../../api-contract/context-actions.js",
-      "sha256": "ac5592b07d0ac8b483b747a054571df9cb6656aee922a91165957565f64c8891"
+      "sha256": "17710340468140b3811cc8f5acf161bf2c5d683ae39002e80ac1e6156b8bbe03"
     },
     {
       "source": "contracts/202610291600_context_enrichment.sql",
@@ -282,7 +287,7 @@
     {
       "source": "ui/context-enrichment.js",
       "destination": "../public/context-enrichment.js",
-      "sha256": "1e3f0f103a4d7c7ae0803767803b1e63a2f7ac52da25af2d80ac2dfc95770111"
+      "sha256": "698cddd4ffd223249a184bc34f9052d463b8da39ddcc7bc29451a4ddbab5283f"
     },
     {
       "source": "ui/context-enrichment.css",
@@ -302,7 +307,7 @@
     {
       "source": "ui/documents.js",
       "destination": "../public/documents.js",
-      "sha256": "2f3b37e684c80110d0ee5cc8806c95dd28db3973adaec33e20598f0af0867d3b"
+      "sha256": "30c4cc0d9d3bca5a393a44f589e44cc8ce7eb2143495ab87d19bbec6808d02f8"
     },
     {
       "source": "ui/documents.css",
@@ -332,12 +337,17 @@
     {
       "source": "ui/translation-jobs.css",
       "destination": "../public/translation-jobs.css",
-      "sha256": "daa4db80786ca673d798305c3c3e13f96c31fd9a5a1867ce946806b6f921dd20"
+      "sha256": "237a7a3db3c4fae9ff08cc960809c35d7c9c8a46daa93354cbf873dad27006d8"
     },
     {
       "source": "ui/translation-jobs.js",
       "destination": "../public/translation-jobs.js",
-      "sha256": "2ebaaf979b8da28b31456db27dd34a7b148d2bb8a81382ed7e0c45fb30a32e74"
+      "sha256": "839937bb78229354b65728e00b03f686eab7058fb566c5dbf1768fc156f801ee"
+    },
+    {
+      "source": "ui/job-review-messages.js",
+      "destination": "../public/job-review-messages.js",
+      "sha256": "873339646bfe39477d1c89b910a379439c839fdaa7283b46b64103c1297721fd"
     },
     {
       "source": "src/chat-limits.js",
@@ -407,12 +417,32 @@
     {
       "source": "ui/extraction.js",
       "destination": "../public/extraction.js",
-      "sha256": "9c1b9d725a18211c2ad8f3b1b8f5e497e1764a1639f2919df20c157c876856c2"
+      "sha256": "1a1d7db168b131ce57e767f64b3b0548340a382550cc595804b30c1c73ae4b9b"
     },
     {
       "source": "ui/extraction.css",
       "destination": "../public/extraction.css",
       "sha256": "55b74c908624c470c8bb6dffa56780db17545a5f0358d143e0b88b72f1f568f7"
+    },
+    {
+      "source": "contracts/202610310100_context_diagnostics.sql",
+      "destination": "../../db/migrations/202610310100_context_diagnostics.sql",
+      "sha256": "db6dc6d577788a6368479268e8db24993e49eca3a3f4d0ad2cdc41b5f62ada8b"
+    },
+    {
+      "source": "src/context-results.js",
+      "destination": "context-results.js",
+      "sha256": "99689e5b52348cd3efe6fe615e8b13da246517ee3ee941207c14a2c3a33c6987"
+    },
+    {
+      "source": "ui/workflow-progress.js",
+      "destination": "../public/workflow-progress.js",
+      "sha256": "89a07dbdb749d193a9f1f85b4bee576f380305232d519f4f1c223dab466f092f"
+    },
+    {
+      "source": "ui/workflow-progress.css",
+      "destination": "../public/workflow-progress.css",
+      "sha256": "d3b619b24f59da40e329ecb57e1b8ed0567c0d8ce1fbd29a75b2e4d198268e1d"
     }
   ]
 }

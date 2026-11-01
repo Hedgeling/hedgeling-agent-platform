@@ -2,7 +2,7 @@
 import {randomUUID} from 'node:crypto';
 import {fail} from './errors.js';
 import {loadJob,jobTarget,currentJobSources,jobTranslations,jobCoverage,selectedLocales,isAiOnly} from './job-scope.js';
-import {REVIEW_LIMITS,reviewBatches,reviewPrompt,parseReview} from './job-review-analysis.js';
+import {REVIEW_LIMITS,reviewBatches,reviewPrompt,reviewPromptBytes,parseReview} from './job-review-analysis.js';
 export function createJobReview({database,transaction,authorize,inspectProvider,generate,fingerprint}) {
   const load=(input,auth,scope,db,permission='read',lock=false)=>loadJob(db,input.jobId,auth,scope,authorize,permission,lock);
   async function run(input,db,lock=false){const r=(await db.query(`select * from job_quality_runs where job_id=$1${input.runId?' and id=$2':''} order by created_at desc,id desc limit 1${lock?' for update':''}`,input.runId?[input.jobId,input.runId]:[input.jobId])).rows[0];if(!r&&input.runId)throw fail(404,'Quality run not found.','review_not_found');return r;}
@@ -26,7 +26,7 @@ export function createJobReview({database,transaction,authorize,inspectProvider,
     if(!r)return {qualityRun:null,uiTarget};
     const offset=input.offset||0,counts={pass:0,needs_changes:0,uncertain:0};for(const item of r.results)counts[item.verdict]++;
     const results=r.results.slice(offset,offset+REVIEW_LIMITS.resultPage).map(result=>{const s=r.snapshot.find(s=>s.id===result.id);return {...result,locale:s.locale,source:s.sourceText.slice(0,2000),translation:s.text.slice(0,2000),accepted:r.accepted_ids.includes(s.id),previousStatus:s.humanStatus};});
-    return {qualityRun:{id:r.id,jobId:job.id,status:r.status,selection:r.selection,targetLocales:r.provider_plan.locales,total:r.snapshot.length,checked:r.results.length,counts,accepted:r.accepted_ids.length,provider:r.provider_plan.provider,model:r.provider_plan.model,error:r.error_code,results},page:{nextOffset:offset+results.length<r.results.length?offset+results.length:null},uiTarget};
+    return {qualityRun:{id:r.id,jobId:job.id,status:r.status,selection:r.selection,targetLocales:r.provider_plan.locales,total:r.snapshot.length,checked:r.results.length,counts,accepted:r.accepted_ids.length,provider:r.provider_plan.provider,model:r.provider_plan.model,error:r.error_code,failure:r.error_detail||null,results},page:{nextOffset:offset+results.length<r.results.length?offset+results.length:null},uiTarget};
   }
   async function prepare(name,input,auth,scope={},db=database,lock=false){const {p,job}=await load(input,auth,scope,db,'review',lock),uiTarget=jobTarget(p,job.id,name);
     const base={organizationId:p.organizationId,p,job,uiTarget};
@@ -44,7 +44,7 @@ export function createJobReview({database,transaction,authorize,inspectProvider,
     await currentJobSources(db,p,job,lock);const locales=selectedLocales(job,input.targetLocales),selected=input.selection||'in_review';
     const items=await selection(db,p,job,{locales,selection:selected,limit:1001,lock}),assets=await guidance(db,p,locales);
     const batches=reviewBatches(items,job.source_locale,assets),provider=await inspectProvider(auth,p);
-    const plan={...provider,locales,batches:batches.map(b=>b.map(i=>i.id)),maximumRequests:batches.length,maximumOutputTokens:batches.length*REVIEW_LIMITS.outputTokens,maximumInputBytes:batches.reduce((n,b)=>{const prompt=reviewPrompt(b,job.source_locale,assets);return n+Buffer.byteLength(prompt.system+prompt.user);},0)};
+    const plan={...provider,locales,batches:batches.map(b=>b.map(i=>i.id)),maximumRequests:batches.length,maximumOutputTokens:batches.length*REVIEW_LIMITS.outputTokens,maximumInputBytes:batches.reduce((n,b)=>n+reviewPromptBytes(reviewPrompt(b,job.source_locale,assets)),0)};
     const coverage=await jobCoverage(db,job,locales);
     return {...base,items,assets,plan,selected,preview:{action:name,fields:{name:job.name,selection:selected,targetLocales:locales,translations:items.length},resources:{coverage,provider:{provider:plan.provider,model:plan.model,mode:plan.mode},contentVersion:fingerprint({items,assets,plan})},cost:`Your organization’s ${plan.provider} key. At most ${plan.maximumRequests} requests, ${plan.maximumInputBytes} input bytes and ${plan.maximumOutputTokens} output tokens. Provider charges apply; this is not a dollar quote. No automatic paid retries.`,sideEffects:[`Analyze ${items.length} existing translations for meaning, language, terminology, tone, placeholders and hard limits. ${coverage.missing} missing translations are not checked.`,`Save AI findings only. Do not change translation text or verification status. Passing results need a separate confirmation to become verified.`,...(isAiOnly(job)?['This is an explicitly requested extra check; the job remains labeled AI-only translations.']:[])]}};
   }
@@ -77,7 +77,8 @@ export function createJobReview({database,transaction,authorize,inspectProvider,
       const output=await generate({p,auth,run:r,prompt,beforeCall:()=>check(database)}),results=parseReview(output.text,items);
       await transaction(async db=>{await check(db,true);const done=r.next_batch+1===r.provider_plan.batches.length;
         await db.query(`update job_quality_runs set results=results||$2::jsonb,next_batch=next_batch+1,status=$3,finished_at=case when $3='ready' then now() else null end where id=$1`,[r.id,JSON.stringify(results),done?'ready':'queued']);});
-    }catch(e){await database.query("update job_quality_runs set status='failed',error_code=$3,finished_at=now() where id=$1 and lease_token=$2 and status='running'",[r.id,token,['review_inputs_changed','review_provider_changed','review_result_invalid','review_access_denied','review_request_uncertain'].includes(e.code)?e.code:'review_failed']);}
+    }catch(e){const detail=e.code==='review_result_invalid'&&e.reviewDiagnostic?{...e.reviewDiagnostic,batch:r.next_batch+1}:null;
+      await database.query("update job_quality_runs set status='failed',error_code=$3,error_detail=$4,finished_at=now() where id=$1 and lease_token=$2 and status='running'",[r.id,token,['review_inputs_changed','review_provider_changed','review_result_invalid','review_access_denied','review_request_uncertain'].includes(e.code)?e.code:'review_failed',detail]);}
     return true;
   }
   function startWorker(){let busy=false;const timer=setInterval(()=>{if(busy)return;busy=true;void tick().catch(()=>console.error('Quality worker could not finish its check.')).finally(()=>{busy=false;});},1000);timer.unref();return ()=>clearInterval(timer);}

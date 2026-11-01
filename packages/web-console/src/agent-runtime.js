@@ -1,4 +1,6 @@
 import { CHAT_LIMITS } from './hackathon-engine/chat-limits.js';
+import { contextChatResult } from './hackathon-engine/context-results.js';
+import { isDocumentDownload } from './public/document-files.js';
 import express from "express";
 import { query, withTransaction } from "./db.js";
 import { isUuid } from "./validation.js";
@@ -13,6 +15,10 @@ const route = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(ne
 const active = new Map();
 const running = ["planning", "reading", "executing"];
 const activityLabels = {
+  console_get_context_summary: 'Checking context coverage',
+  console_inspect_string_context: 'Reading the selected string context',
+  console_list_context_runs: 'Finding context analyses',
+  console_get_context_run: 'Checking context progress',
   console_propose_job_quality_check: 'Preparing an AI quality check',
   console_get_job_quality_check: 'Reading quality findings',
   console_propose_job_verification: 'Preparing verification of passing translations',
@@ -145,11 +151,17 @@ async function runTurn(auth, runId) {
           await event(runId, "activity", { tool, label: activityLabels[call.name] || "Checking available tools", status: "working" });
           const reply = await tools.client.callTool({ name: call.name, arguments: call.args || {} });
           result = JSON.parse(reply.content?.find((c) => c.type === "text")?.text || "{}");
-          if (Array.isArray(result.files)) events.push(['files', { files: result.files }]);
+          if (call.name === 'console_export_document' && Array.isArray(result.files)) {
+            const files = result.files.filter(isDocumentDownload);
+            if (files.length) events.push(['files', { files }]);
+          }
+          if (call.name === 'console_get_job_delivery_options' && result.destination?.githubWriteAccess === false) {
+            events.push(['github_connection', { reason: 'pr_delivery' }]);
+          }
           if (result.proposal) { proposal = result.proposal; events.push(["proposal", { ...proposal, uiTarget: result.uiTarget }]); }
           else events.push(["activity", { tool, label: result.error || "Workspace information loaded", status: result.error ? "failed" : "complete", ...(result.uiTarget ? { uiTarget: result.uiTarget } : {}) }]);
         }
-        parts.push({ functionResponse: { name: call.name, ...(call.id ? { id: call.id } : {}), response: result } });
+        parts.push({ functionResponse: { name: call.name, ...(call.id ? { id: call.id } : {}), response: contextChatResult(call.name, result) } });
       }
       history.push({ role: "user", parts });
       await checkpoint(run, history, proposal ? "awaiting_confirmation" : "reading", events);
@@ -331,7 +343,7 @@ router.get("/runs/:id/events", route(async (req, res) => {
     busy = true;
     try {
       await loadRun(req.auth, run.id);
-      const events = (await query("select sequence,kind,data from agent_events where run_id=$1 and sequence>$2 order by sequence limit 100", [run.id, cursor])).rows;
+      const events = (await query("select sequence,kind,data,created_at as \"createdAt\" from agent_events where run_id=$1 and sequence>$2 order by sequence limit 100", [run.id, cursor])).rows;
       for (const item of events) { cursor = Number(item.sequence); res.write(`id: ${cursor}\ndata: ${JSON.stringify(item)}\n\n`); }
       if (!events.length) res.write(": heartbeat\n\n");
     } catch { res.write(`event: access_changed\ndata: {}\n\n`); res.end(); }

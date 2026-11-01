@@ -8,8 +8,8 @@ const toolActions = Object.freeze({
   console_get_job_delivery_options: 'localization_job.delivery_options',
   console_propose_translation_pull_request: 'localization_job.pull_request',
 
-  console_propose_context_enrichment: 'context.enrich', console_propose_context_apply: 'context.apply',
-  console_list_string_context: 'read', console_list_context_runs: 'read', console_get_context_run: 'read',
+  console_propose_context_enrichment: 'context.enrich', console_propose_context_apply: 'context.apply', console_propose_context_cancel: 'context.cancel',
+  console_get_context_summary: 'read', console_inspect_string_context: 'read', console_list_string_context: 'read', console_list_context_runs: 'read', console_get_context_run: 'read',
   console_propose_translation_job_start: 'localization_job.start',
   console_propose_translation_job_cancel: 'localization_job.cancel',
   console_get_translation_job_status: 'localization_job.status',
@@ -77,13 +77,13 @@ export class AgentAttention {
     let target;
     if (action.startsWith('library.')) target = [...document.querySelectorAll('[data-library-kind]')].find(node => node.getClientRects().length)?.querySelector('.library-editor:not(:empty), .library-heading') || document.getElementById('libraryCards');
     if (!action.startsWith("library.") && resource && ["organization", "business_unit", "project", "job"].includes(resource.type)) {
-      target = [...document.querySelectorAll("#workspaceRoot [data-resource-id]")].find((node) => node.dataset.resourceType === resource.type && node.dataset.resourceId === resource.id);
+      target = [...document.querySelectorAll("#workspaceRoot [data-resource-id]")].find((node) => node.dataset.resourceType === resource.type && node.dataset.resourceId === resource.id && node.getClientRects().length);
     }
     if (action === 'project.locales.add' && resource?.type === 'project') {
       const languages = [...document.querySelectorAll('#workspaceRoot .project-languages')].find(node => node.dataset.projectId === resource.id);
       target = languages?.querySelector('summary') || target;
     }
-    if (!target && action !== "read") target = [...document.querySelectorAll("#workspaceRoot [data-workspace-action]")].find((node) => node.dataset.workspaceAction === action)?.querySelector("summary");
+    if (!target && action !== "read") target = [...document.querySelectorAll("#workspaceRoot [data-workspace-action]")].find((node) => node.dataset.workspaceAction === action && node.getClientRects().length)?.querySelector("summary");
     if (!target && action === "read") target = document.querySelector("#workspaceRoot .workspace-heading");
     if (target?.getClientRects().length) target.scrollIntoView({ block: "nearest", behavior: "instant" });
     this.mark(target, label, phase, 0);

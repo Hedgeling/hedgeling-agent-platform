@@ -1,0 +1,14 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+.workflow-progress { margin: 16px 0; padding: 16px 18px; background: var(--background-input-focus); border: 1px solid var(--line-soft); border-radius: 10px; color: var(--text-main); overflow-wrap: anywhere; }
+.workflow-progress[hidden], .workflow-progress [hidden] { display: none; }
+.workflow-progress .workflow-progress-stage { font: 650 14px/1.5 var(--font-ui); margin: 0 0 6px; }
+.workflow-progress .workflow-progress-count { font: 700 clamp(17px, 2vw, 24px)/1.4 var(--font-ui); font-variant-numeric: tabular-nums; margin: 4px 0 12px; }
+.workflow-progress .workflow-progress-note { font: 400 13px/1.6 var(--font-ui); color: var(--text-muted); margin: 10px 0 0; }
+.workflow-progress progress { appearance: none; display: block; width: 100%; height: 10px; border: 0; border-radius: 999px; overflow: hidden; accent-color: var(--text-accent); background: var(--line-soft); }
+.workflow-progress progress::-webkit-progress-bar { background: var(--line-soft); border-radius: 999px; }
+.workflow-progress progress::-webkit-progress-value { background: var(--text-accent); border-radius: 999px; }
+.workflow-progress progress::-moz-progress-bar { background: var(--text-accent); border-radius: 999px; }
+.workflow-progress progress:indeterminate { background: linear-gradient(90deg, var(--line-soft) 0 25%, var(--text-accent) 25% 50%, var(--line-soft) 50% 100%); background-size: 200% 100%; animation: workflow-busy 2s linear infinite; }
+.workflow-progress progress:indeterminate::-webkit-progress-bar { background: transparent; }
+@keyframes workflow-busy { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .workflow-progress progress:indeterminate { animation: none; } }

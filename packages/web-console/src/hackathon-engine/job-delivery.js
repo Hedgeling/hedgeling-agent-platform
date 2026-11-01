@@ -9,6 +9,39 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const object=v=>v&&typeof v==='object'&&!Array.isArray(v);
 const badKey=k=>['__proto__','prototype','constructor'].includes(k);
 function parse(text){let v;try{v=JSON.parse(text);}catch{throw fail(422,'A selected runtime file is not valid JSON.','delivery_format_invalid');}if(!object(v)||v.schemaVersion!==1)throw fail(422,'This delivery supports existing schemaVersion 1 Hedgeling runtime files.','delivery_format_invalid');return v;}
+// Runtime schema v1 supports source + U+0004 + context lookups. Context must
+// come from the pinned extraction, never from a guessed key or editable label.
+export function deliverySources(sources,entries){return sources.map(s=>({...s,
+  context:entries[s.source_hash].context,occurrences:entries[s.source_hash].contextVariants.length}));}
+const sourcePart=lookup=>lookup.split('\u0004')[0];
+function mergeSourceMap(value,sources){
+  if(!object(value.bySource)||!Array.isArray(value.sources)||value.sources.some(s=>!object(s)||typeof s.source!=='string'||typeof s.key!=='string'||value.bySource[s.source]!==s.key)
+    ||Object.entries(value.bySource).some(([lookup,key])=>badKey(lookup)||typeof key!=='string'||!key||badKey(key)||lookup.split('\u0004').length>2))throw fail(422,'The existing source-key map is inconsistent.','delivery_format_invalid');
+  const owners=new Map();
+  for(const [lookup,key] of Object.entries(value.bySource)){const names=owners.get(key)||[];names.push(lookup);owners.set(key,names);}
+  const add=(lookup,key)=>{
+    if(badKey(lookup)||badKey(key))throw fail(422,'Unsafe source map key.','delivery_format_invalid');
+    // A plain fallback may alias its own contextual key. Different sources or
+    // different contexts must never acquire the same key.
+    if((owners.get(key)||[]).some(name=>name!==lookup&&(sourcePart(name)!==sourcePart(lookup)||name.includes('\u0004')&&lookup.includes('\u0004'))))throw fail(409,'A runtime key already belongs to another source or context. The source-key map needs correction before delivery.','delivery_key_conflict');
+    if(Object.hasOwn(value.bySource,lookup)&&value.bySource[lookup]!==key)throw fail(409,`The source lookup ${JSON.stringify(lookup).slice(0,240)} already maps to another runtime key. The delivery view cannot edit this mapping.`, 'delivery_key_conflict');
+    if(!Object.hasOwn(value.bySource,lookup)){value.bySource[lookup]=key;value.sources.push({source:lookup,key});const names=owners.get(key)||[];names.push(lookup);owners.set(key,names);}
+  };
+  const groups=new Map();
+  for(const s of sources){
+    if(typeof s.source_text!=='string'||s.source_text.includes('\u0004')||typeof s.source_hash!=='string'||!s.source_hash||badKey(s.source_text)||badKey(s.source_hash)
+      ||s.context!==undefined&&(typeof s.context!=='string'||!s.context.trim()||s.context.length>256||/[\x00-\x1f\x7f]/.test(s.context)))throw fail(422,'Invalid source or context for runtime delivery.','delivery_format_invalid');
+    add(s.context===undefined?s.source_text:`${s.source_text}\u0004${s.context}`,s.source_hash);
+    const group=groups.get(s.source_text)||[];group.push(s);groups.set(s.source_text,group);
+  }
+  // Preserve existing plain lookups. For new contextual sources, provide a
+  // stable fallback for callers without context: most extraction occurrences,
+  // then context name. Every contextual translation remains addressable.
+  for(const [source,group] of groups){if(Object.hasOwn(value.bySource,source))continue;
+    const selected=[...group].sort((a,b)=>(b.occurrences||0)-(a.occurrences||0)||(a.context<b.context?-1:a.context>b.context?1:0))[0];
+    add(source,selected.source_hash);
+  }
+}
 export function mergeRuntimeFile(text,kind,sources,translations){const value=parse(text);
   if(kind==='bundle'){
     for(const t of translations){if(badKey(t.locale)||badKey(t.sourceHash)||t.locale==='schemaVersion')throw fail(422,'Unsafe runtime key.','delivery_format_invalid');
@@ -17,15 +50,7 @@ export function mergeRuntimeFile(text,kind,sources,translations){const value=par
       if(Object.hasOwn(value[t.locale],t.sourceHash)&&typeof value[t.locale][t.sourceHash]!=='string')throw fail(422,'A translation entry has an unsupported shape.','delivery_format_invalid');
       value[t.locale][t.sourceHash]=t.text;
     }
-  }else{
-    if(!object(value.bySource)||!Array.isArray(value.sources)||value.sources.some(s=>!object(s)||typeof s.source!=='string'||typeof s.key!=='string'||value.bySource[s.source]!==s.key))throw fail(422,'The existing source-key map is inconsistent.','delivery_format_invalid');
-    for(const s of sources){if(badKey(s.source_text)||badKey(s.source_hash))throw fail(422,'Unsafe source map key.','delivery_format_invalid');
-      if(Object.entries(value.bySource).some(([text,key])=>key===s.source_hash&&text!==s.source_text))throw fail(409,'A runtime key already belongs to another source string.','delivery_key_conflict');
-      if(Object.hasOwn(value.bySource,s.source_text)&&value.bySource[s.source_text]!==s.source_hash)throw fail(409,'A source already maps to another runtime key. Resolve the mapping before creating a PR.','delivery_key_conflict');
-      value.bySource[s.source_text]=s.source_hash;
-      if(!value.sources.some(row=>row.source===s.source_text))value.sources.push({source:s.source_text,key:s.source_hash});
-    }
-  }
+  }else mergeSourceMap(value,sources);
   return JSON.stringify(value,null,2)+'\n';
 }
 export async function publishTranslationPr(github,repo,prepared,proposalId){
@@ -85,10 +110,11 @@ export function createJobDelivery({database,authorize,github,identity,engine,fin
     if(artifact?.provenance?.commitSha!==tree.commitSha)throw fail(409,'The base branch has changed since extraction. Extract and import its current source before delivery.','delivery_base_changed');
     const state=catalogState(artifact,{commitSha:tree.commitSha,repositoryId:repo.id,sourceLocale:job.source_locale}),entries=state.files['extracted-source'].entries;
     if(sources.some(s=>entries[s.source_hash]?.sourceText!==s.source_text))throw fail(409,'This job includes source strings not proven by the selected extraction. Use a matching current job.','delivery_source_unproven');
+    const runtimeSources=deliverySources(sources,entries);
     const paths=[...input.bundlePaths,...input.sourceMapPaths];
     if(new Set(paths).size!==paths.length||paths.length>DELIVERY_LIMITS.files||paths.some(p=>!safeSourcePath(p)||!p.endsWith('.json')))throw fail(400,'Select distinct, ordinary runtime JSON files.','delivery_paths_invalid');
     const files=[];for(const path of paths){const entry=tree.files.find(f=>f.path===path);if(!entry)throw fail(409,'The runtime destination must already exist and be wired into the app.','delivery_runtime_missing');
-      const original=await github.file(repo,entry,DELIVERY_LIMITS.fileBytes),content=mergeRuntimeFile(original,input.bundlePaths.includes(path)?'bundle':'map',sources,translations);
+      const original=await github.file(repo,entry,DELIVERY_LIMITS.fileBytes),content=mergeRuntimeFile(original,input.bundlePaths.includes(path)?'bundle':'map',runtimeSources,translations);
       if(Buffer.byteLength(content)>DELIVERY_LIMITS.fileBytes)throw fail(422,'A runtime file would exceed 5 MiB.','delivery_limit');
       if(original!==content)files.push({path,mode:entry.mode,oldSha:entry.sha,content,sha256:hash(content)});
     }

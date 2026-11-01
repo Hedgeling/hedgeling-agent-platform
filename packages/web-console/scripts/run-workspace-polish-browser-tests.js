@@ -1,0 +1,98 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { chromium, expect } from '@playwright/test';
+import { localConsole } from '../test-support/local-console.mjs';
+
+// Synthetic workspace only. Navigation and progress rendering do not call models.
+const app = await localConsole(process.env.TEST_DATABASE_URL);
+const artifacts = await fs.mkdtemp(path.join(os.tmpdir(), 'hedgeling-workspace-polish-'));
+let browser, page;
+try {
+  const org = (await app.request('/api/agent/config')).body.organizations[0].id;
+  const original = (await app.database.query('select id from business_units where organization_id=$1 order by name', [org])).rows[0].id;
+  await app.database.query("insert into business_units(organization_id,slug,name) values($1,'paper-studio','Paper Studio')", [org]);
+  browser = await chromium.launch({ headless: true, ...(process.env.HEDGELING_E2E_CHROMIUM_EXECUTABLE ? { executablePath: process.env.HEDGELING_E2E_CHROMIUM_EXECUTABLE } : {}) });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce', colorScheme: 'light' });
+  const at = app.cookie.indexOf('='); await context.addCookies([{ name: app.cookie.slice(0, at), value: app.cookie.slice(at + 1), url: app.origin, httpOnly: true, sameSite: 'Strict' }]);
+  await context.addInitScript(() => localStorage.setItem('hedgeling.agent.mode', 'minimized'));
+  page = await context.newPage(); page.setDefaultTimeout(15000);
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  const turns = []; await page.route('**/api/agent/runs/*/messages', route => { turns.push(route.request().url()); return route.abort(); });
+  await page.goto(app.origin);
+  await expect(page.locator('#homeGreeting')).toHaveText('Your app.In any language.');
+  await expect.poll(() => page.evaluate(() => Boolean(window.HedgelingAgent))).toBe(true);
+  await page.evaluate(async org => { await window.HedgelingAgent.browseWorkspace(org); window.HedgelingConsole.openWorkspace(); }, org);
+  await expect(page.locator('.workspace-unit-card')).toHaveCount(2);
+  await expect(page.locator('.workspace-unit-view:visible')).toHaveCount(0);
+  const select = page.getByRole('combobox', { name: 'Workspace organization' });
+  assert.equal(await select.evaluate(n => getComputedStyle(n).appearance), 'base-select');
+  await select.click();
+  await expect(select).toHaveJSProperty('value', org);
+  await page.screenshot({ path: path.join(artifacts, '01-custom-dropdown.png') });
+  await page.keyboard.press('Escape');
+  await expect(select).toBeFocused();
+  await select.focus(); await page.keyboard.press('Space'); await page.keyboard.press('Home'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+  await expect(select).toHaveValue(org);
+  await page.getByRole('button', { name: 'Open business unit: Default', exact: true }).click();
+  await expect(page.locator('.workspace-unit-view:visible')).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: 'Default', exact: true })).toBeFocused();
+  await expect(page.locator('.workspace-resources')).toBeHidden();
+  await expect(page.locator('.workspace-unit-view:visible .workspace-step')).toHaveCount(5);
+  await page.screenshot({ path: path.join(artifacts, '02-business-unit.png') });
+  const edit = page.locator('.workspace-unit-view:visible [data-workspace-action="project.update"]');
+  await edit.locator('summary').click(); await edit.getByLabel('Project name', { exact: true }).fill('Unsubmitted project draft');
+  await page.getByRole('button', { name: 'All business units' }).click();
+  await expect(page.getByRole('button', { name: 'Open business unit: Default', exact: true })).toBeFocused();
+  await page.getByRole('button', { name: 'Open business unit: Paper Studio', exact: true }).click();
+  await expect(page.locator('.workspace-unit-view:visible')).toContainText('No projects yet');
+  await page.getByRole('button', { name: 'All business units' }).click();
+  await page.getByRole('button', { name: 'Open business unit: Default', exact: true }).click();
+  await expect(edit.getByLabel('Project name', { exact: true })).toHaveValue('Unsubmitted project draft');
+  await edit.getByRole('button', { name: 'Preview change', exact: true }).click();
+  await edit.getByRole('button', { name: 'Save project name', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Unsubmitted project draft', exact: true })).toBeVisible();
+  const unitEdit = page.locator('.workspace-unit-view:visible [data-workspace-action="business_unit.update"]');
+  await unitEdit.locator('summary').click();
+  await unitEdit.getByLabel('Business-unit name', { exact: true }).fill('Renamed studio');
+  await unitEdit.getByRole('button', { name: 'Preview change', exact: true }).click();
+  await unitEdit.getByRole('button', { name: 'Save business-unit name', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Renamed studio', exact: true })).toBeVisible();
+  // Exercise the same semantic destination handling used by agent follow-along.
+  await page.evaluate(async ({ org, original }) => {
+    const { Workspace } = await import('/agent-components.js');
+    const root = document.getElementById('workspaceRoot');
+    const workspace = new Workspace(root, 'synthetic-controller', () => {});
+    await workspace.refresh(org, null, { type: 'business_unit', id: original });
+    window.polishWorkspace = workspace;
+  }, { org, original });
+  await expect(page.locator('.workspace-unit-view:visible')).toHaveAttribute('data-resource-id', original);
+  await page.evaluate(async () => {
+    const { workflowProgress } = await import('/workflow-progress.js');
+    const progress = workflowProgress('Context suggestions saved');
+    const project = document.querySelector('.workspace-unit-view:not([hidden]) .workspace-project-view');
+    project.prepend(progress.root); window.polishProgress = progress;
+    progress.update({ state: 'running', title: 'Writing context', completed: 20, total: 25, unit: 'suggestions saved', detail: 'Saved suggestions need approval.' });
+  });
+  const progress = page.getByRole('progressbar', { name: 'Context suggestions saved' });
+  await expect(progress).toHaveAttribute('value', '20'); await expect(progress).toHaveAttribute('max', '25');
+  await expect(progress).toHaveAttribute('aria-valuetext', '20 of 25 suggestions saved · 80%');
+  await page.evaluate(() => window.polishProgress.update({ state: 'failed', title: 'Analysis stopped', completed: 20, total: 25, unit: 'suggestions saved' }));
+  await expect(progress).toHaveAttribute('value', '20');
+  await page.evaluate(() => window.polishProgress.update({ state: 'running', title: 'Reading selected source files' }));
+  await expect(progress).not.toHaveAttribute('value');
+  assert.equal(await progress.evaluate(n => getComputedStyle(n).animationName), 'none');
+  await page.evaluate(() => window.polishProgress.update({ state: 'unavailable', title: 'Progress unavailable' }));
+  await expect(progress).toBeHidden();
+  await page.evaluate(() => window.polishProgress.update({ state: 'running', title: 'Writing context', completed: 20, total: 25, unit: 'suggestions saved' }));
+  await page.screenshot({ path: path.join(artifacts, '03-progress.png') });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.screenshot({ path: path.join(artifacts, '04-dark.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: path.join(artifacts, '05-mobile.png') });
+  assert.deepEqual(errors, []); assert.deepEqual(turns, []);
+  console.log('Workspace polish browser flow passed. Artifacts: ' + artifacts);
+} catch (e) { await page?.screenshot({ path: path.join(artifacts, 'failure.png') }); console.error('Artifacts: ' + artifacts); throw e; }
+finally { await browser?.close(); await app.close(); }

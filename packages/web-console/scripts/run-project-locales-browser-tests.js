@@ -25,6 +25,7 @@ try {
   await chat.locator('#agentScope').selectOption({ label: 'Local troubleshooting' });
   await chat.getByRole('button', { name: 'Minimize chat', exact: true }).click();
   await page.evaluate(() => window.HedgelingConsole.openWorkspace());
+  await page.getByRole('button', { name: 'Open business unit: Default', exact: true }).click();
   const panel = page.locator('.project-languages');
   await expect(panel.locator('.project-language-source')).toContainText('en-US');
   await panel.locator('summary').click();

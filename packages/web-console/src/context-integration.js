@@ -32,7 +32,7 @@ async function inspectProvider(auth,p) {
   return { provider:selected.provider,model,mode:'byok',version:fingerprint(version) };
 }
 export const contextEnrichment = createContextEnrichment({ database:{ query },transaction:withTransaction,authorize,inspectProvider,fingerprint,
-  generate: async ({ p,auth,run,prompt,beforeCall }) => {
+  generate: async ({ p,auth,run,prompt,beforeCall,requestIndex = 0,batch }) => {
     if (!providerCall) throw fail(503,'Context provider is not configured.','context_provider_unconfigured');
     await beforeCall();
     const selected = await translationProvider(p.organizationId);
@@ -40,9 +40,10 @@ export const contextEnrichment = createContextEnrichment({ database:{ query },tr
     if (plan.version !== run.provider_plan.version || plan.provider !== run.provider_plan.provider || plan.model !== run.provider_plan.model) throw fail(409,'Provider settings changed.','context_provider_changed');
     const access = await effectiveOrganizationAccess(p.organizationId,'ai_revision');
     const scope = { organizationId:p.organizationId,businessUnitId:p.businessUnitId,projectId:p.id,actor:usageActor(auth),operation:'context_enrichment',
-      idempotencyKey:`context:${run.id}`,idempotencyFingerprint:fingerprint({ prompt,plan }),requestId:null };
-    const estimated = { ai_generation_actions:1,llm_input_tokens:run.provider_plan.maximumInputBytes,
-      llm_output_tokens:run.provider_plan.maximumOutputTokens,llm_total_tokens:run.provider_plan.maximumInputBytes+run.provider_plan.maximumOutputTokens };
+      idempotencyKey:`context:${run.id}${run.provider_plan.batches ? `:${requestIndex}` : ''}`,idempotencyFingerprint:fingerprint({ prompt,plan }),requestId:null };
+    const inputBytes = batch?.maximumInputBytes ?? run.provider_plan.maximumInputBytes;
+    const estimated = { ai_generation_actions:1,llm_input_tokens:inputBytes,
+      llm_output_tokens:run.provider_plan.maximumOutputTokens,llm_total_tokens:inputBytes+run.provider_plan.maximumOutputTokens };
     const reservation = await reserveUsage({ ...scope,measurements:estimated,relevantMetrics:Object.keys(estimated),planLimits:access.limits });
     if (reservation.duplicate) throw fail(409,'This request was already admitted; it will not be sent again.','context_request_uncertain');
     const record = async (outcome,result) => {
@@ -50,7 +51,7 @@ export const contextEnrichment = createContextEnrichment({ database:{ query },tr
       await recordUsageEvent({ ...scope,reservationId:reservation.id,attemptNumber:reservation.attemptNumber,outcome,
         provider:plan.provider,model:plan.model,providerRequestId:result?.raw?.responseId || null,
         measurements:measured ? { ai_generation_actions:1,...geminiTokenMeasurements(result.raw.usageMetadata) } : estimated,
-        measurementAccuracy:measured ? 'exact' : 'estimated',metadata:{ contextRunId:run.id,billingCategory:'organization_provider',aiCredits:0,usageEstimated:!measured } });
+        measurementAccuracy:measured ? 'exact' : 'estimated',metadata:{ contextRunId:run.id,requestIndex,billingCategory:'organization_provider',aiCredits:0,usageEstimated:!measured } });
     };
     let result;
     try { await beforeCall(); result = await providerCall({ ...prompt,provider:plan.provider,model:plan.model,apiKey:selected.key }); }

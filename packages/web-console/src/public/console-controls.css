@@ -1,0 +1,53 @@
+/* Keep native form, keyboard, typeahead and validation behavior. Browsers that
+   support customizable selects also use our themed menu in the top layer. */
+body select:not([multiple]):not([size]), body select[size="1"] {
+  min-height: 40px;
+  padding-inline-end: 2.75rem;
+  cursor: pointer;
+  color: var(--text-main);
+  background-color: var(--background-pane);
+  border: 1px solid var(--border-color-heavy);
+  border-radius: var(--radius-sm);
+}
+body select:disabled { cursor: not-allowed; opacity: .6; }
+body select:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 3px; }
+@supports (appearance: base-select) {
+  body select:not([multiple]):not([size]), body select[size="1"],
+  body select:not([multiple]):not([size])::picker(select), body select[size="1"]::picker(select) { appearance: base-select; }
+  body select:not([multiple]):not([size]), body select[size="1"] { align-items: center; gap: 1rem; padding-inline-end: .65rem; }
+  body select::picker-icon { content: "⌄"; display: grid; place-items: center; color: var(--text-accent); background: var(--teal-soft); border-radius: 5px; width: 26px; height: 26px; font: 800 22px/1 var(--font-ui); flex-shrink: 0; }
+  body select:open::picker-icon { rotate: 180deg; }
+  body select::picker(select) { margin-block: 6px; padding: 6px; border: 1px solid var(--border-color-heavy); border-radius: 12px; background: var(--background-pane); color: var(--text-main); box-shadow: 0 12px 36px color-mix(in srgb, var(--text-main) 16%, transparent); max-block-size: min(320px, 55dvh); overflow-y: auto; overflow-x: hidden; font: 400 14px/1.5 var(--font-ui); }
+  body select option { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-block-size: 40px; border-radius: 6px; white-space: normal; overflow-wrap: anywhere; cursor: pointer; }
+  body select option:checked { background: var(--teal-soft); color: var(--text-accent); font-weight: 650; }
+  body select option:is(:hover, :focus-visible) { background: var(--background-input-focus); outline: 2px solid var(--text-accent); outline-offset: -2px; }
+  body select option:disabled { opacity: .55; cursor: not-allowed; }
+  body select option::checkmark { color: var(--text-accent); font-weight: 800; }
+}
+@supports not (appearance: base-select) {
+  body select:not([multiple]):not([size]), body select[size="1"] { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Crect width='28' height='28' rx='5' fill='%23e7f4e8'/%3E%3Cpath d='m8 11 6 6 6-6' fill='none' stroke='%23186b39' stroke-width='2.5'/%3E%3C/svg%3E"); background-position: right .6rem center; background-repeat: no-repeat; }
+}
+@media (forced-colors: active) { body select::picker-icon, body select option::checkmark { color: ButtonText; } }
+
+/* Match control width to the decision, rather than stretching across a page. */
+.workspace-view :is(.workspace-form-fields, .job-delivery form) { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px 24px; max-width: 800px; }
+.workspace-view :is(.workspace-form, .translation-job-progress, .extraction-panel) label { min-width: 0; font: 500 13px/1.5 var(--font-ui); }
+.workspace-view :is(.workspace-form, .translation-job-progress, .extraction-panel) label:has(textarea) { grid-column: 1 / -1; }
+.workspace-view :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select:not([multiple])) { width: 100%; max-width: 32rem; min-width: 0; min-height: 42px; padding: 9px 12px; font: 400 14px/1.4 var(--font-ui); }
+.workspace-view select:not([multiple]) { max-width: 24rem; padding-inline-end: 2.75rem; }
+.workspace-view textarea { width: 100%; max-width: 50rem; min-height: 88px; padding: 10px 12px; font: 400 14px/1.5 var(--font-ui); resize: vertical; }
+.workspace-view :is(.workspace-form, .translation-job-progress) label > :is(input, select, textarea) { display: block; margin-top: 6px; }
+.workspace-view .workspace-inline-edit { max-width: 36rem; }
+.workspace-view .job-delivery form { display: grid; }
+.workspace-view :is(input, textarea)::placeholder { color: var(--text-muted); opacity: .85; }
+@supports (appearance: base-select) { .workspace-view select:not([multiple]) { padding-inline-end: .65rem; } }
+.github-connection-card { padding: 18px; margin: 16px 0; max-width: 800px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--background-pane); font: 14px/1.6 var(--font-ui); color: var(--text-main); }
+.github-connection-card h4 { margin: 0 0 10px; font-size: 16px; }
+.github-connection-card p { margin: 10px 0; }
+.github-connection-card [role="status"] { font-weight: 600; }
+.github-connection-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0; }
+.github-connection-actions a { color: var(--text-accent); font-weight: 600; font-size: 13px; padding: 10px 0; }
+.github-connection-card summary { cursor: pointer; color: var(--text-accent); }
+.github-connection-card li, .delivery-readiness li { margin-block: 8px; }
+.github-connection-card .agent-error { padding: 0; }
+.delivery-readiness { font: 14px/1.6 var(--font-ui); max-width: 800px; }

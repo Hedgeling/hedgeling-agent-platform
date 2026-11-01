@@ -21,14 +21,19 @@ test("console tools preserve the API contract, explicit scope and bearer identit
   t.after(() => { for (const [key, value] of Object.entries(previous)) {
     if (value === undefined) delete process.env[key]; else process.env[key] = value;
   } });
-  assert.deepEqual(consoleTools.map((tool) => tool.inputSchema), CONSOLE_ACTIONS.map((action) => action.inputSchema));
-  assert.deepEqual(consoleTools.map((tool) => tool.annotations.readOnlyHint), CONSOLE_ACTIONS.map((action) => action.readOnly));
-  assert.deepEqual(consoleTools.map((tool) => tool.annotations.idempotentHint), CONSOLE_ACTIONS.map((action) => action.readOnly));
+  assert.deepEqual(consoleTools.map((tool) => tool.inputSchema), CONSOLE_ACTIONS.filter(action => !action.consoleOnly).map((action) => action.inputSchema));
+  assert.deepEqual(consoleTools.map((tool) => tool.annotations.readOnlyHint), CONSOLE_ACTIONS.filter(action => !action.consoleOnly).map((action) => action.readOnly));
+  assert.deepEqual(consoleTools.map((tool) => tool.annotations.idempotentHint), CONSOLE_ACTIONS.filter(action => !action.consoleOnly).map((action) => action.readOnly));
   assert.ok(!consoleTools.some((tool) => /confirm|approve/.test(tool.name)));
   const result = await callConsoleTool("console_get_sync_status", { projectSlug: "selected" });
   assert.equal(result.isError, undefined);
   assert.equal(JSON.parse(result.content[0].text).action, "project.sync.status");
   assert.equal(await callConsoleTool("unrelated_tool", {}), null);
+  assert.equal(await callConsoleTool('console_list_string_context',{projectSlug:'selected'}),null);
+  assert.equal(await callConsoleTool('console_browse_context_results',{runId:'synthetic'}),null);
+  assert(consoleTools.some(t=>t.name==='console_get_context_summary'));
+  assert(consoleTools.some(t=>t.name==='console_inspect_string_context'));
+  assert(!consoleTools.some(t=>t.name==='console_list_string_context'||t.name==='console_browse_context_results'));
   const invalid = await callConsoleTool("console_get_sync_status", { projectSlug: "selected", actor: "admin" });
   assert.equal(invalid.isError, true);
   assert.equal(globalThis.fetch.mock.callCount(), 1);

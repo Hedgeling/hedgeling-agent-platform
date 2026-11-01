@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 import { randomUUID } from 'node:crypto';
 import { fail } from './errors.js';
-import { CONTEXT_LIMITS, CONTEXT_VERSION, contextEvidence, enrichmentPrompt, parseEnrichment, withLengthSuggestion } from './context-analysis.js';
+import { contextResultPage } from './context-results.js';
+import { CONTEXT_LIMITS, CONTEXT_VERSION, contextEvidence, enrichmentPrompt, enrichmentBatches, parseEnrichment, withLengthSuggestion } from './context-analysis.js';
 const projectSql = `select p.id,p.slug,p.name,p.source_locale as "sourceLocale",p.business_unit_id as "businessUnitId",b.organization_id as "organizationId"
   from projects p join business_units b on b.id=p.business_unit_id where p.data_purged_at is null and `;
 const target = p => ({ view: 'workspace', organizationId: p.organizationId, projectSlug: p.slug, action: 'context.enrich', resource: { type: 'project', id: p.id } });
-const safeRun = r => ({ id: r.id, status: r.status, strings: r.snapshot.length, createdAt: r.created_at, finishedAt: r.finished_at,
-  provider: r.provider_plan.provider, model: r.provider_plan.model, acceptedIds: r.accepted_ids, error: r.error_code });
+const batchesFor = r => r.provider_plan.batches || [{ stringIds: r.snapshot.map(s => s.id), maximumInputBytes: r.provider_plan.maximumInputBytes }];
+const completedBatches = r => { const done = new Set(r.results.map(s => s.id)); return batchesFor(r).filter(b => b.stringIds.every(id => done.has(id))).length; };
+const safeRun = r => ({ id: r.id, status: r.status, strings: r.snapshot.length, completedStrings: r.results.length,
+  requests: batchesFor(r).length, completedRequests: completedBatches(r), createdAt: r.created_at, finishedAt: r.finished_at,
+  provider: r.provider_plan.provider, model: r.provider_plan.model, acceptedStrings: r.accepted_ids.length,
+  awaitingAcceptance: r.results.length - r.accepted_ids.length, error: r.error_code, failure: r.error_detail || null });
 // Older pending analyses gain the same reviewable fallback without another
 // paid request. Accepted results remain exactly as the person approved them.
 const reviewResults = r => r.results.map(result => r.accepted_ids.includes(result.id) ? result
@@ -21,7 +26,7 @@ export function createContextEnrichment({ database, transaction, authorize, insp
     await authorize(auth, p, write);
     return p;
   }
-  async function sources(p, db, { ids, cursor, limit = 21 } = {}) {
+  async function sources(p, db, { ids, cursor, limit = ids?.length || 21 } = {}) {
     const rows = (await db.query(`select s.*,e.evidence_fingerprint,e.data as accepted,e.updated_at as accepted_at from source_strings s
       left join source_context_enrichments e on e.source_string_id=s.id where s.project_id=$1
       and ($2::uuid[] is null or s.id=any($2::uuid[])) and ($3::uuid is null or s.id>$3) order by s.id limit $4`, [p.id, ids || null, cursor || null, limit])).rows;
@@ -41,6 +46,47 @@ export function createContextEnrichment({ database, transaction, authorize, insp
   async function read(name, input, auth, scope = {}) {
     const p = await project(input, auth, scope, database);
     const uiTarget = target(p);
+    if (name === 'context.summary') return transaction(async db => {
+      await db.query('set transaction isolation level repeatable read, read only');
+      const currentProject = await project(input, auth, scope, db);
+      const counts = (await db.query(`select count(*)::int as total, count(e.source_string_id)::int as accepted
+        from source_strings s left join source_context_enrichments e on e.source_string_id=s.id where s.project_id=$1`, [p.id])).rows[0];
+      // Freshness uses exactly the same evidence fingerprint as generation and
+      // translation. Never equate an existing row with current guidance.
+      const complete = counts.accepted <= CONTEXT_LIMITS.scanStrings;
+      let current = 0, cursor = null;
+      if (complete) do {
+        const rows = (await db.query(`select s.id from source_strings s join source_context_enrichments e on e.source_string_id=s.id
+          where s.project_id=$1 and ($2::uuid is null or s.id>$2) order by s.id limit 100`,[p.id,cursor])).rows;
+        if (!rows.length) break;
+        current += (await sources(currentProject,db,{ids:rows.map(s=>s.id)})).filter(s=>s.current).length;
+        cursor = rows.length===100 ? rows.at(-1).id : null;
+      } while (cursor);
+      return { counts: { totalStrings:counts.total,withAcceptedContext:counts.accepted,withoutAcceptedContext:counts.total-counts.accepted,
+        currentContext:complete?current:null,staleContext:complete?counts.accepted-current:null,needsContext:complete?counts.total-current:null },
+        freshnessComplete:complete,...(!complete?{notice:'Freshness was not scanned because accepted context exceeds the 10,000-string summary limit. Accepted/missing totals are exact; current/stale counts are unavailable.'}:{}),uiTarget };
+    });
+    if (name === 'context.inspect') {
+      if (Boolean(input.query) === Boolean(input.stringIds) || input.query && input.query.trim().length < 2
+        || input.stringIds && (!input.stringIds.length || input.stringIds.length > 5)) throw fail(400,'Specify up to five string IDs or a literal search of at least two characters.','context_selection_invalid');
+      const matches = (await database.query(`select id from source_strings where project_id=$1
+        and ($2::uuid[] is null or id=any($2::uuid[])) and ($3::text is null or strpos(lower(source_text),lower($3))>0)
+        order by id limit 6`,[p.id,input.stringIds||null,input.query?.trim()||null])).rows;
+      if (input.stringIds && matches.length!==input.stringIds.length) throw fail(404,'Some selected strings are unavailable in this project.','context_not_found');
+      const selected = matches.length ? await sources(p,database,{ids:matches.slice(0,5).map(s=>s.id)}) : [];
+      let analysis = null;
+      if (input.runId) {
+        analysis = await run(input.runId,database);
+        if (analysis.project_id!==p.id) throw fail(404,'Enrichment run not found in this project.','context_not_found');
+      }
+      const saved = analysis ? reviewResults(analysis) : [];
+      const page = contextResultPage(selected.map(s=>({id:s.id,source:s.source,current:s.current,accepted:s.accepted,
+        hardLimit:s.evidence.hardLimit,contextCount:s.evidence.contexts.length,
+        ...(analysis?{suggestion:saved.find(r=>r.id===s.id)||null,suggestionAccepted:analysis.accepted_ids.includes(s.id),
+          suggestionCurrent:Boolean(saved.some(r=>r.id===s.id)&&analysis.source_locale===p.sourceLocale&&analysis.snapshot.find(r=>r.id===s.id)?.version===s.version)}:{})})));
+      return { strings:page.results,hasMoreMatches:matches.length>5||page.page.nextOffset!==null,
+        ...(matches.length>5||page.page.nextOffset!==null?{notice:'Only a narrow selection is shown. Refine the literal text or select specific IDs for other strings.'}:{}),uiTarget };
+    }
     if (name === 'context.strings') {
       const rows = await sources(p, database, { cursor: input.cursor });
       return { strings: rows.slice(0, 20).map(s => ({ id: s.id, source: s.source, current: s.current, accepted: s.accepted,
@@ -55,14 +101,25 @@ export function createContextEnrichment({ database, transaction, authorize, insp
       return { runs: rows.slice(0,20).map(safeRun), page: { nextCursor: rows.length > 20 ? rows[19].id : null }, uiTarget };
     }
     const r = await run(input.runId, database);
-    return { run: { ...safeRun(r), results: reviewResults(r).map(result => ({ ...result, source: r.snapshot.find(s => s.id === result.id)?.source })) }, uiTarget };
+    if (name === 'context.status') return { run:safeRun(r),uiTarget };
+    const offset = input.offset ?? 0;
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > r.results.length) throw fail(400, 'Invalid context result offset.', 'context_page_invalid');
+    const page = contextResultPage(reviewResults(r).map(result => ({ ...result, source: r.snapshot.find(s => s.id === result.id)?.source })), offset);
+    return { run: { ...safeRun(r), acceptedIds:r.accepted_ids, results: page.results }, page: page.page, uiTarget };
   }
   async function prepare(name, input, auth, scope = {}, db = database, lock = false) {
     const p = await project(input, auth, scope, db, true, lock), uiTarget = target(p);
+    if (name === 'context.cancel') {
+      const r = await run(input.runId, db, lock);
+      if (!['queued','running'].includes(r.status)) throw fail(409, 'This context run has already stopped.', 'context_not_running');
+      return { p, r, organizationId: p.organizationId, uiTarget, preview: { action: name,
+        fields: { runId: r.id }, resources: { project: p, runId: r.id }, cost: 'No new model requests. An in-flight request may still be billed.',
+        sideEffects: ['Stop the remaining context batches and preserve completed suggestions for review.'] } };
+    }
     if (!p.sourceLocale) throw fail(400, 'Set the project’s source language first.', 'context_source_locale_required');
     if (name === 'context.apply') {
       const r = await run(input.runId, db, lock);
-      if (!['awaiting_review','applied'].includes(r.status)) throw fail(409, 'Wait for a completed enrichment result.', 'context_not_ready');
+      if (!['awaiting_review','applied','failed','uncertain'].includes(r.status) || !r.results.length) throw fail(409, 'Wait for completed suggestions before accepting context.', 'context_not_ready');
       const ids = input.stringIds || r.results.map(s => s.id).filter(id => !r.accepted_ids.includes(id));
       if (!ids.length || ids.some(id => r.accepted_ids.includes(id) || !r.results.some(s => s.id === id))) throw fail(409, 'Select results that have not already been accepted.', 'context_selection_invalid');
       const selected = await sources(p, db, { ids });
@@ -76,36 +133,47 @@ export function createContextEnrichment({ database, transaction, authorize, insp
         sideEffects: ['Save these descriptions and advisory length suggestions for future translations.', 'Preserve existing translations and enforced character limits. Suggestions do not prove visual fit.'] } };
     }
     if ((await db.query("select 1 from context_enrichment_runs where project_id=$1 and status in ('queued','running')", [p.id])).rowCount) throw fail(409, 'Context analysis is already running for this project.', 'context_already_running');
+    if (input.allMissing && input.stringIds) throw fail(400, 'Choose all missing context or an explicit selection, not both.', 'context_selection_invalid');
     let selected;
     if (input.stringIds) {
+      if (!input.stringIds.length || input.stringIds.length > CONTEXT_LIMITS.runStrings) throw fail(400, 'Select between 1 and 1,000 strings.', 'context_selection_limit');
       selected = await sources(p, db, { ids: input.stringIds });
       if (selected.length !== input.stringIds.length) throw fail(404, 'Some selected strings are unavailable in this project.', 'context_not_found');
     } else {
       // Bounded pages avoid loading an entire large project into memory.
       selected = []; let cursor = null, scanned = 0;
+      const wanted = input.allMissing ? CONTEXT_LIMITS.runStrings + 1 : CONTEXT_LIMITS.strings;
       do {
         const page = await sources(p, db, { cursor, limit: 100 }); scanned += page.length;
         selected.push(...page.filter(s => !s.current));
         cursor = page.length === 100 ? page.at(-1).id : null;
-      } while (cursor && selected.length < CONTEXT_LIMITS.strings && scanned < 1000);
-      selected = selected.slice(0, CONTEXT_LIMITS.strings);
-      if (!selected.length && cursor) throw fail(409, 'The first 1,000 strings already have current context. Browse strings and select another batch explicitly.', 'context_selection_required');
+      } while (cursor && selected.length < wanted && scanned < CONTEXT_LIMITS.scanStrings);
+      if (input.allMissing && (selected.length > CONTEXT_LIMITS.runStrings || cursor)) throw fail(400, 'All missing context exceeds this run’s scan or 1,000-string limit. Select up to 1,000 strings explicitly.', 'context_selection_limit');
+      if (!input.allMissing) selected = selected.slice(0, CONTEXT_LIMITS.strings);
+      if (!selected.length && cursor) throw fail(409, 'Browse strings and select another batch explicitly; the scanned strings already have current context.', 'context_selection_required');
     }
     if (!selected.length) throw fail(409, 'No strings need context. Import a catalog or select strings to analyze again.', 'context_nothing_missing');
-    const prompt = enrichmentPrompt(selected, p.sourceLocale), provider = await inspectProvider(auth,p);
-    const plan = { ...provider, promptVersion: CONTEXT_VERSION, maximumRequests: 1, maximumOutputTokens: CONTEXT_LIMITS.outputTokens, maximumInputBytes: Buffer.byteLength(prompt.system + prompt.user) + 1024 };
+    const batches = enrichmentBatches(selected, p.sourceLocale), provider = await inspectProvider(auth,p);
+    const plan = { ...provider, promptVersion: CONTEXT_VERSION, batches, maximumRequests: batches.length,
+      maximumOutputTokens: CONTEXT_LIMITS.outputTokens, maximumInputBytes: Math.max(...batches.map(b => b.maximumInputBytes)),
+      maximumTotalInputBytes: batches.reduce((n,b) => n + b.maximumInputBytes, 0), maximumTotalOutputTokens: batches.length * CONTEXT_LIMITS.outputTokens };
     return { p, selected, plan, organizationId: p.organizationId, uiTarget, preview: { action: name,
-      fields: { sourceLocale: p.sourceLocale, strings: selected.map(s => ({ id: s.id, source: s.source, existingContext: s.accepted?.description || null })) },
+      fields: { sourceLocale: p.sourceLocale, selection: input.allMissing ? 'All missing context' : 'Selected batch',
+        stringCount: selected.length, requests: batches.length, strings: selected.map(s => ({ id: s.id, source: s.source, existingContext: s.accepted?.description || null })) },
       resources: { project: p, provider: plan, contentVersion: fingerprint(selected),
         stringsWithCode: selected.filter(s => s.evidence.contexts.some(c => c.snippet?.text || (c.code && c.code !== c.file && !/^.+:\d+$/.test(c.code)))).length },
-      cost: `One request using your organization’s ${provider.provider} key, at most ${plan.maximumOutputTokens} output tokens. Provider charges and usage budgets apply; no Hedgeling translation credits. This is a token bound, not a dollar quote.`,
+      cost: `${batches.length} request${batches.length === 1 ? '' : 's'} using your organization’s ${provider.provider} key: at most ${plan.maximumTotalInputBytes} input bytes and ${plan.maximumTotalOutputTokens} output tokens in total (${plan.maximumOutputTokens} output tokens per request). Provider charges and usage budgets apply; no Hedgeling translation credits. This is a bound, not a dollar quote.`,
       sideEffects: ['Send the selected source strings and up to four stored context variants each, including available nearby code, to the selected provider.',
         'Generate descriptions and advisory length targets for review. Without a model suggestion or enforced limit, use source length +30% rounded up (at least 5 extra characters), labeled as a formula estimate. Missing code is reported as limited evidence.',
         'Accepting suggestions requires a separate confirmation. No translations or enforced limits change.',
-        'This one request continues if chat is paused. Interrupted requests are never automatically retried.'] } };
+        'Run the previewed batches sequentially, saving each completed batch. Stop on the first failure; interrupted requests are never automatically retried. Chat pause does not stop enrichment; use Stop remaining batches.'] } };
   }
   async function apply(name, prepared, proposal, auth, db) {
     const { p } = prepared;
+    if (name === 'context.cancel') {
+      await db.query("update context_enrichment_runs set status='failed',error_code='context_cancelled',finished_at=now() where id=$1 and status in ('queued','running')", [prepared.r.id]);
+      return { contextRun: safeRun(await run(prepared.r.id, db)), projectSlug: p.slug, uiTarget: target(p) };
+    }
     if (name === 'context.enrich') {
       const actor = { principalType: 'user', user: { id: auth.user.id, platformStaff: false }, executionType: 'agent', platformAdmin: false, identityConnectionId: auth.identityConnectionId || null };
       const r = (await db.query(`insert into context_enrichment_runs(project_id,created_by_user_id,proposal_id,status,actor,source_locale,snapshot,provider_plan)
@@ -124,7 +192,8 @@ export function createContextEnrichment({ database, transaction, authorize, insp
     // Persist the exact approved results, including fallbacks added to older
     // pending analyses, so the run history matches saved translator guidance.
     const savedResults = r.results.map(old => results.find(s => s.id === old.id) || old);
-    await db.query('update context_enrichment_runs set accepted_ids=$2,status=$3,results=$4 where id=$1', [r.id,accepted,accepted.length === r.results.length ? 'applied' : 'awaiting_review',JSON.stringify(savedResults)]);
+    const status = ['failed','uncertain'].includes(r.status) ? r.status : accepted.length === r.results.length ? 'applied' : 'awaiting_review';
+    await db.query('update context_enrichment_runs set accepted_ids=$2,status=$3,results=$4 where id=$1', [r.id,accepted,status,JSON.stringify(savedResults)]);
     return { accepted: results.length, projectSlug: p.slug, uiTarget: target(p) };
   }
   async function tick() {
@@ -138,6 +207,8 @@ export function createContextEnrichment({ database, transaction, authorize, insp
     });
     if (!claim) return false;
     const { r, token } = claim;
+    const batches = batchesFor(r), requestIndex = completedBatches(r), batch = batches[requestIndex];
+    const batchItems = batch ? r.snapshot.filter(s => batch.stringIds.includes(s.id)) : [];
     async function guard(db, lock = false) {
       const p = await project({ runId: r.id },r.actor,{},db,true,lock);
       const current = await run(r.id,db,lock);
@@ -152,12 +223,18 @@ export function createContextEnrichment({ database, transaction, authorize, insp
     }
     try {
       const p = await guard(database);
-      const response = await generate({ p, auth: r.actor, run: r, prompt: enrichmentPrompt(r.snapshot,r.source_locale), beforeCall: () => guard(database) });
-      const results = parseEnrichment(response.text,r.snapshot);
-      await transaction(async db => { await guard(db,true); await db.query("update context_enrichment_runs set results=$2,status='awaiting_review',finished_at=now() where id=$1", [r.id,JSON.stringify(results)]); });
+      if (r.provider_plan.promptVersion !== CONTEXT_VERSION) throw fail(409, 'The context request format changed. Preview a fresh run before spending.', 'context_prompt_changed');
+      if (!batch || batchItems.length !== batch.stringIds.length) throw fail(409, 'The saved request plan is invalid.', 'context_request_uncertain');
+      const response = await generate({ p, auth: r.actor, run: r, requestIndex, batch,
+        prompt: enrichmentPrompt(batchItems,r.source_locale), beforeCall: () => guard(database) });
+      const results = [...r.results, ...parseEnrichment(response.text,batchItems)];
+      const status = requestIndex + 1 === batches.length ? 'awaiting_review' : 'queued';
+      await transaction(async db => { await guard(db,true); await db.query(`update context_enrichment_runs set results=$2,status=$3,
+        lease_token=null,lease_expires_at=null,finished_at=case when $3='awaiting_review' then now() else null end where id=$1`, [r.id,JSON.stringify(results),status]); });
     } catch(error) {
-      const code = ['context_stale','context_provider_changed','context_access_denied','context_request_uncertain','context_result_invalid','context_plan_required'].includes(error.code) ? error.code : 'context_generation_failed';
-      await database.query("update context_enrichment_runs set status='failed',error_code=$3,finished_at=now() where id=$1 and lease_token=$2 and status='running'", [r.id,token,code]);
+      const code = ['context_stale','context_provider_changed','context_prompt_changed','context_access_denied','context_request_uncertain','context_result_invalid','context_plan_required'].includes(error.code) ? error.code : 'context_generation_failed';
+      const detail = error.contextDiagnostic ? { ...error.contextDiagnostic, batch: requestIndex + 1 } : null;
+      await database.query("update context_enrichment_runs set status='failed',error_code=$3,error_detail=$4,finished_at=now() where id=$1 and lease_token=$2 and status='running'", [r.id,token,code,detail]);
     }
     return true;
   }

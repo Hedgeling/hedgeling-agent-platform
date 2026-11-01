@@ -1,4 +1,5 @@
 import { CHAT_LIMITS, chatRequestBudget } from './hackathon-engine/chat-limits.js';
+import { contextChatHistory } from './hackathon-engine/context-results.js';
 import { query, withTransaction } from "./db.js";
 import { fail, fingerprint } from "./workspace-actions.js";
 import { agentInstructions } from "./agent-skills.js";
@@ -137,6 +138,8 @@ function fixtureRename(history, organizationId, call) {
   return call(update, { [idField]: idField === "projectSlug" ? matches[0].slug : matches[0].id, name });
 }
 export async function nextAgentTurn({ run, auth, history, tools, signal }, { checkAccess = requireChatAccess } = {}) {
+  // Also recovers older conversations that saved an entire enrichment run.
+  history = contextChatHistory(history);
   const chat = await checkAccess(run.organization_id);
   const config = providerConfiguration();
   if (!config.ready) throw fail(503, "The assistant is unavailable. You can continue using the console manually.", "agent_provider_unconfigured");

@@ -2222,10 +2222,10 @@ async function jobRevisionRequest({ sourceId, locale, p, auth, itemId, aiOnly=fa
     auth, authorizedProject: p, commercialAccess, translationJob: true,
     get: name => name.toLowerCase() === 'idempotency-key' ? `translation-job-${itemId}` : undefined };
 }
-const generateAnalysis = async ({ provider, model, system, user, apiKey, maxOutputTokens }) => {
-  if (provider === 'meta') return generateMetaText({ system, user, apiKey, maxOutputTokens });
-  if (geminiClientOverride) return geminiClientOverride({ system, user, apiKey, model, maxOutputTokens });
-  return generateGeminiTuning({ system, user, apiKey, model, maxOutputTokens });
+const generateAnalysis = async ({ provider, model, system, user, apiKey, maxOutputTokens, responseSchema }) => {
+  if (provider === 'meta') return generateMetaText({ system, user, apiKey, maxOutputTokens, responseSchema });
+  if (geminiClientOverride) return geminiClientOverride({ system, user, apiKey, model, maxOutputTokens, responseSchema });
+  return generateGeminiTuning({ system, user, apiKey, model, maxOutputTokens, responseSchema });
 };
 registerTuningProvider(generateAnalysis);
 registerContextProvider(generateAnalysis);

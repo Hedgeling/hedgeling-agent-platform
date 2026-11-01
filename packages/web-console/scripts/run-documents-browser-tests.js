@@ -20,11 +20,13 @@ try {
   await expect(chat.locator('#agentInput')).toBeEnabled();
   await chat.getByRole('button', { name: 'Minimize chat', exact: true }).click();
   await page.evaluate(async org => { await window.HedgelingAgent.browseWorkspace(org); window.HedgelingConsole.openWorkspace(); }, app.org);
+  await page.getByRole('button', { name: 'Open business unit: Default', exact: true }).click();
   const panel = page.locator(`.document-panel[data-project-slug="${app.project.slug}"]`);
   await panel.locator('summary').first().click();
   await panel.getByLabel('Document', { exact: true }).setInputFiles({ name: 'welcome.md', mimeType: 'text/markdown', buffer: Buffer.from('Hello {name}\n\nWelcome {name}') });
   await panel.getByRole('button', { name: 'Upload and inspect', exact: true }).click();
   await expect(panel.locator('.document-preview')).toContainText('2 text sections');
+  await expect(panel.getByRole('progressbar', { name: 'Document upload and inspection' })).toHaveAttribute('value', '1');
   await panel.getByLabel('fr', { exact: true }).check();
   await panel.getByRole('button', { name: 'Review document job', exact: true }).click();
   const preview = panel.locator('.workspace-confirmation');

@@ -5,6 +5,18 @@
 .translation-job-progress { margin: 16px 0; padding: 18px; border: 1px solid var(--line-soft); border-radius: 12px; color: var(--text-main); background: var(--background-pane); overflow-wrap: anywhere; }
 .translation-job-progress h4 { margin: 0 0 8px; font-size: 17px; }
 .translation-job-progress p { line-height: 1.5; }
+.translation-job-progress .translation-job-state { font-size: 18px; font-weight: 750; margin: 12px 0 4px; }
+.translation-job-progress[data-job-state="running"] .translation-job-state { color: var(--text-accent); }
+.translation-job-progress .translation-job-count { font-size: clamp(20px, 2.2vw, 28px); line-height: 1.3; font-weight: 750; font-variant-numeric: tabular-nums; margin: 4px 0 12px; }
+.translation-job-meter { display: block; width: 100%; height: 12px; border: none; border-radius: 999px; overflow: hidden; background: var(--line-soft); accent-color: var(--text-accent); }
+.translation-job-meter::-webkit-progress-bar { background: var(--line-soft); border-radius: 999px; }
+.translation-job-meter::-webkit-progress-value { background: var(--text-accent); border-radius: 999px; }
+.translation-job-meter::-moz-progress-bar { background: var(--text-accent); border-radius: 999px; }
+.translation-job-progress .translation-job-activity { font-weight: 600; margin-bottom: 4px; }
+.translation-job-progress .translation-job-updated { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+.translation-job-notices { border: 1px solid var(--line-soft); border-inline-start: 4px solid var(--text-accent); border-radius: 8px; margin: 16px 0; padding: 0 12px; }
+.translation-job-notices p { margin: 8px 0 12px; }
+.translation-job-announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .translation-job-progress button, .translation-job-progress a { margin: 8px 8px 0 0; min-height: 44px; }
 .translation-job-progress a { display: inline-flex; align-items: center; color: var(--text-accent); }
 .translation-job-progress [hidden] { display: none; }

@@ -8,7 +8,7 @@ import { invokeConsoleAction } from "./actions.js";
 // One process-local MCP session per turn. It carries trusted delegated
 // identity, never browser cookies, user-provided identity flags or API keys.
 export async function connectAgentTools(auth, context, guard) {
-  const actions = CONSOLE_ACTIONS.filter((action) => action.name !== "organization.create" || process.env.HEDGELING_AGENT_ORG_CREATION_ENABLED === "true").filter((action) => context.organizationId
+  const actions = CONSOLE_ACTIONS.filter(action => !action.consoleOnly).filter((action) => action.name !== "organization.create" || process.env.HEDGELING_AGENT_ORG_CREATION_ENABLED === "true").filter((action) => context.organizationId
     ? action.name !== "organization.create"
     : ["organization.create", "organizations.list"].includes(action.name));
   const tools = actions.map((action) => ({ name: action.toolName, description: action.description, inputSchema: action.inputSchema,

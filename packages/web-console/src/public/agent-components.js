@@ -1,3 +1,4 @@
+import { workflowProgress } from './workflow-progress.js';
 import { translationJobControls } from './translation-jobs.js';
 import { documentPanel } from './documents.js';
 import { contextPanel, characterSuggestionLabel } from './context-enrichment.js';
@@ -18,7 +19,7 @@ const workflowLabels = { machine_translation: "AI Translation", human_translatio
 Object.assign(actionLabel, { 'localization_job.start': 'Start translation', 'localization_job.cancel': 'Stop job', 'localization_job.review':'Run AI quality check', 'localization_job.verify':'Verify passing translations', 'localization_job.review_cancel':'Stop quality check', 'localization_job.pull_request':'Create translation PR' });
 Object.assign(actionLabel, { 'documents.job': 'Import document and create job' });
 Object.assign(actionLabel, { 'repositories.connect': 'Connect repository' });
-Object.assign(actionLabel, { 'context.enrich': 'Generate context suggestions', 'context.apply': 'Accept selected context' });
+Object.assign(actionLabel, { 'context.enrich': 'Generate context suggestions', 'context.apply': 'Accept selected context', 'context.cancel': 'Stop remaining batches' });
 Object.assign(actionLabel, { 'project.locales.add': 'Add target languages', 'extraction.tune': 'Run tuning preview', 'extraction.tuning.apply': 'Save settings and re-extract', 'extraction.start': 'Start extraction', 'extraction.import': 'Import source strings' });
 Object.assign(actionLabel, { 'library.prompt.save': 'Save instructions', 'library.persona.save': 'Save persona', 'library.glossary.save': 'Save term', 'library.restore': 'Restore revision', 'library.review': 'Confirm review' });
 const proposalLabel = preview => preview.library?.disposition === 'submit' ? 'Submit suggestion' : preview.library?.disposition === 'reject' ? 'Reject suggestion' : preview.library?.disposition === 'approve' ? 'Approve suggestion' : actionLabel[preview.action];
@@ -34,10 +35,12 @@ export function proposalCard(proposal, confirm, reject, { example = false, edit 
   const yes = element("button", "primary", proposalLabel(proposal.preview) || "Confirm change"); yes.type = "button";
   const no = element("button", "", "Discard"); no.type = "button";
   const error = element("p", "agent-error"); error.setAttribute("role", "alert");
+  const activity = workflowProgress('Confirmation'); card.append(activity.root);
   for (const [button, handler] of [[yes, confirm], [no, reject]]) button.addEventListener("click", async () => {
     yes.disabled = no.disabled = true; error.textContent = "";
+    activity.update({ state: 'running', title: button === yes ? 'Applying your confirmed change' : 'Discarding preview' });
     try { await handler(proposal); card.replaceChildren(element("p", "agent-receipt", example ? (button === yes ? "Preview approved. No workspace changes were made." : "Preview discarded.") : (button === yes ? "Change confirmed." : "Proposal discarded."))); }
-    catch (e) { error.textContent = e.message; yes.disabled = no.disabled = false; }
+    catch (e) { activity.update({ state: 'failed', title: 'This action could not finish' }); error.textContent = e.message; yes.disabled = no.disabled = false; }
   });
   if (edit && proposal.preview.action.startsWith('library.') && proposal.preview.action.endsWith('.save')) {
     const change = element('button', '', 'Edit in Library'); change.type='button';
@@ -85,11 +88,15 @@ function appendProposalDetails(card, preview) {
   if (preview.action.startsWith('context.')) {
     if (resources.provider) card.append(element('p','','Provider: ' + resources.provider.provider + ' / ' + resources.provider.model));
     if (resources.stringsWithCode !== undefined) card.append(element('p','',`${resources.stringsWithCode} of ${preview.fields.strings.length} strings have code evidence; the rest use available metadata.`));
-    for (const item of preview.fields.strings) {
+    if (preview.fields.requests !== undefined) card.append(element('p','',`${preview.fields.stringCount} strings · ${preview.fields.requests} requests · one approval`));
+    const strings = preview.fields.strings || [];
+    const container = strings.length > 20 ? element('details','context-bulk-selection') : card;
+    if (container !== card) { container.append(element('summary','',`${preview.action === 'context.apply' ? 'Suggestions to accept' : 'Strings included'} (${strings.length})`)); card.append(container); }
+    for (const item of strings) {
       const detail = element('details','context-suggestion'); detail.append(element('summary','',item.source));
       if (item.description) detail.append(element('p','',item.description),element('p','',characterSuggestionLabel(item)),element('p','',item.limitReason));
       else detail.append(element('p','',item.existingContext ? `Current description: ${item.existingContext}` : 'No accepted description yet.'));
-      card.append(detail);
+      container.append(detail);
     }
   }
   if (preview.changes) for (const change of preview.changes) {
@@ -117,12 +124,14 @@ export function workspaceConfirmation(proposal, { confirm, edit, cancel }) {
   const save = element("button", "primary", proposalLabel(proposal.preview) || "Save changes");
   const buttons = [back, dismiss, save];
   const error = element("p", "agent-error"); error.setAttribute("role", "alert");
+  const activity = workflowProgress('Confirmation'); card.append(activity.root);
   for (const [button, handler] of [[back, edit], [dismiss, cancel], [save, confirm]]) {
     button.type = "button";
     button.addEventListener("click", async () => {
       buttons.forEach((control) => { control.disabled = true; }); error.textContent = "";
-      try { await handler(proposal); }
-      catch (e) { error.textContent = e.message; buttons.forEach((control) => { control.disabled = false; }); }
+      activity.update({ state: 'running', title: button === save ? 'Applying your confirmed change' : 'Returning to your workspace' });
+      try { await handler(proposal); activity.update({ state: 'complete', title: 'Action complete', completed: 1, total: 1, unit: 'actions completed' }); }
+      catch (e) { activity.update({ state: 'failed', title: 'This action could not finish' }); error.textContent = e.message; buttons.forEach((control) => { control.disabled = false; }); }
     });
   }
   actions.append(...buttons); card.append(actions, error); return card;
@@ -199,15 +208,37 @@ function jobLine(job, edit, controls) {
 
 export class Workspace {
   constructor(root, controllerId, onScope) { this.root = root; this.controllerId = controllerId; this.onScope = onScope; this.organizationId = null; }
-  async refresh(organizationId = this.organizationId, focusJobId = null) {
+  showResource(resource, { manual = false, focus = false } = {}) {
+    if (!resource) return;
+    if (resource.type === 'organization') { this.selectUnit(null, { manual, focus }); return; }
+    const unitId = resource?.type === 'business_unit' ? resource.id : this.resourceUnits?.get(`${resource?.type}:${resource?.id}`);
+    if (unitId) this.selectUnit(unitId, { manual, focus });
+  }
+  selectUnit(unitId, { manual = false, focus = false } = {}) {
+    const previous = this.businessUnitId;
+    this.businessUnitId = this.unitViews?.has(unitId) ? unitId : null;
+    if (manual) document.dispatchEvent(new CustomEvent('hedgeling:manual-navigation'));
+    if (!this.overview) return;
+    this.overview.hidden = Boolean(this.businessUnitId);
+    this.overviewForms.hidden = Boolean(this.businessUnitId);
+    this.root.classList.toggle('workspace-focused', Boolean(this.businessUnitId));
+    for (const [id, view] of this.unitViews) view.hidden = id !== this.businessUnitId;
+    if (focus) {
+      const target = this.businessUnitId ? this.unitViews.get(this.businessUnitId).querySelector('h2') : this.unitButtons.get(previous);
+      target?.focus();
+      this.root.closest('.view')?.scrollTo({ top: 0 });
+    }
+  }
+  async refresh(organizationId = this.organizationId, focusJobId = null, resource = null) {
     if (!this.root) return;
     const generation = this.refreshGeneration = (this.refreshGeneration || 0) + 1;
+    if (organizationId !== this.organizationId) this.businessUnitId = null;
     this.organizationId = organizationId;
     const config = await request("/api/agent/config");
     const fragment = document.createDocumentFragment();
     const head = element("header", "workspace-heading");
     if (organizationId) { head.dataset.resourceType = "organization"; head.dataset.resourceId = organizationId; }
-    head.append(element("span", "agent-eyebrow", "PROJECTS"), element("h1", "", "Your projects"), element("p", "", "Explore projects and jobs by business unit, or preview your next workspace change."));
+    head.append(element("span", "agent-eyebrow", "PROJECTS"), element("h1", "", "Your projects"), element("p", "", "Choose a business unit to work on its projects, languages and translation jobs."));
     const select = element("select"); select.setAttribute("aria-label", "Workspace organization");
     select.append(new Option("New organization", ""));
     for (const org of config.organizations) select.append(new Option(org.name, org.id));
@@ -231,23 +262,55 @@ export class Workspace {
       }
     }
     const resources = element("div", "workspace-resources");
+    const unitViews = new Map(), unitButtons = new Map(), resourceUnits = new Map();
     for (const unit of data.businessUnits) {
-      const card = element("article", "workspace-resource"); card.append(element("span", "agent-eyebrow", "BUSINESS UNIT"), element("h2", "", unit.name));
-      card.dataset.resourceType = "business_unit"; card.dataset.resourceId = unit.id;
-      if (permissions.includes("business_units.manage")) card.append(this.form("business_unit.update", [input("name", "Business-unit name", unit.name)], { businessUnitId: unit.id }, `Edit business unit: ${unit.name}`));
       const projects = data.projects.filter((p) => p.businessUnitId === unit.id);
+      const entry = element('button', 'workspace-unit-card'); entry.type = 'button';
+      entry.dataset.openBusinessUnit = unit.id; entry.setAttribute('aria-label', `Open business unit: ${unit.name}`);
+      entry.append(element('span', 'agent-eyebrow', 'BUSINESS UNIT'), element('strong', '', unit.name),
+        element('span', 'workspace-unit-count', `${projects.length} ${projects.length === 1 ? 'project' : 'projects'}`),
+        element('span', 'workspace-unit-preview', projects.length ? projects.map(p => p.name).join(' · ') : 'Create your first project'),
+        element('span', 'workspace-unit-open', 'Open workspace →'));
+      entry.onclick = () => this.selectUnit(unit.id, { manual: true, focus: true });
+      resources.append(entry); unitButtons.set(unit.id, entry);
+      const card = element('article', 'workspace-unit-view'); card.hidden = true;
+      card.dataset.resourceType = 'business_unit'; card.dataset.resourceId = unit.id;
+      const back = element('button', 'workspace-back', '← All business units'); back.type = 'button';
+      back.onclick = () => this.selectUnit(null, { manual: true, focus: true });
+      const heading = element('h2', '', unit.name); heading.tabIndex = -1;
+      card.append(back, element('p', 'agent-eyebrow', 'BUSINESS UNIT'), heading,
+        element('p', 'workspace-unit-description', 'Work through each project at your own pace. Every change has its own preview and confirmation.'));
+      if (permissions.includes('business_units.manage')) card.append(this.form('business_unit.update', [input('name', 'Business-unit name', unit.name)], { businessUnitId: unit.id }, `Edit business unit: ${unit.name}`));
+      unitViews.set(unit.id, card);
       for (const p of projects) {
-        const link = element("button", "workspace-project", p.name); link.type = "button";
-        link.dataset.resourceType = "project"; link.dataset.resourceId = p.id;
-        link.addEventListener("click", () => window.HedgelingConsole?.openProject(p.slug, { manual: true })); card.append(link);
-        if (p.canEdit) card.append(this.form("project.update", [input("name", "Project name", p.name)], { projectSlug: p.slug }, `Edit project: ${p.name}`));
-        card.append(projectLanguages({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId,
+        resourceUnits.set(`project:${p.id}`, unit.id);
+        resourceUnits.set(`project:${p.slug}`, unit.id);
+        const project = element('section', 'workspace-project-view');
+        project.dataset.resourceType = 'project'; project.dataset.resourceId = p.id;
+        const projectHead = element('header', 'workspace-project-heading');
+        const title = element('div'); title.append(element('span', 'agent-eyebrow', 'PROJECT'), element('h3', '', p.name));
+        const link = element('button', 'workspace-open-editor', 'Open translations →'); link.type = 'button'; link.setAttribute('aria-label', `Open translations for ${p.name}`);
+        link.addEventListener('click', () => window.HedgelingConsole?.openProject(p.slug, { manual: true }));
+        projectHead.append(title, link); project.append(projectHead);
+        if (p.canEdit) project.append(this.form('project.update', [input('name', 'Project name', p.name)], { projectSlug: p.slug }, `Edit project: ${p.name}`));
+        const steps = element('div', 'workspace-steps');
+        const shortcuts = element('nav', 'workspace-step-links'); shortcuts.setAttribute('aria-label', `Steps for ${p.name}`); project.append(shortcuts);
+        const step = (number, title, help, contents) => {
+          const section = element('section', 'workspace-step'); section.dataset.workflowStep = number;
+          section.append(element('span', 'workspace-step-number', number), element('h4', '', title), element('p', 'workspace-step-help', help), contents);
+          const jump = element('button', '', title); jump.type = 'button';
+          const heading = section.querySelector('h4'); heading.tabIndex = -1;
+          jump.onclick = () => { document.dispatchEvent(new CustomEvent('hedgeling:manual-navigation')); heading.focus({ preventScroll: true }); section.scrollIntoView({ block: 'start', behavior: 'instant' }); };
+          shortcuts.append(jump); steps.append(section); return section;
+        };
+        step('01', 'Languages', 'See the source language and choose the languages you want to reach.', projectLanguages({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId,
           onSaved: () => window.HedgelingConsole?.refresh() }));
-        if (p.canExtract) card.append(extractionPanel({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId,
+        if (p.canExtract) step('02', 'Source strings', 'Connect your repository, tune extraction and review the import.', extractionPanel({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId,
           onImported: () => window.HedgelingConsole?.refresh() }));
-        if (p.canExtract) card.append(contextPanel({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId }));
-        if (p.canExtract && p.canCreateJob) card.append(documentPanel({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId,
+        if (p.canExtract) step('03', 'Translation context', 'Give each string meaning, then review the suggested guidance.', contextPanel({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId }));
+        if (p.canExtract && p.canCreateJob) step('04', 'Documents', 'Upload a document as an alternative to extracting app strings.', documentPanel({ project: p, request, confirmation: workspaceConfirmation, controllerId: this.controllerId,
           onChanged: jobId => this.refresh(organizationId, jobId) }));
+        project.append(steps); card.append(project);
         if (p.canViewJobs) {
           const jobs = element("div");
           for (const job of recentJobs.filter((job) => job.projectSlug === p.slug)) jobs.append(jobLine(job, editJob, jobControls));
@@ -268,13 +331,19 @@ export class Workspace {
             } catch (error) { info.textContent = error.message; }
             finally { more.disabled = false; }
           });
-          card.append(jobs, more, info);
+          const jobArea = element('div'); jobArea.append(jobs, more, info);
+          for (const job of recentJobs.filter(job => job.projectSlug === p.slug)) resourceUnits.set(`job:${job.id}`, unit.id);
+          if (p.canCreateJob) jobArea.append(this.form('localization_job.create', [input('name', 'Job name'), input('targetLocales', 'Target languages, separated by commas', p.targetLocales.join(', ')),
+            { name: 'workflow', label: 'Workflow', options: [["machine_translation,review", "AI Translation → Human review"], ["machine_translation", "AI-only translations"], ["human_translation,review", "Human translation → Review"], ["machine_translation,review,qa", "AI Translation → Review → QA"]] },
+          ], { projectSlug: p.slug }));
+          step('05', 'Translate, review & deliver', 'Follow saved drafts, check quality and prepare delivery from each job.', jobArea);
         }
       }
-      if (!projects.length) card.append(element("p", "", "No projects yet.")); resources.append(card);
+      if (!projects.length) card.append(element('p', 'workspace-empty', 'No projects yet. Create one below to get started.'));
+      if (permissions.includes('projects.create')) card.append(this.form('project.create', [input('name', 'Project name'), input('sourceLocale', 'Source language', 'en'), input('targetLocales', 'Target languages, separated by commas', 'fr, de')], { businessUnitId: unit.id }));
     }
     if (organizationId && !data.businessUnits.length) resources.append(element("p", "workspace-empty", "Your organization is ready. Create a business unit to organize its projects."));
-    fragment.append(resources);
+    fragment.append(resources, ...unitViews.values());
     const forms = element("div", "workspace-forms");
     if (!organizationId && config.organizationCreation) forms.append(this.form("organization.create", [input("name", "Organization name")]));
     if (organizationId && permissions.includes("business_units.create")) forms.append(this.form("business_unit.create", [input("name", "Business-unit name")], { organizationId }));
@@ -290,12 +359,19 @@ export class Workspace {
     if (generation === this.refreshGeneration) {
       // Keep open source forms/approvals intact during agent-driven refreshes.
       // Only retain a panel when the refreshed project still permits extraction.
-      const panels = new Map([...this.root.querySelectorAll('.extraction-panel')].map(node => [node.dataset.projectId, node]));
-      for (const next of fragment.querySelectorAll('.extraction-panel')) {
-        const current = panels.get(next.dataset.projectId);
-        if (current) next.replaceWith(current);
+      for (const selector of ['.extraction-panel', '.context-panel', '.document-panel']) {
+        const panels = new Map([...this.root.querySelectorAll(selector)].map(node => [node.dataset.projectId || node.dataset.projectSlug, node]));
+        for (const next of fragment.querySelectorAll(selector)) {
+          const current = panels.get(next.dataset.projectId || next.dataset.projectSlug);
+          if (current) next.replaceWith(current);
+        }
       }
-      this.root.replaceChildren(fragment); window.HedgelingShell?.workspaceChanged(organizationId);
+      this.root.replaceChildren(fragment);
+      this.overview = resources; this.overviewForms = forms; this.unitViews = unitViews; this.unitButtons = unitButtons; this.resourceUnits = resourceUnits;
+      if (resource) this.showResource(resource);
+      else if (focusJobId) this.showResource({ type: 'job', id: focusJobId });
+      else this.selectUnit(this.businessUnitId);
+      window.HedgelingShell?.workspaceChanged(organizationId);
     }
   }
   form(action, fields, fixed = {}, title = null) {
@@ -303,6 +379,7 @@ export class Workspace {
     const form = element("form");
     const inputs = element("fieldset", "workspace-form-fields");
     const preview = element("div");
+    const activity = workflowProgress('Change preview');
     for (const field of fields) {
       if (field.multi) {
         const group = element("fieldset", "workspace-step-options"); group.append(element("legend", "", field.label));
@@ -345,12 +422,18 @@ export class Workspace {
         }
         // Keep the reviewed values stable while the preview request is in flight.
         inputs.disabled = true;
+        activity.update({ state: 'running', title: 'Preparing your preview' });
         const { result } = await request(`/api/actions/${action}`, values);
+        activity.root.hidden = true;
         preview.replaceChildren(workspaceConfirmation(result.proposal, {
           confirm: async (proposal) => {
             const { result } = await request(`/api/agent/proposals/${proposal.id}/confirm`, { fingerprint: proposal.fingerprint, controllerId: this.controllerId });
-            await this.onScope(result.uiTarget.organizationId, result.job?.id); await window.HedgelingConsole?.refresh();
+            // Finish shell reads before replacing the editable workspace, so a
+            // late refresh cannot close the next form the user has opened.
+            await window.HedgelingConsole?.refresh();
+            await this.onScope(result.uiTarget.organizationId, result.job?.id);
             const resource = result.uiTarget.resource;
+            this.showResource(resource);
             const target = [...this.root.querySelectorAll("[data-resource-id]")].find((node) => node.dataset.resourceType === resource?.type && node.dataset.resourceId === resource.id);
             if (target) { if (!target.matches("button,a,input,select")) target.tabIndex = -1; target.focus(); }
           },
@@ -359,9 +442,9 @@ export class Workspace {
         }));
         form.hidden = true;
         preview.querySelector("h3").focus();
-      } catch (e) { error.textContent = e.message; }
+      } catch (e) { activity.root.hidden = true; error.textContent = e.message; }
       finally { submit.disabled = false; inputs.disabled = false; }
     });
-    details.append(form, preview); return details;
+    details.append(form, activity.root, preview); return details;
   }
 }
