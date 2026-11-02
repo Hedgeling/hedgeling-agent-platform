@@ -745,7 +745,7 @@
         "Port": 8080,
         "Protocol": "HTTP",
         "TargetType": "ip",
-        "HealthCheckPath": "/api/health",
+        "HealthCheckPath": "/api/ready",
         "HealthCheckIntervalSeconds": 15,
         "HealthyThresholdCount": 2,
         "UnhealthyThresholdCount": 3,
@@ -1038,7 +1038,7 @@
             "HealthCheck": {
               "Command": [
                 "CMD-SHELL",
-                "node -e \"fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+                "node -e \"fetch('http://127.0.0.1:8080/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
               ],
               "Interval": 30,
               "Timeout": 5,

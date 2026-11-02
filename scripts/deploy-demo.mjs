@@ -37,10 +37,10 @@ try {
   execFileSync("aws", ["ecs", "wait", "services-stable", "--region", region, "--cluster", cluster, "--services", service], { stdio: "inherit" });
   const after = aws(["ecs", "describe-services", "--cluster", cluster, "--services", service]).services[0];
   if (after.taskDefinition !== next || after.runningCount < 1 || after.runningCount !== after.desiredCount) throw new Error("ECS did not retain the requested release; check the deployment rollback events");
-  const health = await fetch(new URL("/api/health", origin), { redirect: "error", signal: AbortSignal.timeout(15000) });
-  if (!health.ok) throw new Error("Deployed health check failed");
+  const health = await fetch(new URL("/api/ready", origin), { redirect: "error", signal: AbortSignal.timeout(15000) });
+  if (!health.ok) throw new Error("Deployed database readiness check failed");
   const protectedRoute = await fetch(new URL("/api/agent/config", origin), { headers: { accept: "application/json" }, redirect: "manual", signal: AbortSignal.timeout(15000) });
   if (protectedRoute.status !== 401) throw new Error("Anonymous agent access was not rejected as expected");
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Demo deployment is healthy; anonymous agent access is denied. Previous task revision: \`${current.taskDefinition.split("/").at(-1)}\`. Current: \`${next.split("/").at(-1)}\`.\n`);
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Demo deployment and database are ready; anonymous agent access is denied. Previous task revision: \`${current.taskDefinition.split("/").at(-1)}\`. Current: \`${next.split("/").at(-1)}\`.\n`);
   console.log("Demo deployment verified.");
 } finally { rmSync(folder, { recursive: true, force: true }); }
