@@ -9,7 +9,12 @@ export function agentNotifications({ launcher, soundButton, open, isReading }) {
   const badge = document.createElement('span'); badge.className = 'agent-unread'; badge.hidden = true; launcher.append(badge);
   let sound = false, audio, unread = 0, lastChime = 0;
   try { sound = localStorage.getItem('hedgeling.agent.sound') === 'true'; } catch { /* Session preference still works. */ }
-  function soundLabel() { soundButton.textContent = sound ? 'Sound on' : 'Sound off'; soundButton.setAttribute('aria-pressed', String(sound)); }
+  function soundLabel() {
+    const label = sound ? 'Sound on' : 'Sound off';
+    soundButton.querySelector('.agent-tool-label').textContent = label;
+    soundButton.setAttribute('aria-label', label);
+    soundButton.setAttribute('aria-pressed', String(sound));
+  }
   async function unlockAudio() {
     try {
       const Audio = window.AudioContext || window.webkitAudioContext;

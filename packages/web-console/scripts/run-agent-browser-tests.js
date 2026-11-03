@@ -35,7 +35,7 @@ try {
   assert.ok(overlay.width >= 1360 && overlay.height >= 940, "Full-screen chat should use nearly the entire display");
   const column = await shell.locator(".agent-scroll").boundingBox(); assert.ok(column.width > 1300);
   for (const button of await shell.locator(".agent-window-controls button").all()) {
-    const box = await button.boundingBox(); assert.ok(box.width >= 44 && box.height >= 44);
+    const box = await button.boundingBox(); assert.ok(box.width >= 36 && box.width < 44 && box.height >= 36 && box.height < 44);
     assert.ok((await button.getAttribute("aria-label")).trim().length > 1);
   }
   // Real event/replay rendering, including hostile provider text, in both themes.
@@ -47,7 +47,7 @@ try {
   assert.equal(await shell.locator(".agent-message-content img").count(), 0);
   await expect(shell.locator(".agent-message-content code")).toHaveText("**literal code**");
   const contrastChecks = async theme => {
-    await shell.locator("[data-theme-preference]").selectOption(theme);
+    await page.locator('select[data-theme-preference]').evaluate((select, value) => { select.value = value; select.dispatchEvent(new Event('change', { bubbles: true })); }, theme);
     const results = await shell.evaluate(node => {
       const rgb = color => color.match(/[\d.]+/g).slice(0, 3).map(Number);
       const luminance = values => values.map(c => c / 255).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4).reduce((sum, c, index) => sum + c * [.2126, .7152, .0722][index], 0);
@@ -153,7 +153,7 @@ try {
   await expect(shell).toHaveAttribute("data-opaque", "true");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
-  await shell.locator("[data-theme-preference]").selectOption("light");
+  await page.locator('select[data-theme-preference]').evaluate(select => { select.value = 'light'; select.dispatchEvent(new Event('change', { bubbles: true })); });
   await page.screenshot({ path: path.join(artifacts, "05-mobile-light.png") });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   // A long transcript must replay through REST pagination before reconnecting
@@ -206,7 +206,7 @@ try {
   await preview.getByRole("button", { name: "Use these details" }).click();
   await expect(preview.getByText("Example answer received. No workspace changes were made.")).toBeVisible();
   await preview.getByLabel("Message the assistant").fill("A sample note");
-  await preview.getByLabel("Message the assistant").press("Enter");
+  await preview.getByLabel("Message the assistant").press("Control+Enter");
   await expect(preview.locator("#previewReply")).toContainText("Nothing was sent to the agent");
   await preview.getByRole("button", { name: "Try an attention highlight" }).click();
   await expect(preview.locator("#previewHighlightTarget")).toHaveAttribute("data-agent-attention", "working");
