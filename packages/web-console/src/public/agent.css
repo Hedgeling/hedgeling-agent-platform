@@ -263,15 +263,17 @@ body[data-agent-mode="panel"] { padding-right: var(--agent-panel-width); }
 .agent-shell #agentTakeControl:hover { background: var(--agent-mark); color: var(--agent-mark-ink); border-color: var(--agent-stamp); }
 .agent-composer-hint { margin: 8px 0; padding: 8px 10px; border-left: 3px solid var(--agent-stamp); border-radius: 3px; background: var(--agent-paper); color: var(--agent-ink); font: 12px/1.5 var(--font-agent); }
 #agentComposer { display: block; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; font-family: var(--font-agent); }
-.agent-input-paper { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; margin: 0; padding: 12px; background: var(--agent-paper); border: 1px solid var(--agent-control-line); border-radius: 8px; }
+.agent-composer-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
+.agent-input-paper { min-width: 0; margin: 0; padding: 12px; background: var(--agent-paper); border: 1px solid var(--agent-control-line); border-radius: 8px; }
 .agent-input-paper:focus-within { box-shadow: inset 3px 0 var(--agent-stamp); }
 #agentInput { display: block; box-sizing: border-box; width: 100%; min-width: 0; min-height: 4.5em; max-height: 12em; resize: none; overflow-x: hidden; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 0; font: 16px/1.5 var(--font-agent); background: transparent; color: var(--agent-ink); border: 0; border-radius: 0; box-shadow: none; }
 #agentInput::placeholder { color: var(--agent-paper-muted); opacity: 1; }
 #agentInput:focus-visible { outline: 0; }
 .agent-input-help { margin: 6px 0 0; color: var(--text-muted); font: 11px/1.4 var(--font-ui); text-align: right; }
-/* Keep a compact, visible Send key next to the expanding draft. */
-#agentComposer .typewriter-return { display: flex; align-items: center; gap: 8px; width: auto; min-height: 44px; padding: 8px 12px; margin-bottom: 2px; border-radius: 6px; color: var(--agent-key-ink); background: var(--agent-key); border: 1px solid color-mix(in srgb, var(--agent-key-ink) 30%, var(--agent-key)); box-shadow: 0 2px color-mix(in srgb, var(--agent-key-ink) 55%, var(--agent-key)); font: 700 12px var(--font-agent); }
-#agentComposer .typewriter-return span { font-size: 20px; line-height: 1; }
+/* The Send icon sits outside the draft, with a larger target on touch screens. */
+#agentComposer .typewriter-return { display: grid; place-items: center; width: 36px; height: 36px; min-width: 36px; min-height: 36px; padding: 7px; margin: 0 0 2px; border-radius: 8px; color: var(--agent-key-ink); background: var(--agent-key); border: 1px solid color-mix(in srgb, var(--agent-key-ink) 30%, var(--agent-key)); box-shadow: 0 2px color-mix(in srgb, var(--agent-key-ink) 55%, var(--agent-key)); }
+#agentComposer .typewriter-return svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (pointer: coarse) { #agentComposer .typewriter-return { width: 44px; height: 44px; min-width: 44px; min-height: 44px; } }
 #agentComposer .typewriter-return:hover:not(:disabled) { background: var(--agent-mark); color: var(--agent-mark-ink); }
 #agentComposer .typewriter-return:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
 .agent-footnote a { color: var(--text-accent); text-underline-offset: 3px; }
