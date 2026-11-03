@@ -362,6 +362,7 @@ try {
       "202610292200_job_review_delivery.sql",
       "202610300100_job_review_diagnostics.sql",
       "202610310100_context_diagnostics.sql",
+      "202611030100_guided_localization.sql",
     ],
   );
   assert.equal(
