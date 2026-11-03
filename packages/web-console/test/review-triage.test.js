@@ -257,7 +257,7 @@ test("bulk verify writes correct per-row statuses, project-scoped, no invented r
   for (const { sql, params } of statements) {
     // Same lifecycle as the single approve route: verified + cleared note,
     // text/source provenance untouched, scoped to the authorized project.
-    assert.match(sql, /set human_status = 'verified', review_note = null, updated_at = now\(\)/);
+    assert.match(sql, /set human_status = 'verified', approval_basis = 'human_review', approved_text_hash = md5\(t.text\), approved_source_hash = s.source_hash, review_note = null, updated_at = now\(\)/);
     assert.doesNotMatch(sql, /set[^;]*\btext\s*=/);
     assert.doesNotMatch(sql, /set[^;]*source\s*=\s*'/);
     assert.match(sql, /s\.project_id = \$3/);

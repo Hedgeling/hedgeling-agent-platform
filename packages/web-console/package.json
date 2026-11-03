@@ -46,7 +46,7 @@
     "test:tuning:browser": "node scripts/run-tuning-browser-tests.js",
     "test:translation-jobs:browser": "node scripts/run-translation-jobs-browser-tests.js",
     "test:documents:browser": "node scripts/run-documents-browser-tests.js",
-    "test:job-workflows:browser": "node scripts/run-job-workflows-browser-tests.js"
+    "test:job-workflows:browser": "node scripts/run-job-workflows-browser-tests.js && node scripts/run-localization-flow-browser-tests.js"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1116.0",

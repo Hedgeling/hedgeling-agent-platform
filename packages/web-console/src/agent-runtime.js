@@ -15,6 +15,8 @@ const route = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(ne
 const active = new Map();
 const running = ["planning", "reading", "executing"];
 const activityLabels = {
+  console_get_localization_flow: 'Checking your next step',
+  console_propose_localization_flow: 'Preparing workflow choices',
   console_get_context_summary: 'Checking context coverage',
   console_inspect_string_context: 'Reading the selected string context',
   console_list_context_runs: 'Finding context analyses',
@@ -24,6 +26,7 @@ const activityLabels = {
   console_propose_job_verification: 'Preparing verification of passing translations',
   console_propose_job_quality_cancel: 'Preparing to stop quality checks',
   console_get_job_delivery_options: 'Finding translation delivery files',
+  console_check_repository_delivery: 'Checking repository setup for translation delivery',
   console_propose_translation_pull_request: 'Preparing a translation pull request',
 
   console_list_documents: 'Finding uploaded documents',
@@ -158,6 +161,7 @@ async function runTurn(auth, runId) {
           if (call.name === 'console_get_job_delivery_options' && result.destination?.githubWriteAccess === false) {
             events.push(['github_connection', { reason: 'pr_delivery' }]);
           }
+          if (call.name === 'console_get_localization_flow' && result.flow) events.push(['flow', { uiTarget: result.uiTarget }]);
           if (result.proposal) { proposal = result.proposal; events.push(["proposal", { ...proposal, uiTarget: result.uiTarget }]); }
           else events.push(["activity", { tool, label: result.error || "Workspace information loaded", status: result.error ? "failed" : "complete", ...(result.uiTarget ? { uiTarget: result.uiTarget } : {}) }]);
         }

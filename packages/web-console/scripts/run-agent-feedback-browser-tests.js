@@ -28,6 +28,10 @@ try {
   await page.goto(app.origin);
   const shell = page.locator('#hedgelingAgent');
   await expect(shell.locator('#agentInput')).toBeEnabled();
+  await expect(shell.locator('[data-agent-name]')).toHaveText('Agent Hedgeling');
+  await expect(shell.locator('.agent-avatar img')).toHaveAttribute('src', '/design-system/assets/agent-spark.svg');
+  assert.ok(await shell.locator('.agent-avatar img').evaluate(img => img.complete && img.naturalWidth > 0));
+  assert.equal((await page.request.get(`${app.origin}/design-system/brand.json`).then(r => r.json())).productName, 'Hedgeling');
   await expect(shell.locator('#agentWidth')).toHaveCount(0);
   await expect(shell).not.toContainText('to be continued');
   const newChat = shell.getByRole('button', { name: 'New chat', exact: true });
@@ -43,6 +47,32 @@ try {
   await expect(shell.locator('#agentInput')).toBeEnabled();
   const run = await page.evaluate(() => sessionStorage.getItem(Object.keys(sessionStorage).find(k => k.startsWith('hedgeling.agent.run.'))));
   const emit = async (kind, data) => app.database.query('insert into agent_events(run_id,kind,data) values($1,$2,$3)', [run, kind, data]);
+  // Actual SSE state changes drive the emblem in both the panel and launcher.
+  const animation = (locator, pseudo = null) => locator.evaluate((node, pseudo) => getComputedStyle(node, pseudo).animationName, pseudo);
+  const emblem = shell.locator('.agent-avatar');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  for (const status of ['planning', 'reading', 'executing']) {
+    await emit('state', { status });
+    await expect(shell).toHaveAttribute('data-working', 'true');
+    await expect(page.locator('.agent-launcher')).toHaveAttribute('data-working', 'true');
+    assert.equal(await animation(emblem, '::before'), 'agent-prism-twinkle');
+    assert.equal(await animation(page.locator('.agent-launcher-emblem'), '::after'), 'agent-prism-twinkle');
+    assert.equal(await animation(emblem.locator('img')), 'agent-prism-glow');
+  }
+  await page.screenshot({ path: `${artifacts}/agent-spark-working.png` });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  assert.equal(await animation(emblem, '::before'), 'none');
+  assert.equal(await animation(emblem.locator('img')), 'none');
+  assert.notEqual(await emblem.locator('img').evaluate(node => getComputedStyle(node).filter), 'none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  for (const status of ['awaiting_confirmation', 'paused', 'completed', 'cancelled', 'failed', 'awaiting_input']) {
+    await emit('state', { status });
+    await expect(shell).toHaveAttribute('data-working', 'false');
+    await expect(page.locator('.agent-launcher')).toHaveAttribute('data-working', 'false');
+    assert.equal(await animation(emblem, '::before'), 'none');
+    assert.equal(await animation(emblem.locator('img')), 'none');
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   // Drafts wrap and grow without sending on ordinary Enter or IME confirmation.
   await expect(shell.locator('[data-theme-preference]')).toHaveCount(0);
   const input = shell.getByRole('textbox', { name: 'Message the assistant' });

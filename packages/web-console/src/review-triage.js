@@ -289,7 +289,7 @@ export async function bulkVerifyTranslations(queryFn, { projectId, items }) {
     }
     const result = await queryFn(
       `update translations t
-       set human_status = 'verified', review_note = null, updated_at = now()
+       set human_status = 'verified', approval_basis = 'human_review', approved_text_hash = md5(t.text), approved_source_hash = s.source_hash, review_note = null, updated_at = now()
        from source_strings s
        where s.id = t.source_string_id
          and t.source_string_id = $1

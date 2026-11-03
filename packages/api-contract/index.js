@@ -1,3 +1,6 @@
+import { LOCALIZATION_FLOW_ACTIONS } from './localization-flow-actions.js';
+export { GUIDED_LOCALIZATION_SKILL } from './localization-flow-actions.js';
+export { LOCALIZATION_WORKFLOWS } from './localization-workflows.js';
 import { JOB_REVIEW_ACTIONS } from './job-review-actions.js';
 import { JOB_DELIVERY_ACTIONS } from './job-delivery-actions.js';
 import { REPOSITORY_ACTIONS } from './repository-actions.js';
@@ -27,6 +30,7 @@ export const REPORT_ACTIONS = [
   { ...action("reports.jobs.summary", "console_report_jobs", "Aggregate ALL matching permitted localization jobs in one organization, grouped by status, project, business unit or target locale. Totals cover every matching job, independent of group pagination. Follow page.nextCursor for remaining groups. Locale groups overlap for multilingual jobs.", "jobs.view", schema({ organizationId: id, projectSlug: text, ...jobFilters, groupBy: { type: "string", enum: ["status", "project", "business_unit", "target_locale"] }, ...paging }, ["organizationId"])), scope: "reporting" },
 ];
 export const WORKSPACE_ACTIONS = [
+  ...LOCALIZATION_FLOW_ACTIONS,
   ...CONTEXT_ACTIONS,
   ...DOCUMENT_ACTIONS,
   ...TRANSLATION_JOB_ACTIONS, ...JOB_REVIEW_ACTIONS, ...JOB_DELIVERY_ACTIONS,
@@ -38,7 +42,7 @@ export const WORKSPACE_ACTIONS = [
   action("organization.create", "console_propose_organization", "Preview creating an empty customer organization and its initial owner. Requires human confirmation; creates no subscription, BU, project or credential.", "", schema({ name: text }), false),
   action("business_unit.create", "console_propose_business_unit", "Preview creating one business unit. Requires human confirmation.", "business_units.create", schema({ organizationId: id, name: text }), false),
   action("project.create", "console_propose_project", "Preview creating one project and its locales in a business unit. Requires human confirmation.", "projects.create", schema({ businessUnitId: id, name: text, sourceLocale: text, targetLocales: { type: "array", items: text, minItems: 1, maxItems: 30, uniqueItems: true } }), false),
-  action("localization_job.create", "console_propose_localization_job", "Preview a localization job draft using the current source catalog. No translation work is started. Requires human confirmation.", "jobs.create", schema({ projectSlug: text, name: text, targetLocales: { type: "array", items: text, minItems: 1, maxItems: 30, uniqueItems: true }, steps: { type: "array", items: { type: "string", enum: ["machine_translation", "human_translation", "review", "qa"], description: "Workflow step: machine_translation is AI Translation (LLM); use that display label with people." }, minItems: 1, maxItems: 4, uniqueItems: true } }), false),
+  action("localization_job.create", "console_propose_localization_job", "Preview a localization draft. Use workflowPreset for a guided workflow; this also selects the new job in the project’s saved flow. Legacy steps remain supported for custom jobs. Starts no translation. Human confirmation required.", "jobs.create", { ...schema({ projectSlug: text, name: text, targetLocales: jobChanges.targetLocales, steps: jobChanges.steps, workflowPreset: { type: "string", enum: ["ai_only", "ai_quality", "human_review"] } }, ["projectSlug", "name", "targetLocales"]), anyOf: [{ properties: { steps: jobChanges.steps }, required: ["steps"] }, { properties: { workflowPreset: { type: "string", enum: ["ai_only", "ai_quality", "human_review"] } }, required: ["workflowPreset"] }] }, false),
   action("localization_jobs.list", "console_list_localization_jobs", "Search permitted localization jobs in one project or across an organization. Supply organizationId or projectSlug. Follow page.nextCursor for additional jobs; use console_report_jobs for complete totals.", "jobs.view", { ...schema({ organizationId: id, projectSlug: text, jobId: id, ...jobFilters, ...paging }, []), anyOf: [{ properties: { organizationId: id }, required: ["organizationId"] }, { properties: { projectSlug: text }, required: ["projectSlug"] }] }),
   action("organization.update", "console_propose_organization_update", "Preview renaming an existing organization using its discovered ID. Preserves its slug, billing, membership and access. Requires human confirmation.", "organization.update", schema({ organizationId: id, name: text }), false),
   action("business_unit.update", "console_propose_business_unit_update", "Preview renaming an existing business unit using its discovered ID. Preserves its slug, projects and access. Requires human confirmation.", "business_units.manage", schema({ businessUnitId: id, name: text }), false),

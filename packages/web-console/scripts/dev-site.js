@@ -50,7 +50,7 @@ async function startDatabase() {
   finally { await client.end(); }
 }
 async function serve() {
-  const allowed = /^(HEDGELING_(?:GITHUB_(?:CLIENT_ID|CLIENT_SECRET|CALLBACK_URL)|ENGINE_(?:URL|TOKEN|ALLOW_LOOPBACK_HTTP)|AGENT_(?:PROVIDER|META_MODEL|GEMINI_MODEL)|META_(?:API_KEY|RESPONSES_URL|TRANSLATION_MODEL)|AI_KEY(?:_ID|RING)|GEMINI_(?:API_KEY|MODEL))|GEMINI_API_KEY|GOOGLE_AI_API_KEY)$/;
+  const allowed = /^(HEDGELING_(?:GITHUB_(?:CLIENT_ID|CLIENT_SECRET|CALLBACK_URL|APP_SLUG)|ENGINE_(?:URL|TOKEN|ALLOW_LOOPBACK_HTTP)|AGENT_(?:PROVIDER|META_MODEL|GEMINI_MODEL)|META_(?:API_KEY|RESPONSES_URL|TRANSLATION_MODEL)|AI_KEY(?:_ID|RING)|GEMINI_(?:API_KEY|MODEL))|GEMINI_API_KEY|GOOGLE_AI_API_KEY)$/;
   const env = Object.fromEntries(Object.entries(config).filter(([name]) => allowed.test(name)));
   const engine = await startLocalEngine({config,folder,databaseUrl});
   if(engine)Object.assign(env,{HEDGELING_ENGINE_URL:engine.url,HEDGELING_ENGINE_TOKEN:engine.token,HEDGELING_ENGINE_ALLOW_LOOPBACK_HTTP:'true'});

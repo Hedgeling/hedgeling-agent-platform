@@ -1,0 +1,13 @@
+.localization-flow-card { border: 1px solid var(--border, #d7dfd7); border-left: 4px solid var(--accent, #277441); border-radius: 16px; padding: 20px; margin: 16px 0; background: var(--surface, #fff); color: var(--text, #17261b); min-width: 0; }
+.localization-flow-card h4 { margin: 8px 0; font-size: 1.1rem; }
+.localization-flow-card p { line-height: 1.5; }
+.localization-flow-actions { display: flex; flex-wrap: wrap; align-items: start; gap: 8px; margin: 12px 0; }
+.localization-flow-option { flex: 1 1 220px; border: 1px solid var(--border, #d7dfd7); border-radius: 10px; padding: 12px; }
+.localization-flow-card button { padding: 8px 12px; min-height: 36px; font-size: .9rem; white-space: normal; }
+.localization-flow-card label { display: grid; gap: 6px; margin: 12px 0; font-size: .9rem; }
+.localization-flow-card input, .localization-flow-card select { width: 100%; max-width: 32rem; min-width: 0; box-sizing: border-box; font-size: 1rem; }
+.localization-flow-draft { width: min(100%, 32rem); }
+.localization-flow-settings { margin: 12px 0; }
+.localization-flow-settings summary { cursor: pointer; }
+.localization-flow-card a { overflow-wrap: anywhere; }
+@media (pointer: coarse) { .localization-flow-card button { min-height: 44px; } }

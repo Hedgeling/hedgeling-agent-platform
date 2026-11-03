@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {randomUUID} from 'node:crypto';
 import {fail} from './errors.js';
-import {loadJob,jobTarget,currentJobSources,jobTranslations,jobCoverage,selectedLocales,isAiOnly} from './job-scope.js';
+import {loadJob,jobTarget,currentJobSources,jobTranslations,jobCoverage,selectedLocales,isAiOnly,reviewSatisfied} from './job-scope.js';
 import {REVIEW_LIMITS,reviewBatches,reviewPrompt,reviewPromptBytes,parseReview} from './job-review-analysis.js';
 export function createJobReview({database,transaction,authorize,inspectProvider,generate,fingerprint}) {
   const load=(input,auth,scope,db,permission='read',lock=false)=>loadJob(db,input.jobId,auth,scope,authorize,permission,lock);
@@ -19,21 +19,37 @@ export function createJobReview({database,transaction,authorize,inspectProvider,
     if(fingerprint(await guidance(db,p,locales))!==fingerprint(r.guidance))throw fail(409,'Library guidance changed. Run a fresh quality check.','review_inputs_changed');
     const wanted=ids||r.snapshot.map(s=>s.id),current=await selection(db,p,job,{locales,ids:wanted,limit:1001,lock});
     const before=new Map(r.snapshot.map(s=>[s.id,s]));
-    if(current.length!==wanted.length||current.some(s=>fingerprint(s)!==fingerprint(before.get(s.id))))throw fail(409,'Translations or context changed since the quality check. Run a fresh check for this selection.','review_inputs_changed');
+    if(current.length!==wanted.length||current.some(s=>fingerprint(s)!==fingerprint({...before.get(s.id),approvalBasis:before.get(s.id)?.approvalBasis??null})))throw fail(409,'Translations or context changed since the quality check. Run a fresh check for this selection.','review_inputs_changed');
     return current;
+  }
+  const eligibleIds = r => r.results.filter(result => {
+    const before = r.snapshot.find(item => item.id === result.id);
+    return result.verdict === 'pass' && !r.accepted_ids.includes(result.id) && before?.humanStatus !== 'rejected'
+      && !(before?.humanStatus === 'verified' && before.approvalBasis);
+  }).map(result => result.id);
+  async function summary(input,auth,scope={},db=database) {
+    const {p,job}=await load(input,auth,scope,db), r=await run(input,db);
+    if(!r) return null;
+    const ids=eligibleIds(r); let stale=false;
+    if(ids.length && ['ready','applied'].includes(r.status)) {
+      try { await guard(db,p,job,r,false,ids); }
+      catch(error) { if(['review_inputs_changed','job_source_changed'].includes(error.code)) stale=true; else throw error; }
+    }
+    return {id:r.id,status:r.status,total:r.snapshot.length,checked:r.results.length,passingUnaccepted:stale?0:ids.length,stale};
   }
   async function read(name,input,auth,scope={},db=database){const {p,job}=await load(input,auth,scope,db),r=await run(input,db),uiTarget=jobTarget(p,job.id,name);
     if(!r)return {qualityRun:null,uiTarget};
     const offset=input.offset||0,counts={pass:0,needs_changes:0,uncertain:0};for(const item of r.results)counts[item.verdict]++;
     const results=r.results.slice(offset,offset+REVIEW_LIMITS.resultPage).map(result=>{const s=r.snapshot.find(s=>s.id===result.id);return {...result,locale:s.locale,source:s.sourceText.slice(0,2000),translation:s.text.slice(0,2000),accepted:r.accepted_ids.includes(s.id),previousStatus:s.humanStatus};});
-    return {qualityRun:{id:r.id,jobId:job.id,status:r.status,selection:r.selection,targetLocales:r.provider_plan.locales,total:r.snapshot.length,checked:r.results.length,counts,accepted:r.accepted_ids.length,provider:r.provider_plan.provider,model:r.provider_plan.model,error:r.error_code,failure:r.error_detail||null,results},page:{nextOffset:offset+results.length<r.results.length?offset+results.length:null},uiTarget};
+    return {qualityRun:{id:r.id,jobId:job.id,canVerify:job.workflow_preset !== 'human_review',status:r.status,selection:r.selection,targetLocales:r.provider_plan.locales,total:r.snapshot.length,checked:r.results.length,counts,accepted:r.accepted_ids.length,provider:r.provider_plan.provider,model:r.provider_plan.model,error:r.error_code,failure:r.error_detail||null,results},page:{nextOffset:offset+results.length<r.results.length?offset+results.length:null},uiTarget};
   }
   async function prepare(name,input,auth,scope={},db=database,lock=false){const {p,job}=await load(input,auth,scope,db,'review',lock),uiTarget=jobTarget(p,job.id,name);
     const base={organizationId:p.organizationId,p,job,uiTarget};
     if(name==='localization_job.review_cancel'){const r=await run(input,db,lock);if(!['queued','running'].includes(r.status))throw fail(409,'This check is not running.','review_not_running');return {...base,r,preview:{action:name,fields:{name:job.name,runId:r.id},resources:{},cost:'An in-flight provider request may still be charged.',sideEffects:['Stop remaining quality checks. Keep completed findings. No translations are verified.']}};}
     if(name==='localization_job.verify'){
-      const r=await run(input,db,lock);if(!['ready','applied'].includes(r.status))throw fail(409,'Wait for a complete quality check.','review_not_ready');
-      const eligible=r.results.filter(s=>s.verdict==='pass'&&!r.accepted_ids.includes(s.id)&&!['verified','rejected'].includes(r.snapshot.find(t=>t.id===s.id).humanStatus)).map(s=>s.id);
+      const r=await run(input,db,lock);if (job.workflow_preset === 'human_review') throw fail(409, 'This workflow requires a person to review and approve translations in the review console. AI approval cannot satisfy it.', 'review_human_required');
+      if(!['ready','applied'].includes(r.status))throw fail(409,'Wait for a complete quality check.','review_not_ready');
+      const eligible=eligibleIds(r);
       const ids=input.translationIds||eligible;
       if(!ids.length||ids.some(id=>!eligible.includes(id)))throw fail(409,'Select passing, unaccepted translations. Human-rejected entries require individual review.','review_selection_invalid');
       const items=await guard(db,p,job,r,lock,ids);
@@ -53,10 +69,10 @@ export function createJobReview({database,transaction,authorize,inspectProvider,
     if(name==='localization_job.review_cancel')await db.query("update job_quality_runs set status='cancelled',finished_at=now() where id=$1",[runId]);
     else if(name==='localization_job.verify'){
       const ids=prepared.items.map(i=>i.id);
-      await db.query("update translations set human_status='verified',review_note=null,updated_at=now() where id=any($1::uuid[])",[ids]);
+      await db.query("update translations set human_status='verified',approval_basis='ai_assessment',approved_text_hash=md5(text),approved_source_hash=(select source_hash from source_strings where id=source_string_id),review_note=null,updated_at=now() where id=any($1::uuid[])",[ids]);
       await db.query("update job_quality_runs set accepted_ids=accepted_ids||$2::uuid[],status='applied' where id=$1",[runId,ids]);
       const coverage=await jobCoverage(db,job);
-      if(!isAiOnly(job)&&coverage.total>0&&coverage.verified===coverage.total)await db.query("update localization_jobs set status='completed',finished_at=now() where id=$1 and status not in ('queued','running','canceled')",[job.id]);
+      if(!isAiOnly(job)&&coverage.total>0&&reviewSatisfied(job,coverage))await db.query("update localization_jobs set status='completed',finished_at=now() where id=$1 and status not in ('queued','running','canceled')",[job.id]);
     }else{
       const actor={principalType:'user',user:{id:auth.user.id,platformStaff:false},executionType:'agent',platformAdmin:false};
       runId=(await db.query(`insert into job_quality_runs(job_id,project_id,proposal_id,created_by_user_id,actor,source_locale,selection,status,snapshot,guidance,provider_plan)
@@ -82,5 +98,5 @@ export function createJobReview({database,transaction,authorize,inspectProvider,
     return true;
   }
   function startWorker(){let busy=false;const timer=setInterval(()=>{if(busy)return;busy=true;void tick().catch(()=>console.error('Quality worker could not finish its check.')).finally(()=>{busy=false;});},1000);timer.unref();return ()=>clearInterval(timer);}
-  return {read,prepare,apply,tick,startWorker,replay:(input,auth,scope,db)=>load(input,auth,scope,db,'review')};
+  return {read,summary,prepare,apply,tick,startWorker,replay:(input,auth,scope,db)=>load(input,auth,scope,db,'review')};
 }

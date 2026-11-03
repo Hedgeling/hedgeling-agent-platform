@@ -85,6 +85,23 @@ body[data-agent-mode="panel"] { padding-right: var(--agent-panel-width); }
 .agent-launcher img { width: 42px; height: 42px; object-fit: cover; border-radius: 50%; }
 .agent-launcher i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-accent); }
 .agent-launcher[data-status="awaiting_confirmation"] i { background: var(--amber); }
+/* A transparent prism mark with small glints only during an active agent turn. */
+.agent-emblem { position: relative; display: inline-block; flex-shrink: 0; vertical-align: middle; line-height: 0; isolation: isolate; }
+.agent-identity .agent-emblem { display: inline-block; margin: 0; }
+.agent-launcher-emblem { width: 42px; height: 42px; }
+.agent-emblem img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: 0; }
+.agent-emblem::before, .agent-emblem::after { content: ''; position: absolute; z-index: 1; pointer-events: none; opacity: 0; background: #f4ffff; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
+.agent-emblem::before { width: 27%; height: 27%; top: 37%; left: 37%; }
+.agent-emblem::after { width: 18%; height: 18%; top: 10%; right: 11%; background: #f7ffde; }
+[data-working="true"] .agent-emblem img { animation: agent-prism-glow 2.8s ease-in-out infinite; }
+[data-working="true"] .agent-emblem::before { animation: agent-prism-twinkle 2.8s ease-in-out infinite; }
+[data-working="true"] .agent-emblem::after { animation: agent-prism-twinkle 2.8s .9s ease-in-out infinite; }
+@keyframes agent-prism-glow { 0%, 100% { transform: scale(1); filter: drop-shadow(0 0 1px #29eff533); } 50% { transform: scale(1.04); filter: drop-shadow(0 0 3px #c27af080); } }
+@keyframes agent-prism-twinkle { 0%, 12%, 62%, 100% { opacity: 0; transform: scale(.4) rotate(-12deg); } 36% { opacity: .95; transform: scale(1) rotate(12deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .agent-emblem img, .agent-emblem::before, .agent-emblem::after { animation: none !important; }
+  [data-working="true"] .agent-emblem img { filter: drop-shadow(0 0 3px #c27af080); }
+}
 .agent-shell[data-mode="overlay"][data-opaque="true"] { inset: 0; border-radius: 0; background: var(--background-base); }
 .workspace-view { padding: 40px; overflow: auto; }
 .workspace-view.active { display: block; }

@@ -230,7 +230,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.reload();
   await expect(shell.locator("[data-agent-name]")).toHaveText("Aurora");
-  await expect(shell.locator(".agent-avatar")).toHaveAttribute("src", "/design-system/assets/mark.svg");
+  await expect(shell.locator(".agent-avatar img")).toHaveAttribute("src", "/design-system/assets/mark.svg");
   const alternateTokens = JSON.parse(await fs.readFile(path.join(alternate, "tokens.json")));
   assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent-green").trim()), alternateTokens.light["accent-green"]);
   await page.screenshot({ path: path.join(artifacts, "06-alternate-brand.png") });

@@ -1,3 +1,5 @@
+import { localizationFlow } from './localization-flow.js';
+import { LOCALIZATION_WORKFLOWS } from '@hedgeling/api-contract';
 import { jobReview, jobDelivery } from './job-workflows-integration.js';
 import { repositories } from './repositories-integration.js';
 import { translationJobs } from './translation-jobs-integration.js';
@@ -88,6 +90,11 @@ function normalizeInput(action, input) {
   const error = validateActionInput(action, input);
   if (error) throw fail(400, error, "action_input_invalid");
   const value = { ...input };
+  if (action.name === 'localization_job.create' && value.workflowPreset) {
+    const steps = LOCALIZATION_WORKFLOWS[value.workflowPreset].steps;
+    if (value.steps && JSON.stringify(value.steps) !== JSON.stringify(steps)) throw fail(400, 'Workflow steps must match the selected preset.', 'flow_steps_invalid');
+    value.steps = steps;
+  }
   if (value.name) value.name = value.name.trim();
   if (value.sourceLocale) value.sourceLocale = canonicalLocale(value.sourceLocale);
   if (value.targetLocales) {
@@ -122,6 +129,7 @@ async function creationLimits(client, organizationId, action, input) {
 }
 async function prepare(action, input, auth, context = {}, database = db) {
   const userId = await activeUser(auth, database);
+  if (action.name.startsWith('localization_flow.')) return localizationFlow.prepare(action.name, input, auth, context, database, database !== db);
   if (action.name.startsWith('repositories.')) return repositories.prepare(action.name,input,auth,context,database,database !== db);
   if (action.name.startsWith('context.')) return contextEnrichment.prepare(action.name, input, auth, context, database, database !== db);
   if (action.name === 'documents.job') return documents.prepare(input, auth, context, database, database !== db);
@@ -164,8 +172,18 @@ async function prepare(action, input, auth, context = {}, database = db) {
     const source = (await database.query("select id, source_hash, source_text, updated_at from source_strings where project_id=$1 order by id limit 10001", [p.id])).rows;
     if (source.length > 10000) throw fail(400, "This draft workflow supports up to 10,000 source strings");
     resources = { project: p, sourceCount: source.length, sourceVersion: fingerprint(source) };
+    if (input.workflowPreset) {
+      await allowProject(auth, p, 'projects.manage');
+      // Lock the project as the shared serialization point for flow settings and job selection.
+      if (database !== db) await database.query('select id from projects where id=$1 for update', [p.id]);
+      resources.savedTranslations = (await database.query(`select count(*)::int n from translations where source_string_id=any($1::uuid[]) and locale=any($2::text[]) and length(trim(text))>0`, [source.map(row => row.id), input.targetLocales])).rows[0].n;
+      resources.totalTranslations = source.length * input.targetLocales.length;
+      resources.flowRevision = (await database.query('select revision from localization_flows where project_id=$1', [p.id])).rows[0]?.revision || 0;
+    }
     sideEffects = [source.length ? `Snapshot ${source.length} source strings` : "Create an incomplete draft; import source content before running it", "No translation, publication or vendor spending will start"];
   }
+  if (input.workflowPreset && resources.totalTranslations && resources.savedTranslations === resources.totalTranslations) sideEffects.push(input.workflowPreset === 'ai_only' ? 'All translations already exist. Create a completed, unreviewed AI-only job without model calls.' : 'All translations already exist. Start this job awaiting the selected review, without model calls. Existing approvals are preserved with their original provenance.');
+  if (input.workflowPreset) sideEffects.push('Select this new draft and its workflow preset as the project’s current guided job. Preserve the context choice.');
   enforceScope(organizationId, context);
   return { organizationId, preview: { action: action.name, fields: input, resources, sideEffects, cost: "No paid work is started" } };
 }
@@ -175,6 +193,7 @@ export async function executeWorkspaceAction(name, input, auth, context = {}) {
   const action = WORKSPACE_ACTIONS.find((a) => a.name === name);
   if (!action) throw fail(404, "Unknown workspace action");
   input = normalizeInput(action, input);
+  if (name === 'localization_flow.get') return localizationFlow.read(input, auth, context);
   if (name.startsWith('repositories.') && action.readOnly) return repositories.read(name,input,auth,context);
   if (name.startsWith('context.') && action.readOnly) return contextEnrichment.read(name, input, auth, context);
   if (name.startsWith('documents.') && action.readOnly) return documents.read(name, input, auth, context);
@@ -217,7 +236,8 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     if (expectedFingerprint !== proposal.fingerprint) throw fail(409, "The displayed proposal has changed");
     if (proposal.status === "confirmed") {
       await assertRunScope(auth, proposal.organization_id);
-      if (proposal.action.startsWith('repositories.')) await repositories.replay(proposal.input,auth,{},client);
+      if (proposal.action.startsWith('localization_flow.')) await localizationFlow.replay(proposal.input, auth, {}, client);
+      else if (proposal.action.startsWith('repositories.')) await repositories.replay(proposal.input,auth,{},client);
       else if (proposal.action.startsWith('context.')) await contextEnrichment.replay(proposal.input, auth, {}, client);
       else if (reviewActions.includes(proposal.action)) await jobReview.replay(proposal.input,auth,{},client);
       else if (proposal.action === 'localization_job.pull_request') await jobDelivery.replay(proposal.input,auth,{},client);
@@ -243,7 +263,9 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
     const input = proposal.input;
     let result;
     let organizationId = prepared.organizationId;
-    if (action.name.startsWith('repositories.')) {
+    if (action.name.startsWith('localization_flow.')) {
+      result = await localizationFlow.apply(action.name, prepared, proposal, auth, client);
+    } else if (action.name.startsWith('repositories.')) {
       result = await repositories.apply(action.name,prepared,proposal,auth,client);
     } else if (action.name.startsWith('context.')) {
       result = await contextEnrichment.apply(action.name, prepared, proposal, auth, client);
@@ -287,9 +309,15 @@ export async function confirmProposal(auth, proposalId, expectedFingerprint, con
         const p = prepared.preview.resources.project;
         const snapshot = (await client.query("select id, source_hash, source_text, updated_at from source_strings where project_id=$1 order by id for share", [p.id])).rows;
         if (fingerprint(snapshot) !== prepared.preview.resources.sourceVersion) throw fail(409, "Source content changed; create a fresh preview");
-        result = { job: (await client.query(`insert into localization_jobs(project_id,name,source_locale,target_locales,steps,source_snapshot,created_by_user_id,proposal_id)
-          values($1,$2,$3,$4,$5,$6,$7,$8) returning id,name,status`, [p.id, input.name, p.sourceLocale, input.targetLocales, input.steps, JSON.stringify(snapshot), auth.user.id, proposal.id])).rows[0] };
+        result = { job: (await client.query(`insert into localization_jobs(project_id,name,source_locale,target_locales,steps,source_snapshot,created_by_user_id,proposal_id,workflow_preset)
+          values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id,name,status`, [p.id, input.name, p.sourceLocale, input.targetLocales, input.steps, JSON.stringify(snapshot), auth.user.id, proposal.id, input.workflowPreset || null])).rows[0] };
+        if (input.workflowPreset && prepared.preview.resources.totalTranslations && prepared.preview.resources.savedTranslations === prepared.preview.resources.totalTranslations) {
+          result.job = (await client.query("update localization_jobs set status=$2 where id=$1 returning id,name,status", [result.job.id, input.workflowPreset === 'ai_only' ? 'completed' : 'awaiting_review'])).rows[0];
+        }
         result.projectSlug = p.slug;
+        if (input.workflowPreset) await client.query(`insert into localization_flows(project_id,workflow_preset,job_id,updated_by_user_id) values($1,$2,$3,$4)
+          on conflict(project_id) do update set workflow_preset=excluded.workflow_preset,job_id=excluded.job_id,revision=localization_flows.revision+1,updated_by_user_id=excluded.updated_by_user_id,updated_at=now()`,
+        [p.id, input.workflowPreset, result.job.id, auth.user.id]);
       }
     }
     const resourceType = { organization: "organization", business_unit: "business_unit", project: "project", localization_job: "job" }[action.name.split(".")[0]];

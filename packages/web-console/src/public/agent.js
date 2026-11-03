@@ -1,3 +1,5 @@
+import { workspaceConfirmation } from './agent-components.js';
+import { localizationFlowCard } from './localization-flow.js';
 import { translationJobProgress, jobQualityPanel } from './translation-jobs.js';
 import { contextProgress } from './context-enrichment.js';
 import { openDocumentUpload, fileCard } from './documents.js';
@@ -35,7 +37,7 @@ const shell = element("section", "agent-shell"); shell.id = "hedgelingAgent"; sh
 shell.innerHTML = `
   <div id="agentResizeHandle" class="agent-resize-handle" role="separator" tabindex="0" aria-label="Resize chat panel" aria-orientation="vertical" aria-controls="hedgelingAgent" title="Drag to resize. Use arrow keys when focused."></div>
   <header class="agent-header">
-    <div class="agent-identity"><img class="agent-avatar" alt=""><div><strong data-agent-name>Hedgeling</strong><span id="agentStatus" role="status" aria-live="polite">Ready when you are</span></div></div>
+    <div class="agent-identity"><span class="agent-emblem agent-avatar" aria-hidden="true"><img alt=""></span><div><strong data-agent-name>Agent Hedgeling</strong><span id="agentStatus" role="status" aria-live="polite">Ready when you are</span></div></div>
     <div class="agent-window-controls" role="group" aria-label="Chat layout">
       <button type="button" class="agent-tool-button" data-mode="overlay" aria-label="Full-screen chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg><span class="agent-tool-label" aria-hidden="true">Full-screen chat</span></button>
       <button type="button" class="agent-tool-button" data-mode="panel" aria-label="Side panel"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></svg><span class="agent-tool-label" aria-hidden="true">Side panel</span></button>
@@ -44,7 +46,7 @@ shell.innerHTML = `
   </header>
   <div class="agent-context"><label><span>Working in</span><select id="agentScope" aria-label="Conversation organization" disabled></select></label><button type="button" id="agentNew" class="agent-tool-button" aria-label="New chat" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="agent-tool-label" aria-hidden="true">New chat</span></button></div>
   <div id="agentPlanNotice" class="agent-plan-notice" hidden><p id="agentPlanMessage"></p><button type="button" id="agentUpgrade">View plans</button></div>
-  <div class="agent-scroll"><div class="agent-paper"><div id="agentWelcome" class="agent-welcome"><img class="agent-hero" alt=""><span class="agent-eyebrow">YOUR LOCALIZATION COPILOT</span><h1>What shall we work on?</h1><p>Build a workspace. Find the right words.<br>Keep every language moving.</p><div id="agentSuggestions" class="agent-suggestions"></div></div><div id="agentMessages" role="log" aria-label="Conversation"></div></div></div>
+  <div class="agent-scroll"><div class="agent-paper"><div id="agentWelcome" class="agent-welcome"><span class="agent-emblem agent-hero" aria-hidden="true"><img alt=""></span><span class="agent-eyebrow">YOUR LOCALIZATION COPILOT</span><h1>What shall we work on?</h1><p>Build a workspace. Find the right words.<br>Keep every language moving.</p><div id="agentSuggestions" class="agent-suggestions"></div></div><div id="agentMessages" role="log" aria-label="Conversation"></div></div></div>
   <div id="agentError" class="agent-error" role="alert"></div>
   <footer class="agent-footer">
   <p id="agentComposerHint" class="agent-composer-hint" role="status" aria-live="polite" hidden></p>
@@ -61,7 +63,7 @@ shell.innerHTML = `
   </div>
   <div class="agent-footnote"><span id="agentProviderLabel">You confirm every change.</span><a id="agentCardExamples" href="/agent-preview.html" target="_blank" rel="noopener" hidden>Try card examples ↗</a></div></footer>`;
 const launcher = element("button", "agent-launcher"); launcher.type = "button"; launcher.setAttribute("aria-label", "Open Hedgeling assistant");
-launcher.innerHTML = '<img alt=""><span>Ask Hedgeling</span><i aria-hidden="true"></i>';
+launcher.innerHTML = '<span class="agent-emblem agent-launcher-emblem" aria-hidden="true"><img alt=""></span><span class="agent-launcher-label">Ask Hedgeling</span><i aria-hidden="true"></i>';
 const $ = (id) => shell.querySelector(`#${id}`);
 const activity = activityGroup($('agentMessages'));
 const nearLatest = () => { const scroller = shell.querySelector('.agent-scroll'); return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 90; };
@@ -85,7 +87,7 @@ function setMode(next, focus = true) {
   localStorage.setItem("hedgeling.agent.mode", next);
   shell.hidden = next === "minimized"; launcher.hidden = next !== "minimized";
   shell.setAttribute("role", next === "overlay" ? "dialog" : "complementary");
-  shell.setAttribute("aria-label", `${brand?.agentName || "Hedgeling"} assistant`);
+  shell.setAttribute("aria-label", brand?.agentTitle || `${brand?.agentName || "Hedgeling"} assistant`);
   if (next === "overlay") shell.setAttribute("aria-modal", "true"); else shell.removeAttribute("aria-modal");
   if (next === "overlay") {
     for (const node of document.body.children) {
@@ -116,6 +118,7 @@ function updateState(status) {
   const labels = { awaiting_input: "Ready when you are", planning: "Planning the next step", reading: "Looking at your workspace", awaiting_confirmation: "Waiting for your confirmation", paused: "Paused · You’re in control", cancelled: "Task cancelled", completed: "All done", executing: "Applying your confirmed change" };
   $("agentStatus").textContent = labels[status] || status;
   launcher.dataset.status = status;
+  for (const surface of [shell, launcher]) surface.dataset.working = String(["planning", "reading", "executing"].includes(status));
   launcher.setAttribute("aria-label", `Open ${brand?.agentName || "Hedgeling"} assistant. ${labels[status] || status}`);
   const paused = status === "paused";
   const otherController = run?.controllerId && run.controllerId !== controllerId && status !== "cancelled";
@@ -232,6 +235,22 @@ function receive(item, { replay = false } = {}) {
     } }));
     if (!replay) void follow(data.uiTarget || { view: "workspace", organizationId: scope, action: data.preview.action }, { phase: "approval", card: shell.querySelector(`[data-proposal-id="${data.id}"]`), label: "Your approval is needed here" }).catch(showError);
   }
+  if ((kind === 'flow' || kind === 'result') && data.uiTarget?.projectSlug) {
+    const projectSlug = data.uiTarget.projectSlug;
+    const existing = [...$('agentMessages').querySelectorAll('[data-flow-project]')].find(card => card.dataset.flowProject === projectSlug);
+    if (existing) { existing.dispatchEvent(new Event('localization-flow-refresh')); $('agentMessages').append(existing); }
+    else $('agentMessages').append(localizationFlowCard({ projectSlug, request, confirmation: workspaceConfirmation, controllerId,
+      onChanged: () => workspace.refresh(scope), onNavigate: async ({ section, step, jobId }) => {
+        setMode('minimized'); window.HedgelingConsole?.navigate('workspace', { manual: true, load: false });
+        await workspace.refresh(data.uiTarget.organizationId, jobId, { type: 'project', id: projectSlug });
+        const card = [...document.querySelectorAll('#workspaceRoot [data-flow-project]')].find(n => n.dataset.flowProject === projectSlug);
+        const project = card?.parentElement;
+        const area = jobId && section === '05' ? [...(project?.querySelectorAll('[data-resource-type="job"]') || [])].find(n => n.dataset.resourceId === jobId) : project?.querySelector(`[data-workflow-step="${section}"]`);
+        const panel = area?.querySelector(step === 'deliver' ? '.job-delivery' : section === '03' ? '.context-panel' : '.job-quality');
+        if (panel?.tagName === 'DETAILS') panel.open = true;
+        area?.scrollIntoView({ block: 'start' });
+      } }));
+  }
   if (kind === "result") {
     confirmed.add(data.proposalId);
     const card = shell.querySelector(`[data-proposal-id="${data.proposalId}"]`);
@@ -261,7 +280,7 @@ function receive(item, { replay = false } = {}) {
     if (data.uiTarget?.action === 'context.enrich' && data.accepted) message('assistant', `${data.accepted} context suggestions accepted for future translations. Existing translations and enforced limits are unchanged.`, { replay });
     if (data.library) message('assistant', data.library.status === 'submitted' ? `${data.library.label} was submitted for review. Active guidance is unchanged.` : data.library.status === 'rejected' ? `${data.library.label}: suggestion rejected.` : `${data.library.label} saved${data.library.active ? ' and active for future revisions' : ' as inactive guidance'}.`, { replay });
     if (data.job && data.job.status !== 'draft') {
-      message('assistant', data.job.status === 'canceled' ? `${data.job.name} is stopping. Saved drafts remain for review.` : `${data.job.name} is queued for translation. I’ll show its workflow and coverage below.`, { replay });
+      message('assistant', data.job.status === 'canceled' ? `${data.job.name} is stopping. Saved drafts remain for review.` : ['queued','running'].includes(data.job.status) ? `${data.job.name} is queued for translation. I’ll show its workflow and coverage below.` : `${data.job.name} uses saved translations. Its selected review and delivery steps appear below.`, { replay });
       $('agentMessages').append(translationJobProgress({ jobId: data.job.id, request,
         onStop: async jobId => {
           if (run?.status !== 'awaiting_input') throw new Error('Finish the current chat turn before requesting a job stop, or use Stop job in Projects.');
@@ -449,9 +468,9 @@ async function initialize() {
   shell.append(attention.status);
   window.HedgelingTheme?.syncControls();
   $("agentCardExamples").hidden = !config.demo;
-  for (const image of [shell.querySelector(".agent-avatar"), shell.querySelector(".agent-hero"), launcher.querySelector("img")]) image.src = brand.mascot;
-  for (const node of shell.querySelectorAll("[data-agent-name]")) node.textContent = brand.agentName;
-  launcher.querySelector("span").textContent = `Ask ${brand.agentName}`;
+  for (const image of [...shell.querySelectorAll(".agent-emblem img"), launcher.querySelector(".agent-emblem img")]) image.src = brand.mascot;
+  for (const node of shell.querySelectorAll("[data-agent-name]")) node.textContent = brand.agentTitle || brand.agentName;
+  launcher.querySelector(".agent-launcher-label").textContent = `Ask ${brand.agentName}`;
   for (const logo of document.querySelectorAll(".brand-logo")) logo.src = brand.logo;
   $("agentProviderLabel").textContent = config.demo ? "Local demo · Real changes still need confirmation" : "You confirm every change.";
   if (!config.ready) showError(new Error("The assistant is currently unavailable. You can use the workspace manually."));

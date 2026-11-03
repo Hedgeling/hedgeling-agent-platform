@@ -2,6 +2,7 @@
 import { fail } from './errors.js';
 import { SOURCE_LIMITS, recommendRoots, safeSourcePath } from './github-source.js';
 import { tuningSettings, tuningConfigPath } from './tuning-config.js';
+import { repositoryDeliveryReadiness } from './repository-delivery-readiness.js';
 export function createRepositories({database,github,identity,authorize,fingerprint,engine}) {
   async function project(input,auth,scope={},db=database,write=false,lock=false){
     const p=(await db.query(`select p.id,p.slug,p.name,p.source_locale as "sourceLocale",p.business_unit_id as "businessUnitId",b.organization_id as "organizationId"
@@ -15,6 +16,8 @@ export function createRepositories({database,github,identity,authorize,fingerpri
   const target=p=>({view:'workspace',organizationId:p.organizationId,projectSlug:p.slug,action:'repositories.connect',resource:{type:'project',id:p.id}});
   async function read(name,input,auth,scope={}){
     const p=await project(input,auth,scope),repo=await resolve(input.url,auth),uiTarget=target(p);
+    if(name==='repositories.delivery_readiness')return{repository:safe(repo),
+      readiness:await repositoryDeliveryReadiness({github,repo,baseBranch:input.baseBranch||repo.defaultRef,account:await identity.status(auth)}),uiTarget};
     if(name==='repositories.branches')return{repository:safe(repo),...await github.branches(repo,input.page),uiTarget};
     const tree=await github.tree(repo,input.ref||repo.defaultRef);
     if(name==='repositories.file'){

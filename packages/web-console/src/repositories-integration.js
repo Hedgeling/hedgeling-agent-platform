@@ -19,7 +19,7 @@ export const github=githubSource();
 export const githubConnection=githubIdentity({database:{query},github,
   encrypt:(value,user)=>encryptSecret(value,user,'github-user'),decrypt:(value,user)=>decryptSecret(value,user,'github-user'),
   configuration:()=>({clientId:process.env.HEDGELING_GITHUB_CLIENT_ID,clientSecret:process.env.HEDGELING_GITHUB_CLIENT_SECRET,
-    redirectUri:process.env.HEDGELING_GITHUB_CALLBACK_URL,local:process.env.NODE_ENV==='development'&&process.env.HEDGELING_AUTH_MODE==='local'})});
+    redirectUri:process.env.HEDGELING_GITHUB_CALLBACK_URL,appSlug:process.env.HEDGELING_GITHUB_APP_SLUG,local:process.env.NODE_ENV==='development'&&process.env.HEDGELING_AUTH_MODE==='local'})});
 export const repositories=createRepositories({database:{query},github,identity:githubConnection,engine:sourceEngine,
   fingerprint:value=>crypto.createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex'),
   authorize:async(auth,project,write)=>{const perms=await projectPermissions(auth,project);if(!['strings.view','imports.run',...(write?['projects.manage']:[])].every(p=>perms.includes(p)))throw fail(403,'You need project source/import access; connecting repositories also requires project management.','repository_access_denied');}});

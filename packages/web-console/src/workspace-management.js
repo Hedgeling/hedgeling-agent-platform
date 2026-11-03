@@ -1,3 +1,4 @@
+import { LOCALIZATION_WORKFLOWS } from '@hedgeling/api-contract';
 import { organizationPermissions, projectPermissions } from "./authorization.js";
 import { fail } from "./action-errors.js";
 import { enforceReadScope } from "./workspace-read.js";
@@ -34,9 +35,10 @@ export async function prepareWorkspaceUpdate(action, input, auth, context, datab
       if (!(await projectPermissions(auth, project)).includes(action.permission)) throw fail(403, "You cannot edit this project");
       resource = project; resourceType = "project"; resources = { project };
     } else {
-      resource = (await database.query(`select id,name,status,source_locale as "sourceLocale",target_locales as "targetLocales",steps,
+      resource = (await database.query(`select id,name,status,source_locale as "sourceLocale",target_locales as "targetLocales",steps,workflow_preset,
         jsonb_array_length(source_snapshot) as "sourceCount",xmin::text as version from localization_jobs where id=$1 and project_id=$2${suffix}`, [input.jobId, project.id])).rows[0];
       if (!resource) throw fail(404, "Job not found");
+      if (!replay && resource.workflow_preset && input.steps && JSON.stringify(input.steps) !== JSON.stringify(LOCALIZATION_WORKFLOWS[resource.workflow_preset].steps)) throw fail(400, 'Create a new draft to choose a different guided workflow. This job keeps its review requirement.', 'flow_steps_invalid');
       const affectedLocales = [...new Set([...resource.targetLocales, ...(input.targetLocales || [])])];
       for (const locale of affectedLocales.length ? affectedLocales : [null]) {
         const permissions = await projectPermissions(auth, project, { locale });

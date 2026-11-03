@@ -1115,6 +1115,7 @@ app.get(
   requirePlatformOperationsAccess,
   (_req, res) => res.sendFile(path.join(__dirname, "operator-ui", "operations.js")),
 );
+app.get('/localization-workflows.js', (_req, res) => res.sendFile(path.resolve(__dirname, '..', '..', 'api-contract', 'localization-workflows.js')));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/api/me", (req, res) => {
@@ -1775,10 +1776,10 @@ app.put("/api/translations/:sourceId/:locale", requireProjectPermission("transla
     );
     const previous = existing.rows[0];
     const upserted = await client.query(
-      `insert into translations(source_string_id, locale, text, mt_status, human_status, source)
-       values($1, $2, $3, 'ready', 'verified', 'human')
+      `insert into translations(source_string_id, locale, text, mt_status, human_status, source, approval_basis, approved_text_hash, approved_source_hash)
+       values($1, $2, $3, 'ready', 'verified', 'human', 'human_review', md5($3), (select source_hash from source_strings where id=$1))
        on conflict(source_string_id, locale) do update
-       set text = excluded.text, human_status = 'verified', source = 'human',
+       set text = excluded.text, human_status = 'verified', source = 'human', approval_basis = 'human_review', approved_text_hash = md5(excluded.text), approved_source_hash = excluded.approved_source_hash,
            provider = null, model = null, confidence = null, review_note = null,
            updated_at = now()
        returning *`,
@@ -1801,7 +1802,7 @@ app.put("/api/translations/:sourceId/:locale", requireProjectPermission("transla
 app.post("/api/translations/:sourceId/:locale/approve", requireProjectPermission("translations.approve", { sourceParam: "sourceId" }), asyncRoute(async (req, res) => {
   const result = await query(
     `update translations
-     set human_status = 'verified', review_note = null, updated_at = now()
+     set human_status = 'verified', approval_basis = 'human_review', approved_text_hash = md5(text), approved_source_hash = (select source_hash from source_strings where id=source_string_id), review_note = null, updated_at = now()
      where source_string_id = $1 and locale = $2
      returning *`,
     [req.params.sourceId, req.params.locale],

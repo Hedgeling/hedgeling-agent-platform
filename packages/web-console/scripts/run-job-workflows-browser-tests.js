@@ -31,7 +31,7 @@ try {
   await expect(review).toContainText('no review, verification or QA');
   await review.getByRole('button',{name:'Start translation',exact:true}).click();
   await expect(row.locator('[data-translation-job-id]')).toContainText('Complete',{timeout:20000});
-  await expect(row.locator('[data-translation-job-id]')).toContainText('0 verified');
+  await expect(row.locator('[data-translation-job-id]')).toContainText('0 approved after AI assessment');
   assert.equal(app.meta.calls.length,2);
   app.meta.control.beforeResponse=({body})=>{const input=JSON.parse(body.input);app.meta.control.text=JSON.stringify({items:input.items.map(i=>({id:i.id,verdict:'pass',issues:[]}))});};
   const quality=row.locator('.job-quality');await quality.locator('summary').first().click();
@@ -48,7 +48,7 @@ try {
   await expect(review).not.toContainText('tell me');
   await page.screenshot({path:path.join(artifacts,'02-verification-preview.png')});
   await review.getByRole('button',{name:'Verify passing translations',exact:true}).click();
-  await expect(row.locator('[data-translation-job-id]')).toContainText('2 verified');
+  await expect(row.locator('[data-translation-job-id]')).toContainText('2 approved after AI assessment');
   assert.equal(app.meta.calls.length,3);
   // A rejected first batch has no findings to review and never changes approvals.
   app.meta.control.beforeResponse=()=>{app.meta.control.text=JSON.stringify({items:[]});};
@@ -58,7 +58,7 @@ try {
   await expect(quality).toContainText('The model returned 0 results; 2 were required.',{timeout:20000});
   await expect(quality).toContainText('No findings were saved.');
   await expect(quality).not.toContainText('Review the saved findings');
-  await expect(row.locator('[data-translation-job-id]')).toContainText('2 verified');
+  await expect(row.locator('[data-translation-job-id]')).toContainText('2 approved after AI assessment');
   assert.equal(app.meta.calls.length,4);
   await page.screenshot({path:path.join(artifacts,'04-invalid-quality-response.png')});
   await row.locator('.job-delivery > summary').click();

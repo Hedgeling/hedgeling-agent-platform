@@ -1,3 +1,5 @@
+import { localizationFlowCard } from './localization-flow.js';
+import { LOCALIZATION_WORKFLOWS } from './localization-workflows.js';
 import { workflowProgress } from './workflow-progress.js';
 import { translationJobControls } from './translation-jobs.js';
 import { documentPanel } from './documents.js';
@@ -17,13 +19,14 @@ export function element(tag, className = "", text = "") {
 export const actionLabel = { "organization.create": "Create organization", "business_unit.create": "Create business unit", "project.create": "Create project", "localization_job.create": "Create job draft", "organization.update": "Save organization name", "business_unit.update": "Save business-unit name", "project.update": "Save project name", "localization_job.update": "Save job changes" };
 const workflowLabels = { machine_translation: "AI Translation", human_translation: "Human translation", review: "Review", qa: "Quality check" };
 Object.assign(actionLabel, { 'localization_job.start': 'Start translation', 'localization_job.cancel': 'Stop job', 'localization_job.review':'Run AI quality check', 'localization_job.verify':'Verify passing translations', 'localization_job.review_cancel':'Stop quality check', 'localization_job.pull_request':'Create translation PR' });
+Object.assign(actionLabel, { 'localization_flow.configure': 'Save workflow choices' });
 Object.assign(actionLabel, { 'documents.job': 'Import document and create job' });
 Object.assign(actionLabel, { 'repositories.connect': 'Connect repository' });
 Object.assign(actionLabel, { 'context.enrich': 'Generate context suggestions', 'context.apply': 'Accept selected context', 'context.cancel': 'Stop remaining batches' });
 Object.assign(actionLabel, { 'project.locales.add': 'Add target languages', 'extraction.tune': 'Run tuning preview', 'extraction.tuning.apply': 'Save settings and re-extract', 'extraction.start': 'Start extraction', 'extraction.import': 'Import source strings' });
 Object.assign(actionLabel, { 'library.prompt.save': 'Save instructions', 'library.persona.save': 'Save persona', 'library.glossary.save': 'Save term', 'library.restore': 'Restore revision', 'library.review': 'Confirm review' });
 const proposalLabel = preview => preview.library?.disposition === 'submit' ? 'Submit suggestion' : preview.library?.disposition === 'reject' ? 'Reject suggestion' : preview.library?.disposition === 'approve' ? 'Approve suggestion' : actionLabel[preview.action];
-const displayField = (key, value) => key === "steps" && Array.isArray(value) && value.length === 1 && value[0] === "machine_translation" ? "AI-only translations" : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : Array.isArray(value) ? value.map((v) => key === "steps" ? workflowLabels[v] || v : v).join(key === "steps" ? " → " : ", ") : value && typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "—");
+const displayField = (key, value) => key === 'workflowPreset' ? LOCALIZATION_WORKFLOWS[value]?.label || value : key === 'contextChoice' ? ({ enrich: 'Enrich missing context', skip: 'Continue with existing context' }[value] || 'Not chosen') : key === "steps" && Array.isArray(value) && value.length === 1 && value[0] === "machine_translation" ? "AI-only translations" : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : Array.isArray(value) ? value.map((v) => key === "steps" ? workflowLabels[v] || v : v).join(key === "steps" ? " → " : ", ") : value && typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "—");
 export function proposalCard(proposal, confirm, reject, { example = false, edit = null } = {}) {
   const card = element("article", "agent-proposal"); card.dataset.proposalId = proposal.id;
   const heading = element("div", "agent-card-heading");
@@ -201,7 +204,7 @@ async function readWorkspacePages(organizationId) {
 function jobLine(job, edit, controls) {
   const line = element("div", "workspace-job");
   line.dataset.resourceType = "job"; line.dataset.resourceId = job.id;
-  line.append(element("strong", "", job.name), element("span", "", `${job.status === "draft" ? "Draft" : job.status} · ${displayField("steps", job.steps)} · ${job.sourceCount} source strings · ${job.targetLocales.join(", ")}`));
+  line.append(element("strong", "", job.name), element("span", "", `${job.status === "draft" ? "Draft" : job.status} · ${LOCALIZATION_WORKFLOWS[job.workflowPreset]?.label || displayField("steps", job.steps)} · ${job.sourceCount} source strings · ${job.targetLocales.join(", ")}`));
   if (job.canEdit) line.append(edit(job));
   line.append(controls(job));
   return line;
@@ -252,7 +255,7 @@ export class Workspace {
     if (permissions.includes("organization.update")) head.append(this.form("organization.update", [input("name", "Organization name", data.organization.name)], { organizationId }, "Edit organization name"));
     const jobControls = job => translationJobControls({ job, request, confirmation: workspaceConfirmation, controllerId: this.controllerId, onChanged: () => this.refresh(organizationId, job.id) });
     const editJob = (job) => this.form("localization_job.update", [input("name", "Job name", job.name), input("targetLocales", "Target languages, separated by commas", job.targetLocales.join(", ")),
-      { name: "steps", label: "Workflow steps", multi: true, value: job.steps, options: [...new Set([...job.steps, ...Object.keys(workflowLabels)])].map((step) => [step, workflowLabels[step]]) },
+      ...(!job.workflowPreset ? [{ name: "steps", label: "Workflow steps", multi: true, value: job.steps, options: [...new Set([...job.steps, ...Object.keys(workflowLabels)])].map((step) => [step, workflowLabels[step]]) }] : []),
     ], { jobId: job.id }, `Edit job: ${job.name}`);
     let recentJobs = [];
     if (organizationId && data.projects.some((p) => p.canViewJobs)) {
@@ -294,6 +297,14 @@ export class Workspace {
         link.addEventListener('click', () => window.HedgelingConsole?.openProject(p.slug, { manual: true }));
         projectHead.append(title, link); project.append(projectHead);
         if (p.canEdit) project.append(this.form('project.update', [input('name', 'Project name', p.name)], { projectSlug: p.slug }, `Edit project: ${p.name}`));
+        if (p.canEdit && p.canViewJobs) project.append(localizationFlowCard({ projectSlug: p.slug, request, confirmation: workspaceConfirmation, controllerId: this.controllerId,
+          onChanged: () => this.refresh(organizationId), onNavigate: async ({ section, step: currentStep, jobId }) => {
+            const currentProject = [...this.root.querySelectorAll('[data-flow-project]')].find(n => n.dataset.flowProject === p.slug)?.parentElement;
+            const area = section === '05' && jobId ? [...(currentProject?.querySelectorAll('[data-resource-type="job"]') || [])].find(n => n.dataset.resourceId === jobId) : currentProject?.querySelector(`[data-workflow-step="${section}"]`);
+            const panel = area?.querySelector(section === '03' ? '.context-panel' : currentStep === 'deliver' ? '.job-delivery' : '.job-quality');
+            if (panel?.tagName === 'DETAILS') panel.open = true;
+            area?.scrollIntoView({ block: 'start' });
+          } }));
         const steps = element('div', 'workspace-steps');
         const shortcuts = element('nav', 'workspace-step-links'); shortcuts.setAttribute('aria-label', `Steps for ${p.name}`); project.append(shortcuts);
         const step = (number, title, help, contents) => {
@@ -335,7 +346,7 @@ export class Workspace {
           const jobArea = element('div'); jobArea.append(jobs, more, info);
           for (const job of recentJobs.filter(job => job.projectSlug === p.slug)) resourceUnits.set(`job:${job.id}`, unit.id);
           if (p.canCreateJob) jobArea.append(this.form('localization_job.create', [input('name', 'Job name'), input('targetLocales', 'Target languages, separated by commas', p.targetLocales.join(', ')),
-            { name: 'workflow', label: 'Workflow', options: [["machine_translation,review", "AI Translation → Human review"], ["machine_translation", "AI-only translations"], ["human_translation,review", "Human translation → Review"], ["machine_translation,review,qa", "AI Translation → Review → QA"]] },
+            { name: 'workflowPreset', label: 'Workflow', options: Object.entries(LOCALIZATION_WORKFLOWS).map(([id, preset]) => [id, preset.label]) },
           ], { projectSlug: p.slug }));
           step('05', 'Translate, review & deliver', 'Follow saved drafts, check quality and prepare delivery from each job.', jobArea);
         }
@@ -354,17 +365,17 @@ export class Workspace {
     const jobProjects = data.projects.filter((p) => p.canCreateJob);
     if (jobProjects.length) forms.append(this.form("localization_job.create", [
       { name: "projectSlug", label: "Project", options: jobProjects.map((p) => [p.slug, p.name]) }, input("name", "Job name"), input("targetLocales", "Target languages, separated by commas", jobProjects[0].targetLocales.join(", ")),
-      { name: "workflow", label: "Workflow", options: [["machine_translation,review", "AI Translation → Human review"], ["machine_translation", "AI-only translations"], ["human_translation,review", "Human translation → Review"], ["machine_translation,review,qa", "AI Translation → Review → QA"]] },
+      { name: "workflowPreset", label: "Workflow", options: Object.entries(LOCALIZATION_WORKFLOWS).map(([id, preset]) => [id, preset.label]) },
     ]));
     fragment.append(forms);
     if (generation === this.refreshGeneration) {
       // Keep open source forms/approvals intact during agent-driven refreshes.
       // Only retain a panel when the refreshed project still permits extraction.
-      for (const selector of ['.extraction-panel', '.context-panel', '.document-panel']) {
-        const panels = new Map([...this.root.querySelectorAll(selector)].map(node => [node.dataset.projectId || node.dataset.projectSlug, node]));
+      for (const selector of ['.extraction-panel', '.context-panel', '.document-panel', '.localization-flow-card']) {
+        const panels = new Map([...this.root.querySelectorAll(selector)].map(node => [node.dataset.projectId || node.dataset.projectSlug || node.dataset.flowProject, node]));
         for (const next of fragment.querySelectorAll(selector)) {
-          const current = panels.get(next.dataset.projectId || next.dataset.projectSlug);
-          if (current) next.replaceWith(current);
+          const current = panels.get(next.dataset.projectId || next.dataset.projectSlug || next.dataset.flowProject);
+          if (current) { next.replaceWith(current); if (selector === '.localization-flow-card') current.dispatchEvent(new Event('localization-flow-refresh')); }
         }
       }
       this.root.replaceChildren(fragment);
