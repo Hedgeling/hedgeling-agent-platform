@@ -1,3 +1,5 @@
+import { workspaceConfirmation } from './agent-components.js';
+import { localizationFlowCard } from './localization-flow.js';
 import { translationJobProgress, jobQualityPanel } from './translation-jobs.js';
 import { contextProgress } from './context-enrichment.js';
 import { openDocumentUpload, fileCard } from './documents.js';
@@ -232,6 +234,22 @@ function receive(item, { replay = false } = {}) {
     } }));
     if (!replay) void follow(data.uiTarget || { view: "workspace", organizationId: scope, action: data.preview.action }, { phase: "approval", card: shell.querySelector(`[data-proposal-id="${data.id}"]`), label: "Your approval is needed here" }).catch(showError);
   }
+  if ((kind === 'flow' || kind === 'result') && data.uiTarget?.projectSlug) {
+    const projectSlug = data.uiTarget.projectSlug;
+    const existing = [...$('agentMessages').querySelectorAll('[data-flow-project]')].find(card => card.dataset.flowProject === projectSlug);
+    if (existing) { existing.dispatchEvent(new Event('localization-flow-refresh')); $('agentMessages').append(existing); }
+    else $('agentMessages').append(localizationFlowCard({ projectSlug, request, confirmation: workspaceConfirmation, controllerId,
+      onChanged: () => workspace.refresh(scope), onNavigate: async ({ section, step, jobId }) => {
+        setMode('minimized'); window.HedgelingConsole?.navigate('workspace', { manual: true, load: false });
+        await workspace.refresh(data.uiTarget.organizationId, jobId, { type: 'project', id: projectSlug });
+        const card = [...document.querySelectorAll('#workspaceRoot [data-flow-project]')].find(n => n.dataset.flowProject === projectSlug);
+        const project = card?.parentElement;
+        const area = jobId && section === '05' ? [...(project?.querySelectorAll('[data-resource-type="job"]') || [])].find(n => n.dataset.resourceId === jobId) : project?.querySelector(`[data-workflow-step="${section}"]`);
+        const panel = area?.querySelector(step === 'deliver' ? '.job-delivery' : section === '03' ? '.context-panel' : '.job-quality');
+        if (panel?.tagName === 'DETAILS') panel.open = true;
+        area?.scrollIntoView({ block: 'start' });
+      } }));
+  }
   if (kind === "result") {
     confirmed.add(data.proposalId);
     const card = shell.querySelector(`[data-proposal-id="${data.proposalId}"]`);
@@ -261,7 +279,7 @@ function receive(item, { replay = false } = {}) {
     if (data.uiTarget?.action === 'context.enrich' && data.accepted) message('assistant', `${data.accepted} context suggestions accepted for future translations. Existing translations and enforced limits are unchanged.`, { replay });
     if (data.library) message('assistant', data.library.status === 'submitted' ? `${data.library.label} was submitted for review. Active guidance is unchanged.` : data.library.status === 'rejected' ? `${data.library.label}: suggestion rejected.` : `${data.library.label} saved${data.library.active ? ' and active for future revisions' : ' as inactive guidance'}.`, { replay });
     if (data.job && data.job.status !== 'draft') {
-      message('assistant', data.job.status === 'canceled' ? `${data.job.name} is stopping. Saved drafts remain for review.` : `${data.job.name} is queued for translation. I’ll show its workflow and coverage below.`, { replay });
+      message('assistant', data.job.status === 'canceled' ? `${data.job.name} is stopping. Saved drafts remain for review.` : ['queued','running'].includes(data.job.status) ? `${data.job.name} is queued for translation. I’ll show its workflow and coverage below.` : `${data.job.name} uses saved translations. Its selected review and delivery steps appear below.`, { replay });
       $('agentMessages').append(translationJobProgress({ jobId: data.job.id, request,
         onStop: async jobId => {
           if (run?.status !== 'awaiting_input') throw new Error('Finish the current chat turn before requesting a job stop, or use Stop job in Projects.');

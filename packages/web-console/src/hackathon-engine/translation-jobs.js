@@ -1,3 +1,4 @@
+import { LOCALIZATION_WORKFLOWS } from '@hedgeling/api-contract';
 // SPDX-License-Identifier: Apache-2.0
 import { randomUUID } from 'node:crypto';
 import { fail } from './errors.js';
@@ -30,7 +31,7 @@ export function createTranslationJobs({ database, transaction, authorize, inspec
       where job_id=$1 and error_code is not null order by ordinal limit 5`, [job.id])).rows;
     return { job: { id: job.id, name: job.name, status: job.status, projectSlug: p.slug,
       targetLocales: job.target_locales, steps: job.steps, documentId: job.source_document_id || null, progress: Object.fromEntries(counts.map(r => [r.status, r.count])),
-      workflow: isAiOnly(job) ? 'AI-only translations' : job.steps.map(step=>({machine_translation:'AI Translation',human_translation:'Human translation',review:'Review',qa:'Quality check'})[step]||step).join(' → '), coverage: await jobCoverage(db,job),
+      workflowPreset: job.workflow_preset, workflow: LOCALIZATION_WORKFLOWS[job.workflow_preset]?.label || (isAiOnly(job) ? 'AI-only translations' : job.steps.map(step=>({machine_translation:'AI Translation',human_translation:'Human translation',review:'Review',qa:'Quality check'})[step]||step).join(' → ')), coverage: await jobCoverage(db,job),
       batch: job.execution?.summary || null, startedAt: job.started_at, finishedAt: job.finished_at, errors },
     uiTarget: target(p, job.id, 'localization_job.status') };
   }

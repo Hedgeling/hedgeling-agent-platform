@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { fail } from './errors.js';
 export const isAiOnly = job => job.steps.length === 1 && job.steps[0] === 'machine_translation';
+export const reviewSatisfied = (job, coverage) => isAiOnly(job) || (job.workflow_preset === 'human_review'
+  ? coverage.humanReviewed === coverage.total : job.workflow_preset === 'ai_quality'
+    ? coverage.userApproved + coverage.humanReviewed === coverage.total : coverage.verified === coverage.total);
+export const reviewLabel = job => job.workflow_preset === 'human_review' ? 'Human-reviewed translations' : job.workflow_preset === 'ai_quality' ? 'Translations approved after AI assessment or human review' : isAiOnly(job) ? 'Unreviewed AI translations' : 'Verified translations (legacy workflow)';
 export const jobTarget = (p,id,action) => ({view:'workspace',organizationId:p.organizationId,projectSlug:p.slug,action,resource:{type:'job',id}});
 export async function loadJob(db,jobId,auth,scope,authorize,permission='read',lock=false) {
   const p=(await db.query(`select p.id,p.slug,p.name,p.source_locale as "sourceLocale",p.business_unit_id as "businessUnitId",b.organization_id as "organizationId"
@@ -24,13 +28,15 @@ export async function currentJobSources(db,p,job,lock=false) {
 }
 export async function jobCoverage(db,job,locales=job.target_locales) {
   const r=(await db.query(`select count(*)::int as saved,count(*) filter(where human_status='verified')::int as verified,
+    count(*) filter(where human_status='verified' and approval_basis='ai_assessment' and approved_text_hash=md5(text) and approved_source_hash=s.source_hash)::int as "userApproved",
+    count(*) filter(where human_status='verified' and approval_basis='human_review' and approved_text_hash=md5(text) and approved_source_hash=s.source_hash)::int as "humanReviewed",
     count(*) filter(where human_status='rejected')::int as rejected,count(*) filter(where coalesce(human_status,'pending') in ('pending','needs-review'))::int as "inReview"
-    from translations where source_string_id=any($1::uuid[]) and locale=any($2::text[]) and length(trim(text))>0`,[job.source_snapshot.map(s=>s.id),locales])).rows[0];
+    from translations t join source_strings s on s.id=t.source_string_id where source_string_id=any($1::uuid[]) and locale=any($2::text[]) and length(trim(text))>0`,[job.source_snapshot.map(s=>s.id),locales])).rows[0];
   const total=job.source_snapshot.length*locales.length;
   return {...r,total,missing:total-r.saved};
 }
 export async function jobTranslations(db,job,{locales=job.target_locales,selection='all',ids=null,limit=1001,lock=false}={}) {
-  return (await db.query(`select t.id,t.source_string_id as "sourceId",t.locale,t.text,t.source,t.provider,t.model,t.human_status as "humanStatus",t.review_note as "reviewNote",t.updated_at as "updatedAt",
+  return (await db.query(`select t.id,t.source_string_id as "sourceId",t.locale,t.text,t.source,t.provider,t.model,t.human_status as "humanStatus",case when t.approved_text_hash=md5(t.text) and t.approved_source_hash=s.source_hash then t.approval_basis else null end as "approvalBasis",t.review_note as "reviewNote",t.updated_at as "updatedAt",
     s.source_hash as "sourceHash",s.source_text as "sourceText",s.limit_chars as "limitChars",s.purpose,s.visual_context as "visualContext"
     from translations t join source_strings s on s.id=t.source_string_id where s.project_id=$1 and s.id=any($2::uuid[]) and t.locale=any($3::text[])
     and ($4='all' or coalesce(t.human_status,'pending') in ('pending','needs-review')) and ($5::uuid[] is null or t.id=any($5::uuid[]))

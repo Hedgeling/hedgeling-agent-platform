@@ -47,6 +47,11 @@ function fixtureTurn(history, organizationId) {
   // Explicit synthetic prompts for local browser/MCP tests. Production Meta
   // follows the extraction skill using these same authenticated tools.
   const lastUser = history.findLast(item => item.role === 'user' && !item.confirmation && item.parts?.some(p => p.text));
+  const flowPrompt = /^Show localization flow for ([a-z0-9-]+)$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
+  if (flowPrompt && !confirmation) {
+    if (!response) return part('console_get_localization_flow', { projectSlug: flowPrompt[1] });
+    if (response.name === 'console_get_localization_flow') return { role: 'model', parts: [{ text: response.response.flow?.next?.title || response.response.error || 'Check the project’s saved workflow.' }] };
+  }
   const documentPrompt = /^Create a French document job for ([a-f0-9-]{36})\.?$/.exec(lastUser?.parts?.map(p => p.text || '').join(' ') || '');
   if (documentPrompt && !confirmation) {
     if (!response) return part('console_get_document', { documentId: documentPrompt[1] });

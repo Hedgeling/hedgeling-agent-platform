@@ -1,3 +1,4 @@
+import { GUIDED_LOCALIZATION_SKILL } from '@hedgeling/api-contract';
 import { JOB_REVIEW_SKILL } from './hackathon-engine/job-review-actions.js';
 import { JOB_DELIVERY_SKILL } from './hackathon-engine/job-delivery-actions.js';
 import { REPOSITORY_SKILL } from './hackathon-engine/repository-actions.js';
@@ -9,6 +10,7 @@ import { LIBRARY_SKILL } from './hackathon-engine/library-actions.js';
 import { PROJECT_LOCALE_SKILL } from './hackathon-engine/project-locales-actions.js';
 import { EXTRACTION_SKILL } from './hackathon-engine/extraction-actions.js';
 export const agentSkills = Object.freeze([
+  GUIDED_LOCALIZATION_SKILL,
   REPOSITORY_SKILL,
   CONTEXT_SKILL,
   DOCUMENT_SKILL,

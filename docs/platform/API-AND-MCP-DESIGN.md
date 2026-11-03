@@ -157,3 +157,21 @@ Verify manual/API/MCP parity using the same actors, scopes, inputs and expected
 results. Include confirmation bypass, stale grants, tenant isolation, locale
 restrictions, retry/idempotency, and cancellation at real transaction boundaries.
 This work does not require a new API technology to begin.
+
+## Guided localization implementation
+
+The hosted agent uses `guided-localization` v1 in `agent-skills.js`. It is a server-owned orchestration instruction, not a separately installed Codex skill. `localization_flow.get` and `localization_flow.configure` are shared API actions exposed by both MCP adapters; the console uses those same actions. External MCP clients receive the tool definitions, while the hosted runtime also loads the skill instructions. Skills recommend sequencing; server checks enforce permissions, freshness, review requirements and confirmations.
+
+The flow is extraction/import → optional enrichment/acceptance → workflow choice → translation → selected review → PR. `localization_flows` saves project choices and a selected job with a revision for stale-preview protection. Reads derive the next step from current context, coverage, quality and delivery state; configured steps alone never establish completion. Routine reads contain counts, IDs and statuses, not source contents or suggestions.
+
+| Preset | Work before PR delivery | Meaning |
+|---|---|---|
+| `ai_only` | AI translation | Fastest; complete AI output can ship unreviewed. |
+| `ai_quality` | AI translation, quality assessment, separate user approval | One assessment covers linguistic and technical quality. Findings do not rewrite text. Approval of an AI assessment is not human linguistic review. |
+| `human_review` | AI translation, a person’s review and approval in the console | AI checking may assist, but cannot satisfy the human review gate. |
+
+`localization_job.create` accepts `workflowPreset` or legacy `steps`; contradictory values fail. A guided preset selects its new job in the saved project flow and requires project-management access for that shared choice. Existing complete translations enter review (or complete as unreviewed AI-only output) without provider calls. Preset changes create a new job instead of silently weakening an existing job’s review requirement. Custom legacy jobs remain supported through the API.
+
+Accepted context and generated suggestions stay distinct. Enrichment remains optional, bounded and separately confirmed; a saved skip persists across imports. `context.summary` freshness limits still apply. Quality checks retain the 1,000-translation cap; larger selections must be narrowed explicitly. Old verification has unknown provenance and cannot satisfy a new guided human-review gate. New approval provenance is bound to the current source hash and translation text, with invalidation on edits/rejection. An existing PR is displayed as a previous delivery receipt, not proof that later edits were delivered.
+
+Run `npm run test:agent` against disposable loopback PostgreSQL for API/authorization coverage and `npm -w @hedgeling/web-console run test:job-workflows:browser` for the quality and guided-flow browser checks. Providers and repositories in these tests are synthetic; no real paid work or GitHub writes are performed.
