@@ -1,5 +1,6 @@
 import { proposalCard, answerCard, typewriterComposer } from "./agent-components.js";
 import { AgentAttention } from "./agent-attention.js";
+import { bindComposer } from './agent-composer.js';
 
 // This playground deliberately has no action API or run client. All submissions
 // are in-memory examples, including the shared approval component.
@@ -7,6 +8,7 @@ const card = document.getElementById("previewCard");
 const reply = document.getElementById("previewReply");
 const attention = new AgentAttention();
 document.getElementById("previewComposer").innerHTML = typewriterComposer;
+const composer = bindComposer(document.getElementById('agentComposer'));
 const render = (kind) => {
   reply.textContent = "";
   for (const button of document.querySelectorAll("[data-example]")) button.setAttribute("aria-pressed", String(button.dataset.example === kind));
@@ -42,10 +44,7 @@ document.getElementById("agentComposer").addEventListener("submit", (event) => {
   const input = document.getElementById("agentInput");
   if (!input.value.trim()) return;
   reply.textContent = `Your sample note: ${input.value.trim()}\n\nExample only · Nothing was sent to the agent.`;
-  input.value = "";
-});
-document.getElementById("agentInput").addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); document.getElementById("agentComposer").requestSubmit(); }
+  composer.setValue('');
 });
 document.getElementById("previewHighlight").addEventListener("click", () => { attention.clear(); attention.mark(document.getElementById("previewHighlightTarget"), "Example · looking at this section"); });
 render("approval");

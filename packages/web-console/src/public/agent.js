@@ -4,6 +4,7 @@ import { openDocumentUpload, fileCard } from './documents.js';
 import { isDocumentDownload } from './document-files.js';
 import { agentNotifications } from './agent-notifications.js';
 import { panelResizer } from './agent-resizer.js';
+import { bindComposer } from './agent-composer.js';
 import { activityGroup } from './agent-activity.js';
 import { githubConnectionCard } from './github-connection.js';
 import { renderChatMarkdown } from "./chat-markdown.js";
@@ -16,7 +17,7 @@ import { AgentAttention, actionForTool } from "./agent-attention.js";
 
 const controllerId = crypto.randomUUID();
 let config, brand, run, stream, heartbeat, workspace, userId;
-let notifications, turnHasReply = false;
+let notifications, composer, turnHasReply = false;
 let markInitialized;
 const initialized = new Promise((resolve) => { markInitialized = resolve; });
 const hasWorkspace = Boolean(document.getElementById("workspaceRoot"));
@@ -36,21 +37,29 @@ shell.innerHTML = `
   <header class="agent-header">
     <div class="agent-identity"><img class="agent-avatar" alt=""><div><strong data-agent-name>Hedgeling</strong><span id="agentStatus" role="status" aria-live="polite">Ready when you are</span></div></div>
     <div class="agent-window-controls" role="group" aria-label="Chat layout">
-      <button type="button" data-mode="overlay" aria-label="Full-screen chat" title="Full-screen chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button>
-      <button type="button" data-mode="panel" aria-label="Side panel" title="Dock chat beside your workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></svg></button>
-      <button type="button" data-mode="minimized" aria-label="Minimize chat" title="Minimize chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18h14"/></svg></button>
+      <button type="button" class="agent-tool-button" data-mode="overlay" aria-label="Full-screen chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg><span class="agent-tool-label" aria-hidden="true">Full-screen chat</span></button>
+      <button type="button" class="agent-tool-button" data-mode="panel" aria-label="Side panel"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></svg><span class="agent-tool-label" aria-hidden="true">Side panel</span></button>
+      <button type="button" class="agent-tool-button" data-mode="minimized" aria-label="Minimize chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18h14"/></svg><span class="agent-tool-label" aria-hidden="true">Minimize chat</span></button>
     </div>
   </header>
-  <div class="agent-context"><label><span>Working in</span><select id="agentScope" aria-label="Conversation organization" disabled></select></label><button type="button" id="agentNew" disabled>New chat</button></div>
+  <div class="agent-context"><label><span>Working in</span><select id="agentScope" aria-label="Conversation organization" disabled></select></label><button type="button" id="agentNew" class="agent-tool-button" aria-label="New chat" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="agent-tool-label" aria-hidden="true">New chat</span></button></div>
   <div id="agentPlanNotice" class="agent-plan-notice" hidden><p id="agentPlanMessage"></p><button type="button" id="agentUpgrade">View plans</button></div>
   <div class="agent-scroll"><div class="agent-paper"><div id="agentWelcome" class="agent-welcome"><img class="agent-hero" alt=""><span class="agent-eyebrow">YOUR LOCALIZATION COPILOT</span><h1>What shall we work on?</h1><p>Build a workspace. Find the right words.<br>Keep every language moving.</p><div id="agentSuggestions" class="agent-suggestions"></div></div><div id="agentMessages" role="log" aria-label="Conversation"></div></div></div>
   <div id="agentError" class="agent-error" role="alert"></div>
   <footer class="agent-footer">
   <p id="agentComposerHint" class="agent-composer-hint" role="status" aria-live="polite" hidden></p>
   ${typewriterComposer}
-  <button type="button" id="agentUploadDocument" class="agent-document-upload" disabled>＋ Upload document</button>
-  <div class="agent-run-controls"><button type="button" id="agentTakeControl" hidden>Take control</button><button type="button" id="agentPause">Pause</button><button type="button" id="agentTakeover">Take over</button><button type="button" id="agentCancel">Cancel task</button><label><input type="checkbox" id="agentFollow" checked> Follow along</label></div>
-  <div class="agent-footnote"><span id="agentProviderLabel">You confirm every change.</span><a id="agentCardExamples" href="/agent-preview.html" target="_blank" rel="noopener" hidden>Try card examples ↗</a><label class="agent-theme">Theme <select data-theme-preference><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><button type="button" id="agentSound" aria-pressed="false" title="Play a short sound for replies and approval requests">Sound off</button><button type="button" id="agentOpaque" aria-pressed="false">Hide workspace edges</button></div></footer>`;
+  <div class="agent-run-controls" role="group" aria-label="Conversation actions">
+    <button type="button" id="agentUploadDocument" class="agent-tool-button" aria-label="Upload document" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l8-8"/></svg><span class="agent-tool-label" aria-hidden="true">Upload document</span></button>
+    <button type="button" id="agentTakeControl" hidden>Take control</button>
+    <button type="button" id="agentPause" class="agent-tool-button" aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg><span class="agent-tool-label" aria-hidden="true">Pause</span></button>
+    <button type="button" id="agentTakeover" class="agent-tool-button" aria-label="Take over"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V5a2 2 0 0 1 4 0v6-8a2 2 0 0 1 4 0v8-5a2 2 0 0 1 4 0v10c0 4-3 6-6 6h-2c-2 0-3-1-4-3l-4-6a2 2 0 0 1 3-2l1 1Z"/></svg><span class="agent-tool-label" aria-hidden="true">Take over</span></button>
+    <button type="button" id="agentCancel" class="agent-tool-button agent-tool-cancel" aria-label="Cancel task"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span class="agent-tool-label" aria-hidden="true">Cancel task</span></button>
+    <button type="button" id="agentSound" class="agent-tool-button" aria-label="Sound off" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path class="sound-on" d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/><path class="sound-off" d="m16 9 6 6m0-6-6 6"/></svg><span class="agent-tool-label" aria-hidden="true">Sound off</span></button>
+    <button type="button" id="agentOpaque" class="agent-tool-button" aria-label="Hide workspace edges" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h10v10H7Z"/></svg><span class="agent-tool-label" aria-hidden="true">Hide workspace edges</span></button>
+    <label><input type="checkbox" id="agentFollow" checked> Follow along</label>
+  </div>
+  <div class="agent-footnote"><span id="agentProviderLabel">You confirm every change.</span><a id="agentCardExamples" href="/agent-preview.html" target="_blank" rel="noopener" hidden>Try card examples ↗</a></div></footer>`;
 const launcher = element("button", "agent-launcher"); launcher.type = "button"; launcher.setAttribute("aria-label", "Open Hedgeling assistant");
 launcher.innerHTML = '<img alt=""><span>Ask Hedgeling</span><i aria-hidden="true"></i>';
 const $ = (id) => shell.querySelector(`#${id}`);
@@ -99,6 +108,7 @@ function setMode(next, focus = true) {
     const scroller = shell.querySelector(".agent-scroll"); scroller.scrollTop = scroller.scrollHeight;
   });
   notifications?.read();
+  composer?.resize();
 }
 function updateState(status) {
   if (run) run.status = status;
@@ -131,7 +141,7 @@ function updateState(status) {
     : $("agentInput").disabled ? "Hedgeling is working. You can type again when this step finishes." : "";
   $("agentComposerHint").textContent = hint;
   $("agentComposerHint").hidden = !hint;
-  $("agentInput").setAttribute("aria-describedby", "agentComposerHint");
+  $("agentInput").setAttribute("aria-describedby", "agentComposerHint agentInputHelp");
   $("agentInput").placeholder = otherController ? "Select Take control below…" : paused ? "Click here to continue chatting…" : "Type your next idea…";
   $("agentComposer").querySelector("button").disabled = $("agentInput").disabled || paused || Boolean(activation);
   $("agentPause").disabled = !run; $("agentCancel").disabled = !run || status === "cancelled";
@@ -302,6 +312,11 @@ async function refreshScopes() {
   config = await request("/api/agent/config");
   window.HedgelingShell?.agentAvailable(config, brand);
   const select = $("agentScope"); select.replaceChildren(new Option("New organization", ""));
+  if (CSS.supports('appearance', 'base-select')) {
+    // Let long selected names shrink without pushing the picker arrow out of view.
+    const button = element('button'); button.type = 'button';
+    button.append(element('selectedcontent')); select.prepend(button);
+  }
   for (const org of config.organizations) select.append(new Option(org.name, org.id));
   select.value = scope || "";
   updateState(run?.status || "awaiting_input");
@@ -354,7 +369,7 @@ async function changeConversation(organizationId, { restore = false, refreshWork
     run = null;
     attentionGeneration++; attention.clear();
     cursor = 0; seen.clear(); confirmed.clear(); activity.reset(); notifications?.clear(); turnHasReply = false; $("agentMessages").replaceChildren(); $("agentWelcome").hidden = false; $("agentError").textContent = "";
-    $("agentInput").value = restore ? drafts.get(scope) || "" : "";
+    composer.setValue(restore ? drafts.get(scope) || '' : '');
     const saved = restore && sessionStorage.getItem(runKey(scope));
     if (saved) {
       try { await restoreConversation(saved, scope); }
@@ -413,6 +428,17 @@ async function initialize() {
   // user's minimize/navigation and cover their workspace on smaller screens.
   setMode(["overlay", "panel", "minimized"].includes(mode) ? mode : "overlay", false);
   panelResizer($('agentResizeHandle'));
+  composer = bindComposer($('agentComposer'));
+  for (const button of shell.querySelectorAll('.agent-tool-button')) {
+    for (const event of ['pointerleave', 'blur']) button.addEventListener(event, () => delete button.dataset.tooltipDismissed);
+  }
+  shell.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    const visible = shell.querySelectorAll('.agent-tool-button:is(:hover, :focus-visible):not([data-tooltip-dismissed])');
+    if (!visible.length) return;
+    event.preventDefault(); event.stopPropagation();
+    for (const button of visible) button.dataset.tooltipDismissed = 'true';
+  }, true);
   notifications = agentNotifications({ launcher, soundButton: $('agentSound'),
     isReading: () => !document.hidden && document.hasFocus() && mode !== 'minimized' && nearLatest(),
     open: () => { setMode(matchMedia('(max-width: 760px)').matches ? 'overlay' : 'panel'); const scroller = shell.querySelector('.agent-scroll'); scroller.scrollTop = scroller.scrollHeight; },
@@ -456,7 +482,7 @@ async function initialize() {
     if (!organizationId) return;
     void openDocumentUpload({ root: shell, organizationId, request, onChoose: ({ document, projectSlug }) => {
       if (scope !== organizationId) return showError(new Error('The workspace changed. Select the document again.'));
-      $('agentInput').value = `Please inspect uploaded document ${document.id} in project ${projectSlug} and help me create a document translation job. Ask me for any missing language choices.`;
+      composer.setValue(`Please inspect uploaded document ${document.id} in project ${projectSlug} and help me create a document translation job. Ask me for any missing language choices.`);
       $('agentInput').focus();
     } }).catch(showError);
   });
@@ -477,21 +503,21 @@ async function initialize() {
   $("agentCancel").addEventListener("click", async () => { try { run = (await request(`/api/agent/runs/${run.id}/cancel`, { controllerId })).run; updateState(run.status); } catch (e) { showError(e); } });
   $("agentComposer").addEventListener("submit", async (event) => {
     event.preventDefault(); const text = $("agentInput").value.trim(); if (!text) return;
-    try { if (activation) await activation; if (run?.status === "paused") await activateComposer(); if (!run) await startConversation(); if (!run || $("agentInput").disabled) return; await request(`/api/agent/runs/${run.id}/messages`, { text, controllerId }); $("agentInput").value = ""; updateState("planning"); }
+    try { if (activation) await activation; if (run?.status === "paused") await activateComposer(); if (!run) await startConversation(); if (!run || $("agentInput").disabled) return; await request(`/api/agent/runs/${run.id}/messages`, { text, controllerId }); composer.setValue(''); updateState("planning"); }
     catch (error) { showError(error); }
   });
-  $("agentInput").addEventListener("keydown", (event) => { if (run?.status === "paused" && event.key !== "Tab") void activateComposer().catch(showError); if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (!$("agentInput").disabled) $("agentComposer").requestSubmit(); } });
+  $("agentInput").addEventListener("keydown", (event) => { if (run?.status === "paused" && event.key !== "Tab") void activateComposer().catch(showError); });
   const suggestions = config.demo ? ["Set up demo workspace", "Show my projects"] : ["Help me set up an organization", "Show my projects", "Prepare a localization job"];
   for (const text of suggestions) {
     const button = element("button", "", text); button.type = "button";
     button.addEventListener("click", async () => {
       try {
         if (config.demo && text === "Set up demo workspace" && scope) await startConversation(null);
-        $("agentInput").value = text; $("agentInput").focus();
+        composer.setValue(text); $("agentInput").focus();
       } catch (error) { showError(error); }
     }); $("agentSuggestions").append(button);
   }
-  $("agentOpaque").addEventListener("click", () => { const opaque = shell.dataset.opaque !== "true"; shell.dataset.opaque = String(opaque); $("agentOpaque").setAttribute("aria-pressed", String(opaque)); });
+  $("agentOpaque").addEventListener("click", () => { const opaque = shell.dataset.opaque !== "true"; shell.dataset.opaque = String(opaque); $("agentOpaque").setAttribute("aria-pressed", String(opaque)); const label = opaque ? 'Show workspace edges' : 'Hide workspace edges'; $('agentOpaque').setAttribute('aria-label', label); $('agentOpaque').querySelector('.agent-tool-label').textContent = label; });
   document.addEventListener("input", (event) => { if (event.target.closest("main") && !event.target.closest(".project-languages, .library-workbench, .document-panel") && (event.target.matches("textarea:not([readonly])") || event.target.closest("form"))) dirty = true; });
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "Space") { event.preventDefault(); if (mode === "minimized") void openConversation(); else setMode("minimized"); }

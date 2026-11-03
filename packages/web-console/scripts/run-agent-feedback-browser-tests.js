@@ -30,8 +30,65 @@ try {
   await expect(shell.locator('#agentInput')).toBeEnabled();
   await expect(shell.locator('#agentWidth')).toHaveCount(0);
   await expect(shell).not.toContainText('to be continued');
+  const newChat = shell.getByRole('button', { name: 'New chat', exact: true });
+  await newChat.hover(); await expect(newChat.locator('.agent-tool-label')).toBeVisible();
+  await page.mouse.move(0, 0); await newChat.focus();
+  await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
+  await expect(newChat.locator('.agent-tool-label')).toBeVisible();
+  await newChat.press('Escape'); await expect(newChat.locator('.agent-tool-label')).toBeHidden();
+  await expect(shell).toHaveAttribute('data-mode', 'overlay');
+  const firstRun = await page.evaluate(() => sessionStorage.getItem(Object.keys(sessionStorage).find(k => k.startsWith('hedgeling.agent.run.'))));
+  await newChat.press('Enter');
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem(Object.keys(sessionStorage).find(k => k.startsWith('hedgeling.agent.run.'))))).not.toBe(firstRun);
+  await expect(shell.locator('#agentInput')).toBeEnabled();
   const run = await page.evaluate(() => sessionStorage.getItem(Object.keys(sessionStorage).find(k => k.startsWith('hedgeling.agent.run.'))));
   const emit = async (kind, data) => app.database.query('insert into agent_events(run_id,kind,data) values($1,$2,$3)', [run, kind, data]);
+  // Drafts wrap and grow without sending on ordinary Enter or IME confirmation.
+  await expect(shell.locator('[data-theme-preference]')).toHaveCount(0);
+  const input = shell.getByRole('textbox', { name: 'Message the assistant' });
+  const dimensions = () => input.evaluate(node => ({ height: node.clientHeight, lines: node.clientHeight / parseFloat(getComputedStyle(node).lineHeight), scrollHeight: node.scrollHeight, scrollTop: node.scrollTop, width: node.clientWidth, scrollWidth: node.scrollWidth }));
+  assert.equal((await dimensions()).lines, 3);
+  const sent = [];
+  await page.route('**/api/agent/runs/*/messages', async route => { sent.push(route.request().postDataJSON().text); await route.fulfill({ json: {} }); });
+  await input.fill('First line'); await input.press('End'); await input.press('Enter'); await input.pressSequentially('Second line');
+  await expect(input).toHaveValue('First line\nSecond line');
+  await input.dispatchEvent('keydown', { key: 'Enter', ctrlKey: true, isComposing: true });
+  assert.deepEqual(sent, []);
+  const longDraft = Array.from({ length: 24 }, (_, i) => `Instruction ${i + 1}: ${'Keep the wording clear. '.repeat(5)}`).join('\n');
+  await input.fill(longDraft);
+  const grown = await dimensions();
+  assert.equal(grown.lines, 8);
+  assert.ok(grown.scrollHeight > grown.height && grown.scrollWidth <= grown.width + 1);
+  // Both ends of a long draft remain editable; changing a line must not jump to the end.
+  await input.evaluate(node => { node.setSelectionRange(0, 0); node.scrollTop = 0; });
+  await input.pressSequentially('Start here. ');
+  assert.ok((await dimensions()).scrollTop < 25);
+  await input.evaluate(node => { node.setSelectionRange(node.value.length, node.value.length); node.scrollTop = node.scrollHeight; });
+  await input.pressSequentially(' End here.');
+  const atEnd = await dimensions();
+  assert.ok(atEnd.scrollTop > 0 && atEnd.scrollTop + atEnd.height >= atEnd.scrollHeight - 2);
+  await page.screenshot({ path: `${artifacts}/composer-long-draft.png` });
+  // Exercise both shortcuts against a captured request, never a model call.
+  for (const shortcut of ['Control+Enter', 'Meta+Enter']) {
+    const message = `Send with ${shortcut}\nand preserve this line.`;
+    await input.fill(message); await input.press(shortcut);
+    await expect.poll(() => sent.at(-1)).toBe(message);
+    await expect(input).toHaveValue('');
+    assert.equal((await dimensions()).lines, 3);
+    await emit('state', { status: 'awaiting_input' }); await expect(input).toBeEnabled();
+  }
+  assert.equal(sent.length, 2);
+  await page.unroute('**/api/agent/runs/*/messages');
+  const upload = shell.getByRole('button', { name: 'Upload document', exact: true });
+  await upload.hover(); await expect(upload.locator('.agent-tool-label')).toBeVisible();
+  await input.press('Escape'); await expect(upload.locator('.agent-tool-label')).toBeHidden();
+  const pause = shell.getByRole('button', { name: 'Pause', exact: true });
+  await page.mouse.move(0, 0); await pause.focus();
+  await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
+  await expect(pause.locator('.agent-tool-label')).toBeVisible();
+  await pause.press('Escape'); await expect(pause.locator('.agent-tool-label')).toBeHidden();
+  await expect(shell).toHaveAttribute('data-mode', 'overlay');
+  await input.focus();
   await emit('message', { role: 'user', text: 'Translate this game, then help me deliver a PR.' });
   await emit('state', { status: 'planning' });
   for (const tool of ['console_list_projects', 'console_get_job_delivery_options']) {
@@ -51,11 +108,16 @@ try {
   await expect(shell.locator('time').first()).toHaveAttribute('datetime', /T/);
   assert.equal(await page.evaluate(() => window.chimes), 0);
   await page.screenshot({ path: `${artifacts}/chat-light.png` });
-  await shell.locator('[data-theme-preference]').selectOption('dark');
+  await page.locator('select[data-theme-preference]').evaluate(select => { select.value = 'dark'; select.dispatchEvent(new Event('change', { bubbles: true })); });
   await page.screenshot({ path: `${artifacts}/chat-dark.png` });
   await shell.getByRole('button', { name: 'Side panel', exact: true }).click();
   const handle = shell.getByRole('separator', { name: 'Resize chat panel' });
   await expect(handle).toBeVisible(); const initial = Number(await handle.getAttribute('aria-valuenow'));
+  await expect(shell.locator('#agentNew')).toBeVisible();
+  const contextRow = await shell.locator('.agent-context').boundingBox();
+  const plus = await shell.locator('#agentNew').boundingBox();
+  const scopeBox = await shell.locator('#agentScope').boundingBox();
+  assert.ok(Math.abs(plus.y - scopeBox.y) <= 1 && contextRow.height < 50, 'Workspace selector and new-chat button should stay on one compact row');
   await handle.focus(); await page.keyboard.press('ArrowLeft');
   assert.equal(Number(await handle.getAttribute('aria-valuenow')), initial + 24);
   const box = await handle.boundingBox();
@@ -64,6 +126,8 @@ try {
   assert.equal(await page.locator('body').evaluate(n => n.classList.contains('agent-resizing')), false);
   await shell.locator('#agentSound').click();
   await expect(shell.locator('#agentSound')).toHaveAttribute('aria-pressed', 'true');
+  await expect(shell.getByRole('button', { name: 'Sound on', exact: true }).locator('svg')).toBeVisible();
+  await expect(shell.locator('#agentSound .sound-off')).toBeHidden();
   assert.equal(await page.evaluate(() => window.chimes), 1);
   await shell.getByRole('button', { name: 'Minimize chat', exact: true }).click();
   // Only a new reply/approval boundary pings; tool activity stays quiet.
@@ -113,6 +177,44 @@ try {
   await expect(shell.getByRole('separator')).toBeHidden();
   assert.ok(await shell.evaluate(n => n.scrollWidth <= n.clientWidth + 1), 'Mobile chat must not overflow horizontally');
   await page.screenshot({ path: `${artifacts}/chat-mobile.png` });
+  await input.fill(longDraft);
+  assert.ok((await dimensions()).scrollHeight > (await dimensions()).height);
+  assert.ok(await shell.locator('.agent-scroll').evaluate(node => node.clientHeight >= 200), 'A long draft must leave room to read the conversation');
+  await page.screenshot({ path: `${artifacts}/composer-mobile-long.png` });
+  await page.setViewportSize({ width: 390, height: 600 });
+  await expect.poll(async () => (await dimensions()).height).toBeLessThanOrEqual(150);
+  await input.fill('');
+  const touchContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
+  await touchContext.addCookies(await context.cookies());
+  const touch = await touchContext.newPage();
+  touch.on('pageerror', e => errors.push(e.message));
+  await touch.goto(app.origin);
+  await expect(touch.locator('#agentInput')).toBeEnabled();
+  await expect(touch.locator('#agentOpaque')).toBeHidden();
+  for (const button of await touch.locator('.agent-tool-button:visible').all()) {
+    const box = await button.boundingBox(); assert.ok(box.width >= 44 && box.height >= 44);
+  }
+  const touchToolbar = await touch.locator('.agent-run-controls').boundingBox();
+  assert.ok(touchToolbar.height <= 48, 'Touch toolbar should fit on one row at 390px');
+  assert.ok(await touch.locator('#hedgelingAgent').evaluate(node => node.scrollWidth <= node.clientWidth + 1));
+  await touch.screenshot({ path: `${artifacts}/composer-touch.png` });
+  // Long organization names can be read in the open picker without stretching the closed header.
+  await touch.setViewportSize({ width: 320, height: 700 });
+  await touch.locator('#agentScope').evaluate(select => { select.append(new Option('A very long synthetic organization name for the compact workspace picker', 'test-long-name', false, true)); });
+  const narrowScope = await touch.locator('#agentScope').boundingBox();
+  const narrowPlus = await touch.locator('#agentNew').boundingBox();
+  assert.ok(narrowScope.height <= 44 && Math.abs(narrowScope.y - narrowPlus.y) <= 1);
+  assert.ok(await touch.locator('#hedgelingAgent').evaluate(node => node.scrollWidth <= node.clientWidth + 1));
+  const selectedName = await touch.locator('#agentScope selectedcontent').boundingBox();
+  assert.ok(selectedName.width < narrowScope.width - 30, 'Long names must leave space for the dropdown arrow');
+  await touch.screenshot({ path: `${artifacts}/header-narrow.png` });
+  await touch.locator('#agentScope').click();
+  await expect(touch.getByRole('option', { name: 'A very long synthetic organization name for the compact workspace picker', exact: true })).toBeVisible();
+  await touch.screenshot({ path: `${artifacts}/header-picker.png` });
+  await touch.keyboard.press('Home'); await touch.keyboard.press('Enter');
+  await expect(touch.locator('#agentScope')).toHaveValue('');
+  await expect(touch.locator('#agentInput')).toBeEnabled();
+  await touchContext.close();
   // Synthetic delivery responses exercise the actual form without calling GitHub.
   await page.setViewportSize({ width: 1440, height: 1000 });
   await shell.getByRole('button', { name: 'Minimize chat', exact: true }).click();
@@ -153,6 +255,6 @@ try {
   await delivery.getByRole('button', { name: 'Reconnect GitHub', exact: true }).click();
   await expect(page).toHaveURL('https://github.com/login/oauth/authorize?client_id=synthetic-test');
   assert.deepEqual(errors, []);
-  console.log('PASS: grouped activity, message structure, timestamps, sound preference, unread notifications, replay, drag/keyboard resizing, GitHub authorization handoff, delivery readiness/review counts, latest extraction selection, and mobile layout.');
+  console.log('PASS: multiline composer, long-draft editing/scrolling, send shortcuts, IME guard, compact toolbar/tooltips, grouped activity, message structure, timestamps, sound preference, unread notifications, replay, drag/keyboard resizing, GitHub authorization handoff, delivery readiness/review counts, latest extraction selection, and mobile layout.');
 } catch (e) { if (page) await page.screenshot({ path: `${artifacts}/failure.png` }).catch(() => {}); throw e; }
 finally { await browser?.close(); await app.close(); }
