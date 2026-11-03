@@ -7,6 +7,7 @@ test('chat exposes counts and narrow inspection but cannot invoke bulk context b
   t.after(()=>session.close());
   const names=(await session.client.listTools()).tools.map(t=>t.name);
   assert(names.includes('console_get_context_summary')); assert(names.includes('console_inspect_string_context'));
+  assert(names.includes('console_check_repository_delivery'));
   for(const name of ['console_list_string_context','console_browse_context_results']){
     assert(!names.includes(name));
     const result=await session.client.callTool({name,arguments:{}});

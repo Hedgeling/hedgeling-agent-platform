@@ -3,6 +3,7 @@
   "id": "hedgeling",
   "productName": "Hedgeling",
   "agentName": "Hedgeling",
+  "agentTitle": "Agent Hedgeling",
   "logo": "logo.png",
-  "mascot": "mascot.png"
+  "mascot": "agent-spark.svg"
 }

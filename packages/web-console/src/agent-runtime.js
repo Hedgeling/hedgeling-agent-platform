@@ -26,6 +26,7 @@ const activityLabels = {
   console_propose_job_verification: 'Preparing verification of passing translations',
   console_propose_job_quality_cancel: 'Preparing to stop quality checks',
   console_get_job_delivery_options: 'Finding translation delivery files',
+  console_check_repository_delivery: 'Checking repository setup for translation delivery',
   console_propose_translation_pull_request: 'Preparing a translation pull request',
 
   console_list_documents: 'Finding uploaded documents',

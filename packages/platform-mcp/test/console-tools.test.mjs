@@ -66,6 +66,27 @@ test("report tools forward typed filters and pagination without altering the sha
   assert.equal(JSON.parse(result.content[0].text).result.totals.jobs, 150);
 });
 
+test('repository delivery readiness is a read-only MCP call without a translation job', async t => {
+  const env = { HEDGELING_CONSOLE_URL: 'https://console.example.com', HEDGELING_CONSOLE_TOKEN: 'test-service-token' };
+  const previous = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]));
+  Object.assign(process.env, env);
+  t.after(() => { for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  } });
+  const tool = consoleTools.find(t => t.name === 'console_check_repository_delivery');
+  assert.equal(tool.annotations.readOnlyHint, true);
+  const input = { projectSlug: 'playground', url: 'https://github.com/example/playground', baseBranch: 'main' };
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    assert.equal(url, 'https://console.example.com/api/actions/repositories.delivery_readiness');
+    assert.deepEqual(JSON.parse(init.body), input);
+    return Response.json({ version: 1, action: 'repositories.delivery_readiness', result: { readiness: { status: 'setup_required' } } });
+  });
+  const result = await callConsoleTool(tool.name, input);
+  assert.equal(result.isError, undefined);
+  assert.equal(JSON.parse(result.content[0].text).result.readiness.status, 'setup_required');
+  assert.equal(globalThis.fetch.mock.callCount(), 1);
+});
+
 test('Library MCP repairs quoted null while preserving version failures and strict validation', async t => {
   const previous={origin:process.env.HEDGELING_CONSOLE_URL,token:process.env.HEDGELING_CONSOLE_TOKEN};
   process.env.HEDGELING_CONSOLE_URL='https://console.example.com';
