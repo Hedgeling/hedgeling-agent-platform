@@ -2,10 +2,10 @@
 export function bindComposer(form) {
   const input = form.querySelector('textarea');
   const send = form.querySelector('button[type="submit"]');
-  const shortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ Enter' : 'Ctrl+Enter';
-  form.querySelector('.agent-input-help').textContent = `Enter for a new line · ${shortcut} to send`;
+  const shortcut = 'Shift+Return';
+  form.querySelector('.agent-input-help').textContent = `Return for a new line · ${shortcut} to send`;
   send.title = `Send message (${shortcut})`;
-  send.setAttribute('aria-keyshortcuts', 'Control+Enter Meta+Enter');
+  send.setAttribute('aria-keyshortcuts', 'Shift+Enter Control+Enter Meta+Enter');
   function resize() {
     if (!input.getClientRects().length) return;
     const scrollTop = input.scrollTop;
@@ -20,7 +20,8 @@ export function bindComposer(form) {
   }
   input.addEventListener('input', resize);
   input.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && !event.isComposing && event.keyCode !== 229) {
+    const sendShortcut = event.shiftKey ? !event.metaKey && !event.ctrlKey : event.metaKey || event.ctrlKey;
+    if (event.key === 'Enter' && sendShortcut && !event.altKey && !event.isComposing && event.keyCode !== 229 && !event.repeat) {
       event.preventDefault();
       if (!input.disabled && !send.disabled) form.requestSubmit(send);
     }

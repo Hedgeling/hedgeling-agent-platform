@@ -182,8 +182,11 @@ export function answerCard({ title, description, fields, submitLabel = "Send ans
 
 export const typewriterComposer = `
   <form id="agentComposer" class="agent-typewriter">
-    <div class="agent-input-paper"><label class="sr-only" for="agentInput">Message the assistant</label><textarea id="agentInput" rows="3" wrap="soft" maxlength="${CHAT_LIMITS.messageCharacters}" aria-describedby="agentInputHelp" placeholder="Type your next idea…" required></textarea><button class="typewriter-return" type="submit" aria-label="Send message">Send <span aria-hidden="true">↑</span></button></div>
-    <p id="agentInputHelp" class="agent-input-help">Enter for a new line · Ctrl+Enter to send</p>
+    <div class="agent-composer-row">
+      <div class="agent-input-paper"><label class="sr-only" for="agentInput">Message the assistant</label><textarea id="agentInput" rows="3" wrap="soft" maxlength="${CHAT_LIMITS.messageCharacters}" aria-describedby="agentInputHelp" placeholder="Type your next idea…" required></textarea></div>
+      <button class="typewriter-return" type="submit" aria-label="Send message" title="Send message (Shift+Return)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button>
+    </div>
+    <p id="agentInputHelp" class="agent-input-help">Return for a new line · Shift+Return to send</p>
   </form>`;
 
 async function readWorkspacePages(organizationId) {

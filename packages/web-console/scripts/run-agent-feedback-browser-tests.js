@@ -26,6 +26,10 @@ try {
   page = await context.newPage(); page.setDefaultTimeout(15000);
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   await page.goto(app.origin);
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/design-system/assets/logo.png');
+  const favicon = await fetch(`${app.origin}/design-system/assets/logo.png`);
+  assert.equal(favicon.status, 200, 'The favicon must load without a signed-in session');
+  assert.match(favicon.headers.get('content-type'), /image\/png/);
   const shell = page.locator('#hedgelingAgent');
   await expect(shell.locator('#agentInput')).toBeEnabled();
   await expect(shell.locator('[data-agent-name]')).toHaveText('Agent Hedgeling');
@@ -76,6 +80,11 @@ try {
   // Drafts wrap and grow without sending on ordinary Enter or IME confirmation.
   await expect(shell.locator('[data-theme-preference]')).toHaveCount(0);
   const input = shell.getByRole('textbox', { name: 'Message the assistant' });
+  const send = shell.getByRole('button', { name: 'Send message', exact: true });
+  await expect(send).toHaveAttribute('title', 'Send message (Shift+Return)');
+  const paperBox = await shell.locator('.agent-input-paper').boundingBox();
+  const sendBox = await send.boundingBox();
+  assert.ok(sendBox.x > paperBox.x + paperBox.width && sendBox.width <= 40, 'The compact Send icon must sit outside the draft');
   const dimensions = () => input.evaluate(node => ({ height: node.clientHeight, lines: node.clientHeight / parseFloat(getComputedStyle(node).lineHeight), scrollHeight: node.scrollHeight, scrollTop: node.scrollTop, width: node.clientWidth, scrollWidth: node.scrollWidth }));
   assert.equal((await dimensions()).lines, 3);
   const sent = [];
@@ -83,6 +92,9 @@ try {
   await input.fill('First line'); await input.press('End'); await input.press('Enter'); await input.pressSequentially('Second line');
   await expect(input).toHaveValue('First line\nSecond line');
   await input.dispatchEvent('keydown', { key: 'Enter', ctrlKey: true, isComposing: true });
+  await input.dispatchEvent('keydown', { key: 'Enter', shiftKey: true, isComposing: true });
+  await input.dispatchEvent('keydown', { key: 'Enter', shiftKey: true, keyCode: 229 });
+  await input.dispatchEvent('keydown', { key: 'Enter', shiftKey: true, repeat: true });
   assert.deepEqual(sent, []);
   const longDraft = Array.from({ length: 24 }, (_, i) => `Instruction ${i + 1}: ${'Keep the wording clear. '.repeat(5)}`).join('\n');
   await input.fill(longDraft);
@@ -98,16 +110,17 @@ try {
   const atEnd = await dimensions();
   assert.ok(atEnd.scrollTop > 0 && atEnd.scrollTop + atEnd.height >= atEnd.scrollHeight - 2);
   await page.screenshot({ path: `${artifacts}/composer-long-draft.png` });
-  // Exercise both shortcuts against a captured request, never a model call.
-  for (const shortcut of ['Control+Enter', 'Meta+Enter']) {
+  // Exercise keyboard and pointer submission against a captured request, never a model call.
+  for (const shortcut of ['Shift+Enter', 'Control+Enter', 'Meta+Enter', 'click']) {
     const message = `Send with ${shortcut}\nand preserve this line.`;
-    await input.fill(message); await input.press(shortcut);
+    await input.fill(message);
+    if (shortcut === 'click') await send.click(); else await input.press(shortcut);
     await expect.poll(() => sent.at(-1)).toBe(message);
     await expect(input).toHaveValue('');
     assert.equal((await dimensions()).lines, 3);
     await emit('state', { status: 'awaiting_input' }); await expect(input).toBeEnabled();
   }
-  assert.equal(sent.length, 2);
+  assert.equal(sent.length, 4);
   await page.unroute('**/api/agent/runs/*/messages');
   const upload = shell.getByRole('button', { name: 'Upload document', exact: true });
   await upload.hover(); await expect(upload.locator('.agent-tool-label')).toBeVisible();
@@ -221,6 +234,8 @@ try {
   await touch.goto(app.origin);
   await expect(touch.locator('#agentInput')).toBeEnabled();
   await expect(touch.locator('#agentOpaque')).toBeHidden();
+  const touchSend = await touch.getByRole('button', { name: 'Send message', exact: true }).boundingBox();
+  assert.ok(touchSend.width >= 44 && touchSend.height >= 44, 'Send keeps a comfortable touch target');
   for (const button of await touch.locator('.agent-tool-button:visible').all()) {
     const box = await button.boundingBox(); assert.ok(box.width >= 44 && box.height >= 44);
   }

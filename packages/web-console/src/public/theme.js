@@ -34,6 +34,7 @@
       if (!response.ok) return;
       const brand = await response.json();
       if (!String(brand.logo).startsWith("/design-system/assets/")) return;
+      for (const icon of document.querySelectorAll('link[data-brand-icon]')) icon.href = brand.logo;
       for (const image of document.querySelectorAll('img[src="/hedgeling-logo.png"]')) image.src = brand.logo;
       for (const node of document.querySelectorAll("[data-brand-name]")) node.textContent = brand.productName;
       document.title = document.title.replaceAll("Hedgeling", brand.productName);
