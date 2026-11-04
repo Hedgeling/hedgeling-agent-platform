@@ -32,7 +32,10 @@
     {
       "source": "src/job-delivery-actions.js",
       "destination": "job-delivery-actions.js",
-      "sha256": "fd82acf7d5427e308743a33b068ff5f348269c7f40eb4d319cb853e89018d52f"
+      "sha256": "b60e923122ab0a8433eafee48ed690e3554c36004b6659e408618bf6ca647fd1",
+      "sourceRevision": "f2fcb79943cded709edf5668ea86c307db34fffb",
+      "integrationSha256": "bd10f7716e5d5e45573917f9cfabcf34c1353d6bf0f37df4885181a588731866",
+      "integrationNote": "Runtime handoff from this event revision, applied while retaining later hosted workflow gates and onboarding."
     },
     {
       "source": "src/github-source.js",
@@ -232,7 +235,10 @@
     {
       "source": "src/job-delivery-actions.js",
       "destination": "../../../api-contract/job-delivery-actions.js",
-      "sha256": "fd82acf7d5427e308743a33b068ff5f348269c7f40eb4d319cb853e89018d52f"
+      "sha256": "b60e923122ab0a8433eafee48ed690e3554c36004b6659e408618bf6ca647fd1",
+      "sourceRevision": "f2fcb79943cded709edf5668ea86c307db34fffb",
+      "integrationSha256": "bd10f7716e5d5e45573917f9cfabcf34c1353d6bf0f37df4885181a588731866",
+      "integrationNote": "Runtime handoff from this event revision, applied while retaining later hosted workflow gates and onboarding."
     },
     {
       "source": "contracts/202610292200_job_review_delivery.sql",
@@ -444,5 +450,18 @@
       "destination": "../public/workflow-progress.css",
       "sha256": "d3b619b24f59da40e329ecb57e1b8ed0567c0d8ce1fbd29a75b2e4d198268e1d"
     }
-  ]
+  ],
+  "additionalSourceRevisions": [
+    {
+      "revision": "f2fcb79943cded709edf5668ea86c307db34fffb",
+      "sources": [
+        "src/job-delivery-actions.js"
+      ],
+      "note": "Scoped event-authored runtime onboarding update; other files retain their recorded source revision."
+    }
+  ],
+  "runtimeHandoffIntegration": {
+    "date": "2026-11-04",
+    "description": "Shared delivery instructions, readiness setup text and confirmed-PR receipt direct developers to the maintained injector/language-selector quickstart. The separately licensed injector is not included here."
+  }
 }
