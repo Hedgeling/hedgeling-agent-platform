@@ -38,12 +38,14 @@ export async function repositoryDeliveryReadiness({ github, repo, baseBranch, ac
   ] });
   if (missingFiles) setupSteps.push({ code: 'runtime_setup', instructions: [
     'This PR workflow updates existing schemaVersion 1 Hedgeling translation bundles and source-key maps; it does not create the app integration.',
-    'Ask your developer or coding agent to integrate the supported Hedgeling runtime, commit hedgeling-bundle.json and hedgeling-source-key-map.json at the paths your app loads, and provide a way to select a language.',
+    'Ask your developer or coding agent to install the Hedgeling injector component from its separate npm package and implement a language selector. Follow https://thehedgeling.com/docs/quickstart for the maintained setup instructions; do not guess package names or install commands.',
+    'Commit hedgeling-bundle.json and hedgeling-source-key-map.json at the paths the injector actually loads, and wire language selection to the active locale.',
     'The bundle stores translations by locale and runtime key; the map links source text and context to those keys. Empty JSON files alone do not localize an app. Do not replace an existing localization system or invent runtime keys or package installation commands.',
     'After setup is merged into the chosen base branch, re-check delivery and extract/import that current branch before preparing the PR. Existing saved translations are preserved by import.'
   ] });
   setupSteps.push({ code: 'verify_runtime', instructions: [
-    'Have the developer confirm which bundle/map files the app actually loads and test switching languages. File names alone do not prove compatible contents or runtime integration.',
+    'Have the developer verify the Hedgeling injector component (a separate npm package), the application language selector and the exact bundle/map files the injector loads. Test switching languages on the translated route. File names alone do not prove compatible contents or runtime integration.',
+    'Use https://thehedgeling.com/docs/quickstart for full developer setup instructions. After a translation PR is created or merged, verify this integration and deploy through the app pipeline before claiming translations are visible.',
     'This early check does not validate file contents, translation coverage or extraction freshness. Delivery checks those inputs again when preparing the PR; a separate human confirmation creates it. It does not merge or deploy.'
   ] });
   return {
